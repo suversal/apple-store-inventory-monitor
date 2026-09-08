@@ -29,6 +29,7 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(25);
 const MIN_REQUEST_INTERVAL: Duration = Duration::from_secs(2);
 const MAX_RESPONSE_BYTES: usize = 4 << 20;
 const FALLBACK_CHROMIUM_MAJOR: u32 = 152;
+const MAX_EXCEPTION_SUMMARY_CHARS: usize = 160;
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -67,7 +68,7 @@ impl ChromiumSession {
         })?;
         let user_agent = chromium_user_agent(&chrome);
         let profile = tempfile::Builder::new()
-            .prefix("apple-pickup-watcher-chromium-")
+            .prefix("apple-store-inventory-monitor-chromium-")
             .tempdir()
             .map_err(|e| ApiError::Transport(format!("无法创建 Chromium 临时目录：{e}")))?;
         let profile_arg = format!("--user-data-dir={}", profile.path().display());
@@ -191,9 +192,10 @@ impl ChromiumSession {
             )
             .await?;
         if let Some(details) = result.get("exceptionDetails") {
-            return Err(ApiError::Transport(format!(
-                "Chromium 页面脚本执行失败：{details}"
-            )));
+            // DevTools 的 exceptionDetails 带着 className、objectId 和整段 stack。
+            // 这些内容适合开发诊断，不适合直接铺到用户的活动日志里。
+            eprintln!("Chromium Runtime.evaluate exceptionDetails: {details}");
+            return Err(ApiError::Transport(chromium_exception_summary(details)));
         }
         Ok(result
             .pointer("/result/value")
@@ -201,19 +203,23 @@ impl ChromiumSession {
             .unwrap_or(Value::Null))
     }
 
-    async fn ensure_region(
-        &mut self,
-        region: &'static Region,
-        seed_part: &str,
-    ) -> Result<(), ApiError> {
+    async fn ensure_region(&mut self, region: &'static Region) -> Result<(), ApiError> {
         if self.locale == Some(region.locale) {
             return Ok(());
         }
 
-        // 总览页也会设置同名的 shld Cookie，但该会话查询库存仍会收到 541。
-        // `/shop/product/{part}` 是 Apple 自己的稳定入口，会跳到对应品类的具体
-        // 商品页；以真实监控零件号建立会话后，库存请求才与官网行为一致。
-        let page_url = format!("{}/shop/product/{seed_part}", region.base_url);
+        // 不能用 `/shop/product/{part}` 暖场：Apple Watch 的配置零件号并不一定
+        // 有独立商品详情页，例如 MFA04CH/B 当前直接返回 404。旧实现随后仍会等满
+        // 50 秒，并且每家门店各等一次，界面看起来就像点击后完全没反应。
+        //
+        // 改用内置目录里的正式购买页。它与库存接口属于同一个在线商店会话，且
+        // URL 会随在售产品目录一起维护；会话一旦建立，同地区的 iPhone、Watch、
+        // iPad 和 Mac 库存请求都可以复用。
+        let family = region
+            .families
+            .first()
+            .ok_or_else(|| ApiError::Transport("当前地区没有可用于建立会话的购买页".into()))?;
+        let page_url = region.buy_page_url(family);
         self.command("Page.navigate", json!({ "url": page_url }))
             .await?;
         let deadline = Instant::now() + SESSION_READY_TIMEOUT;
@@ -246,7 +252,7 @@ impl ChromiumSession {
         store_number: &str,
         parts: &[String],
     ) -> Result<BrowserPayload, ApiError> {
-        self.ensure_region(region, &parts[0]).await?;
+        self.ensure_region(region).await?;
 
         // 监控引擎会并发调度不同门店。虽然外层 Mutex 已把 DevTools 命令串行化，
         // 但“串行”仍可能是毫秒级连续请求；Apple 会把这种突发识别成自动化并
@@ -306,6 +312,41 @@ impl ChromiumSession {
         serde_json::from_value(value)
             .map_err(|e| ApiError::Transport(format!("Chromium 库存结果无法解析：{e}")))
     }
+}
+
+fn chromium_exception_summary(details: &Value) -> String {
+    let raw = details
+        .pointer("/exception/description")
+        .and_then(Value::as_str)
+        .or_else(|| details.pointer("/exception/value").and_then(Value::as_str))
+        .or_else(|| details.get("text").and_then(Value::as_str))
+        .unwrap_or_default();
+    let first_line = raw
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or_default();
+    let normalized = first_line.split_whitespace().collect::<Vec<_>>().join(" ");
+    let lower = normalized.to_ascii_lowercase();
+
+    if lower.contains("access is denied")
+        || lower.contains("blocked a frame with origin")
+        || lower.contains("permission denied to access property")
+    {
+        return "浏览器安全限制阻止了本次 Apple 页面访问".into();
+    }
+
+    if normalized.is_empty() {
+        return "浏览器会话未能完成本次 Apple 查询".into();
+    }
+
+    let mut summary: String = normalized
+        .chars()
+        .take(MAX_EXCEPTION_SUMMARY_CHARS)
+        .collect();
+    if normalized.chars().count() > MAX_EXCEPTION_SUMMARY_CHARS {
+        summary.push('…');
+    }
+    format!("浏览器页面执行失败：{summary}")
 }
 
 #[derive(Debug, Deserialize)]
@@ -510,6 +551,49 @@ mod tests {
         assert_eq!(parse_chromium_major("not a version"), None);
     }
 
+    #[test]
+    fn 会话暖场使用正式购买页而不是sku详情页() {
+        let region = region_by_locale("zh_CN").expect("应当有中国大陆地区配置");
+        let family = region.families.first().expect("地区应当至少有一个购买页");
+        let url = region.buy_page_url(family);
+
+        assert!(url.starts_with("https://www.apple.com.cn/shop/buy-"));
+        assert!(!url.contains("/shop/product/"));
+    }
+
+    #[test]
+    fn devtools异常只向界面返回简短摘要() {
+        let details = json!({
+            "text": "Uncaught",
+            "exception": {
+                "className": "DOMException",
+                "description": "DOMException: Failed to read a named property from 'Document': Access is denied for this document.\n    at <anonymous>:1:65",
+                "objectId": "123456.1.2"
+            },
+            "stackTrace": {"callFrames": [{"functionName": "", "url": "https://example.invalid"}]}
+        });
+
+        let summary = chromium_exception_summary(&details);
+        assert_eq!(summary, "浏览器安全限制阻止了本次 Apple 页面访问");
+        assert!(!summary.contains("objectId"));
+        assert!(!summary.contains("stackTrace"));
+        assert!(!summary.contains("Document"));
+    }
+
+    #[test]
+    fn 未知devtools异常也不会携带堆栈() {
+        let details = json!({
+            "exception": {
+                "description": "TypeError: unexpected value\n    at fetchInventory (<anonymous>:10:2)"
+            }
+        });
+
+        assert_eq!(
+            chromium_exception_summary(&details),
+            "浏览器页面执行失败：TypeError: unexpected value"
+        );
+    }
+
     /// 真实网络回归：复用同一个浏览器会话连续检查四家门店两轮。
     ///
     /// 第一家门店有货也不能使后续门店短路；第二轮还能成功则同时证明 Cookie
@@ -544,5 +628,29 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// 用户现场回归：Apple Watch 的配置零件号没有 `/shop/product/{part}` 页面，
+    /// 但它本身仍可通过库存接口查询。首轮不应再卡到 50 秒暖场超时。
+    #[tokio::test]
+    #[ignore = "需要本机 Chromium 与 Apple 官网网络"]
+    async fn 真实apple_watch配置型号首轮可以查询() {
+        let region = region_by_locale("zh_CN").expect("应当有中国大陆地区配置");
+        let fetcher = AppleChromiumFetcher::new();
+        let part = vec!["MFA04CH/B".to_string()];
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(35),
+            fetcher.pickup(region, "R390", &part),
+        )
+        .await
+        .expect("首轮查询不应再等待 50 秒握手超时")
+        .expect("Apple Watch 配置型号应当得到库存响应");
+
+        let status = result
+            .parts
+            .get(&part[0])
+            .expect("响应应包含请求的 Apple Watch 零件号");
+        assert!(!status.availability.is_unknown());
     }
 }

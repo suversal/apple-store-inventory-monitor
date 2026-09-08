@@ -3,5 +3,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    apw_app_lib::run()
+    apple_store_inventory_monitor_lib::run()
 }

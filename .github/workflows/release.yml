@@ -249,7 +249,7 @@ jobs:
             这不是文件真的坏了。把应用拖进「应用程序」后执行一次：
 
             ```sh
-            xattr -cr "/Applications/果到雷达.app"
+            xattr -cr "/Applications/Apple Store Inventory Monitor.app"
             ```
 
             之后就能正常启动，这条命令只需要执行一次。
@@ -258,11 +258,11 @@ jobs:
 
             产物在 Ubuntu 24.04 上构建，需要 glibc ≥ 2.39，更老的发行版请自行从源码编译。
 
-            - `.deb`：`sudo apt install ./apple-pickup-watcher_*_amd64.deb` 会自动拉齐依赖。
+            - `.deb`：`sudo apt install ./apple-store-inventory-monitor_*_amd64.deb` 会自动拉齐依赖。
               手动装的话需要 `libwebkit2gtk-4.1-0`、`libayatana-appindicator3-1`（托盘图标）、
               以及 ALSA 运行库 `libasound2t64`（播放到货提示音要用）。
             - `.AppImage`：需要系统里有 FUSE 2（Ubuntu 24.04 上是 `libfuse2t64`）。
-              不想装的话可以用 `./apple-pickup-watcher_*.AppImage --appimage-extract-and-run` 运行。
+              不想装的话可以用 `./apple-store-inventory-monitor_*.AppImage --appimage-extract-and-run` 运行。
 
             ### 关于自动更新
 

@@ -70,8 +70,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
-name = "apw-app"
-version = "0.3.2"
+name = "apple-store-inventory-monitor"
+version = "0.4.0"
 dependencies = [
  "apw-core",
  "futures-util",
@@ -90,7 +90,7 @@ dependencies = [
 
 [[package]]
 name = "apw-core"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "dirs",
  "rand 0.9.5",

@@ -341,16 +341,42 @@ async fn pump_events(app: AppHandle, mut events: tokio::sync::mpsc::Receiver<Eve
                 .map(|s| s.settings_snapshot())
                 .unwrap_or_default();
 
+            let mut bag_opened = false;
             if settings.open_bag_on_hit
                 && let Some(region) = region_by_locale(&target.locale)
             {
                 use tauri_plugin_opener::OpenerExt;
-                let _ = app.opener().open_url(region.bag_url(), None::<&str>);
+                match app.opener().open_url(region.bag_url(), None::<&str>) {
+                    Ok(()) => bag_opened = true,
+                    Err(err) => {
+                        let _ = app.emit(NOTICE_CHANNEL, format!("自动打开购物袋失败：{err}"));
+                    }
+                }
             }
 
             if let Err(err) = dispatch_notification(&app, notification).await {
                 // 提醒没发出去是遗憾，但绝不能让监控本身停下来。
                 let _ = app.emit(NOTICE_CHANNEL, format!("发送提醒时出错：{err}"));
+            } else {
+                let mut actions = vec!["系统通知"];
+                if settings.sound_enabled {
+                    actions.push("提示音");
+                }
+                if !settings.bark_url.trim().is_empty() {
+                    actions.push("Bark");
+                }
+                if bag_opened {
+                    actions.push("已打开购物袋");
+                }
+                let _ = app.emit(
+                    NOTICE_CHANNEL,
+                    format!(
+                        "到货提醒已执行：{} {}（{}）",
+                        target.store_title,
+                        target.product_name,
+                        actions.join("、")
+                    ),
+                );
             }
         }
     }
@@ -425,6 +451,16 @@ fn load_settings(notices: &mut Vec<String>) -> (Settings, Option<SettingsStore>)
 
     match store.load() {
         Ok(settings) => {
+            if first_run && let Some(previous) = store.import_previous_version() {
+                notices.push(format!(
+                    "已从改名前版本迁移了 {} 条监控目标。",
+                    previous.targets.len()
+                ));
+                if let Err(err) = store.save(&previous) {
+                    notices.push(format!("迁移结果暂时没能保存：{err}"));
+                }
+                return (previous, Some(store));
+            }
             if first_run
                 && let Some(legacy) = store.import_legacy()
                 && !legacy.targets.is_empty()

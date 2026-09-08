@@ -199,8 +199,8 @@ async fn 查询失败必须落到未知而不是无货() {
 }
 
 #[tokio::test]
-async fn 有货提醒是边沿触发的() {
-    // 持续有货不该每轮都响；离开有货再回来要能再次响。
+async fn 每轮确认有货都会提醒() {
+    // 持续有货也要每轮提醒；离开有货的轮次不提醒。
     let fake = FakeFetcher::new(|nth, store, parts| {
         // 第 0、1 轮有货，第 2 轮无货，第 3 轮又有货。
         let a = match nth {
@@ -220,13 +220,65 @@ async fn 有货提醒是边沿触发的() {
     }
     w.stop().await;
 
-    // 两次「变为有货」：第一次进入，以及第 3 轮补货后再次进入。
+    // 第 0、1、3 轮有货，因此一共提醒三次。
     assert_eq!(
         count_in_stock(&all),
-        2,
-        "期望恰好两次到货提醒（首次有货 + 补货），实际 {} 次",
+        3,
+        "期望每轮确认有货都提醒，实际 {} 次",
         count_in_stock(&all)
     );
+}
+
+#[tokio::test]
+async fn 每轮都会报告开始与完成即使库存没变() {
+    let fake =
+        FakeFetcher::new(|_, store, parts| Ok(ok_response(store, parts, Availability::OutOfStock)));
+    let (w, mut rx) = Watcher::spawn(fake.clone(), fast_config());
+    w.set_targets(vec![
+        target("R683", "WATCH-1/A"),
+        target("R683", "WATCH-2/A"),
+        target("R683", "WATCH-3/A"),
+    ])
+    .await;
+    w.start().await;
+
+    let first = wait_cycle(&mut rx).await;
+    let second = wait_cycle(&mut rx).await;
+    w.stop().await;
+
+    assert!(first.iter().any(|event| matches!(
+        event,
+        Event::CycleStarted {
+            cycle: 1,
+            store_count: 1,
+            target_count: 3,
+        }
+    )));
+    assert!(first.iter().any(|event| matches!(
+        event,
+        Event::CycleComplete {
+            cycle: 1,
+            healthy: true,
+            ..
+        }
+    )));
+    assert!(second.iter().any(|event| matches!(
+        event,
+        Event::CycleStarted {
+            cycle: 2,
+            store_count: 1,
+            target_count: 3,
+        }
+    )));
+    assert!(second.iter().any(|event| matches!(
+        event,
+        Event::CycleComplete {
+            cycle: 2,
+            healthy: true,
+            ..
+        }
+    )));
+    assert!(fake.call_count() >= 2, "两轮都应实际调用查询源");
 }
 
 #[tokio::test]
@@ -253,8 +305,8 @@ async fn 暂停后重新开始会重新武装有货提醒() {
     let next = wait_cycle(&mut rx).await;
     assert_eq!(
         count_in_stock(&next),
-        0,
-        "持续运行期间库存没变化，不应每轮重复提醒"
+        1,
+        "持续运行期间库存仍有货，下一轮也应再次提醒"
     );
     w.stop().await;
 }

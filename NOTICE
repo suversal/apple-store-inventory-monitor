@@ -2,7 +2,7 @@
 NOTICE — 来源、版权与修改声明
 ================================================================================
 
-本项目 apple-pickup-watcher 是下述项目的修改版本（硬分叉重写）：
+本项目 apple-store-inventory-monitor 是下述项目的修改版本（硬分叉重写）：
 
     原项目名称  Apple Store 预约助手 (apple-store-helper)
     原项目地址  https://github.com/hteen/apple-store-helper
@@ -26,7 +26,7 @@ NOTICE — 来源、版权与修改声明
 版权声明：
 
     Copyright (C) 2020-2025 Hteen and the apple-store-helper contributors
-    Copyright (C) 2026 the apple-pickup-watcher contributors
+    Copyright (C) 2026 the apple-store-inventory-monitor contributors
 
 原项目的许可条款以 GPL-3.0 全文形式完整保留在本仓库根目录的 LICENSE 文件中，
 未作任何删改。
@@ -39,7 +39,7 @@ NOTICE — 来源、版权与修改声明
 本项目包含对原项目的显著修改。本作品的全部文件均已被修改；本项目是在原项目
 基础上进行的重新实现，而非原项目的逐字副本。
 
-    修改者      apple-pickup-watcher 项目维护者
+    修改者      apple-store-inventory-monitor 项目维护者
 
     2026-08-06  初次派生。以 Go + Fyne 重新实现，更换库存查询接口，引入三态
                 库存模型，重写轮询调度、HTTP 客户端与设置存储（对应版本 v0.1.x）。
@@ -53,7 +53,7 @@ NOTICE — 来源、版权与修改声明
 
 以下第 1 至 8 项自 2026-08-06 起生效，描述的是本项目相对**原项目**的改动，
 在 Rust 重写后依然成立；第 9 至 12 项为 2026-08-08 重写时新增，第 13 项为
-2026-08-28 新增。
+2026-08-28 新增，第 14 项为 2026-09-08 新增。
 
   1. 库存查询会话与解析逻辑整体重写。
      Apple 当前商品页会先执行浏览器环境校验，缺少有效页面会话的直接 HTTP 请求
@@ -94,8 +94,8 @@ NOTICE — 来源、版权与修改声明
 
   9. 实现语言与界面框架更换。
      Go + Fyne 改为 Rust（edition 2024）+ Tauri v2 + React 19 + TypeScript。
-     代码分为 apw-core（核心逻辑，不依赖任何界面框架）与 apw-app（Tauri 外壳）
-     两层，全部业务判断位于前者。
+     代码分为 apw-core（核心逻辑，不依赖任何界面框架）与
+     apple-store-inventory-monitor（Tauri 外壳）两层，全部业务判断位于前者。
 
  10. 调度引擎改用 actor 模型。
      状态由单个任务独占，外部只能通过消息与之交互，不再有共享可变状态、锁序
@@ -114,6 +114,12 @@ NOTICE — 来源、版权与修改声明
      原项目只支持 iPhone。本项目按品类组织购买页，并支持 Apple 购买页的两种
      商品数据排布（iPhone / iPad 的平铺字段，与 Mac / Apple Watch 的维度表），
      内置离线快照改由 crates/apw-core/data/generate.py 生成。
+
+ 14. 项目更名并与旧包分离（2026-09-08）。
+     英文项目名改为 Apple Store Inventory Monitor，仓库与包名改为
+     apple-store-inventory-monitor，应用标识改为
+     com.suversal.apple-store-inventory-monitor。新包使用独立配置目录，并在首次
+     启动时只读迁移 apple-pickup-watcher 的现有设置。
 
 
 --------------------------------------------------------------------------------

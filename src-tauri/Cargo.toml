@@ -1,5 +1,5 @@
 [package]
-name = "apw-app"
+name = "apple-store-inventory-monitor"
 description = "Apple 直营店到店取货库存监控"
 version.workspace = true
 edition.workspace = true
@@ -10,7 +10,7 @@ repository.workspace = true
 [lib]
 # _lib 后缀不是多余的：Windows 上库名与二进制同名会冲突。
 # 见 https://github.com/rust-lang/cargo/issues/8519
-name = "apw_app_lib"
+name = "apple_store_inventory_monitor_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

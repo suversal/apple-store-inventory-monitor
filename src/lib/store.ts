@@ -26,7 +26,7 @@ import type {
   UpdateInfo,
   WatcherEvent,
 } from "./types";
-import { assertNever, describeAvailability, isUntrusted } from "./types";
+import { assertNever, describeAvailability } from "./types";
 
 const EVENT_CHANNEL = "watcher://event";
 const NOTICE_CHANNEL = "watcher://notice";
@@ -111,11 +111,29 @@ function update(patch: Partial<UiState>): void {
 }
 
 function pushLog(line: string): void {
+  pushLogs([line]);
+}
+
+function pushLogs(lines: string[]): void {
+  if (lines.length === 0) return;
   const stamp = new Date().toLocaleTimeString("zh-CN", { hour12: false });
-  const next = [...state.logs, `[${stamp}] ${line}`];
+  const next = [...state.logs, ...lines.map((line) => `[${stamp}] ${line}`)];
   // 定长保留。上游把日志无限拼进一个字符串，跑一整天能有几 MB，
   // 每次刷新都要重新排版，界面越用越卡。
   update({ logs: next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next });
+}
+
+function formatElapsed(ms: number): string {
+  if (ms < 1_000) return `${Math.max(0, Math.round(ms))} 毫秒`;
+  return `${(ms / 1_000).toFixed(1)} 秒`;
+}
+
+function describeCycleRow(cycle: number, row: TargetState): string {
+  const target = `${row.target.storeTitle} ${row.target.productName}`;
+  if (row.availability.kind === "in_stock") return `第 ${cycle} 轮 · 有货：${target}`;
+  if (row.availability.kind === "out_of_stock") return `第 ${cycle} 轮 · 无货：${target}`;
+  const detail = describeAvailability(row.availability).detail ?? "本轮没有拿到可信结果";
+  return `第 ${cycle} 轮 · 异常：${target}（${detail}）`;
 }
 
 function applyEvent(event: WatcherEvent): void {
@@ -123,41 +141,37 @@ function applyEvent(event: WatcherEvent): void {
     case "stateChanged": {
       // 列表本身以 cycleComplete 带来的快照为准，不拿这条事件去增量改 ——
       // 它是可丢弃的，用它做增量会让界面和引擎慢慢对不上。
-      // 这里只做一件事：把「某一行开始不可信」记进日志，附上具体原因，
-      // 否则用户只能看到一个「未知」，不知道到底出了什么事。
-      const { availability, target } = event.state;
-      if (isUntrusted(availability)) {
-        const { detail } = describeAvailability(availability);
-        pushLog(`${target.storeTitle} ${target.productName}：${detail ?? "查询失败"}`);
-      } else if (availability.kind === "out_of_stock") {
-        // 无货同样是一次成功查询。把它写出来，避免日志只出现“有货”时让人误以为
-        // 同一批次里的其他商品被跳过；状态不变化时不会再发 StateChanged，因此不刷屏。
-        pushLog(`已检查，无货：${target.storeTitle} ${target.productName}`);
-      }
+      // 每轮逐项日志统一由 CycleComplete 的完整快照生成，避免首轮状态变化事件
+      // 与轮次日志重复，后续库存不变时也仍能保持完全相同的展示格式。
       break;
     }
 
     case "inStock":
-      pushLog(`有货！${event.state.target.storeTitle} ${event.state.target.productName}`);
+      // 到货动作由 Rust 宿主执行；逐项查询结果在 CycleComplete 时统一写日志。
+      break;
+
+    case "cycleStarted":
+      pushLog(
+        `第 ${event.cycle} 轮开始查询：${event.storeCount} 家门店、${event.targetCount} 项监控。${event.cycle === 1 ? "首次使用时会先建立 Apple 查询会话，通常需要几秒。" : ""}`,
+      );
       break;
 
     case "cycleComplete": {
       const recovered = event.healthy && state.trouble !== null;
-      const failed = event.snapshot.filter((row) => isUntrusted(row.availability)).length;
-      const inStock = event.snapshot.filter((row) => row.availability.kind === "in_stock").length;
-      const outOfStock = event.snapshot.filter((row) => row.availability.kind === "out_of_stock").length;
       update({
         rows: event.snapshot,
         // 只有引擎明说本轮健康，才收起告警。用「所有行都没错误」去反推是
         // 不可靠的：某些故障路径下状态压根没被更新。
         trouble: event.healthy ? null : state.trouble,
       });
-      if (recovered) pushLog("查询已恢复正常。");
-      pushLog(
+      const lines = event.snapshot.map((row) => describeCycleRow(event.cycle, row));
+      if (recovered) lines.unshift("查询已恢复正常。");
+      lines.push(
         event.healthy
-          ? `本轮已检查 ${event.snapshot.length} 项：有货 ${inStock} 项、无货 ${outOfStock} 项、异常 0 项；约 ${state.settings.intervalSeconds} 秒后开始下一轮。`
-          : `本轮已检查 ${event.snapshot.length} 项：有货 ${inStock} 项、无货 ${outOfStock} 项、异常 ${failed} 项；继续监控。`,
+          ? `第 ${event.cycle} 轮查询完成（耗时 ${formatElapsed(event.elapsedMs)}）；约 ${state.settings.intervalSeconds} 秒后开始下一轮。`
+          : `第 ${event.cycle} 轮查询完成（耗时 ${formatElapsed(event.elapsedMs)}）；异常项目将在下一轮自动重试。`,
       );
+      pushLogs(lines);
       break;
     }
 
@@ -193,7 +207,7 @@ export function connect(): Promise<void> {
   starting = (async () => {
     unlisteners = await Promise.all([
       listen<WatcherEvent>(EVENT_CHANNEL, (e) => applyEvent(e.payload)),
-      listen<string>(NOTICE_CHANNEL, (e) => pushLog(`启动提示：${e.payload}`)),
+      listen<string>(NOTICE_CHANNEL, (e) => pushLog(e.payload)),
     ]);
 
     const [regions, categories, settings, rows, running] = await Promise.all([

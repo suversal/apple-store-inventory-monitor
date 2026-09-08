@@ -160,6 +160,31 @@ fn 故障建议的线上格式是小写标识符() {
 }
 
 #[test]
+fn 轮询事件携带前端可用的轮次与耗时() {
+    let started = to_value(&Event::CycleStarted {
+        cycle: 2,
+        store_count: 1,
+        target_count: 3,
+    });
+    assert_eq!(started.get("type"), Some(&json!("cycleStarted")));
+    assert_eq!(started.get("cycle"), Some(&json!(2)));
+    assert_eq!(started.get("storeCount"), Some(&json!(1)));
+    assert_eq!(started.get("targetCount"), Some(&json!(3)));
+    assert!(started.get("store_count").is_none());
+
+    let completed = to_value(&Event::CycleComplete {
+        cycle: 2,
+        elapsed_ms: 2_150,
+        healthy: true,
+        snapshot: Vec::new(),
+    });
+    assert_eq!(completed.get("type"), Some(&json!("cycleComplete")));
+    assert_eq!(completed.get("cycle"), Some(&json!(2)));
+    assert_eq!(completed.get("elapsedMs"), Some(&json!(2_150)));
+    assert!(completed.get("elapsed_ms").is_none());
+}
+
+#[test]
 fn 监控目标能原样往返() {
     // 前端会把 Target 发回来（set_targets），所以它必须是可往返的。
     let target = Target {

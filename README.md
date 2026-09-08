@@ -1,8 +1,10 @@
-# 果到雷达
+# 果到雷达（Apple Store Inventory Monitor）
 
 果到雷达是一款 Apple 直营店库存监控工具。选择地区、门店和具体型号后，它会定时查询到店取货库存；检测到有货时，可以播放提示音、发送系统通知、推送 Bark，并打开 Apple 购物袋页面。
 
-项目使用 Rust、Tauri 2 和 React 编写，支持 macOS、Windows 和 Linux。当前版本为 `0.3.2`。
+英文项目名为 **Apple Store Inventory Monitor**，仓库与安装包使用
+`apple-store-inventory-monitor`。项目使用 Rust、Tauri 2 和 React 编写，支持
+macOS、Windows 和 Linux。当前版本为 `0.4.0`。
 
 > 本项目与 Apple Inc. 没有关系，也没有获得 Apple 授权。它只负责查询和提醒，不会代替用户下单。
 
@@ -17,7 +19,7 @@
 - 有货时可以自动打开对应地区的 Apple 购物袋页面。
 - 窗口关闭后可继续在系统托盘运行。
 - 型号目录可以从 Apple 官网刷新；网络失败时仍可使用内嵌目录。
-- 活动日志会显示每轮实际检查数量，以及有货、无货和异常数量。
+- 活动日志会在每一轮逐项显示有货、无货或异常，不把结果藏在汇总数字里。
 - 支持应用内检查更新。
 
 ## 为什么会有「未知」状态
@@ -39,7 +41,7 @@ Apple 当前商品页会先完成浏览器环境校验，再请求库存接口�
 果到雷达会启动一个独立的无界面 Chrome 或 Edge：
 
 1. 创建临时浏览器资料目录。
-2. 打开所监控型号的 Apple 商品页，等待页面校验完成。
+2. 打开当前地区的 Apple 正式购买页，等待页面校验完成。
 3. 在同一页面和同一会话中请求库存。
 4. 多个门店串行查询，任意两次请求至少间隔 2 秒。
 5. 如果会话被 `403` 或 `541` 拒绝，销毁当前会话，下轮重新建立。
@@ -57,14 +59,14 @@ Apple 当前商品页会先完成浏览器环境校验，再请求库存接口�
 
 ## 安装
 
-从 [GitHub Releases](https://github.com/ENCHIGO/apple-pickup-watcher/releases) 下载对应系统的安装包。
+从 [GitHub Releases](https://github.com/suversal/apple-store-inventory-monitor/releases) 下载对应系统的安装包。
 
 ### macOS
 
-安装包暂未经过 Apple 公证。将 `果到雷达.app` 拖入「应用程序」后，如果系统提示应用损坏或无法验证开发者，执行：
+安装包暂未经过 Apple 公证。将 `Apple Store Inventory Monitor.app` 拖入「应用程序」后，如果系统提示应用损坏或无法验证开发者，执行：
 
 ```bash
-xattr -cr "/Applications/果到雷达.app"
+xattr -cr "/Applications/Apple Store Inventory Monitor.app"
 ```
 
 然后重新打开应用。
@@ -78,7 +80,7 @@ xattr -cr "/Applications/果到雷达.app"
 Release 提供 `.deb` 和 `.AppImage`。AppImage 首次运行前需要增加执行权限：
 
 ```bash
-chmod +x 果到雷达_*.AppImage
+chmod +x ./*.AppImage
 ```
 
 ## 使用方法
@@ -98,10 +100,14 @@ chmod +x 果到雷达_*.AppImage
 监控列表中的「最后检查」表示该条目最近一次完成查询的时间。活动日志会在每轮结束后显示类似内容：
 
 ```text
-本轮已检查 3 项：有货 1 项、无货 2 项、异常 0 项；约 30 秒后开始下一轮。
+第 2 轮 · 无货：上海-香港广场 Apple Watch 42 毫米…
+第 2 轮 · 无货：上海-五角场 Apple Watch 42 毫米…
+第 2 轮 · 有货：上海-环球港 iPhone 17…
+第 2 轮查询完成（耗时 4.4 秒）；约 30 秒后开始下一轮。
 ```
 
-第一条商品有货不会停止本轮查询。监控引擎会继续处理剩余门店和型号，完成后再生成整轮统计。
+第一条商品有货不会停止本轮查询。监控引擎会继续处理剩余门店和型号；持续有货时，
+每一轮都会再次执行已启用的提醒动作。
 
 ### 查询间隔
 
@@ -118,13 +124,15 @@ chmod +x 果到雷达_*.AppImage
 
 ## 设置与数据
 
-为了兼容改名前的版本，应用内部标识和设置目录继续使用 `apple-pickup-watcher`。改名或升级不会清空原有监控列表。
+新包使用独立的应用标识 `com.suversal.apple-store-inventory-monitor` 和配置目录。
+首次启动时会从改名前的 `apple-pickup-watcher` 目录读取并复制现有设置；旧文件不会
+被修改或删除，因此回退旧包也不会丢失监控列表。
 
 | 系统 | 设置文件 |
 | --- | --- |
-| macOS | `~/Library/Application Support/apple-pickup-watcher/settings.v2.json` |
-| Windows | `%APPDATA%\apple-pickup-watcher\settings.v2.json` |
-| Linux | `$XDG_CONFIG_HOME/apple-pickup-watcher/settings.v2.json` |
+| macOS | `~/Library/Application Support/apple-store-inventory-monitor/settings.v2.json` |
+| Windows | `%APPDATA%\apple-store-inventory-monitor\settings.v2.json` |
+| Linux | `$XDG_CONFIG_HOME/apple-store-inventory-monitor/settings.v2.json` |
 
 设置文件包含监控目标、查询间隔和提醒选项。Bark 地址也会保存在本机，请不要将该文件上传到公开 issue 或提交进 Git 仓库。
 
@@ -195,8 +203,8 @@ sudo apt install -y \
 ### 开发命令
 
 ```bash
-git clone https://github.com/ENCHIGO/apple-pickup-watcher.git
-cd apple-pickup-watcher
+git clone https://github.com/suversal/apple-store-inventory-monitor.git
+cd apple-store-inventory-monitor
 pnpm install
 source "$HOME/.cargo/env"
 pnpm tauri dev
@@ -219,7 +227,7 @@ pnpm build
 离线测试不会请求 Apple。真实接口回归测试需要本机安装 Chrome/Edge，并会访问 Apple 官网：
 
 ```bash
-cargo test -p apw-app \
+cargo test -p apple-store-inventory-monitor \
   'chromium_fetcher::tests::真实chromium会话连续检查四家门店两轮' \
   -- --ignored --nocapture
 ```

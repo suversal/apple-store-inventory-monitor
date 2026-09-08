@@ -23,7 +23,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -66,16 +66,35 @@ impl TargetState {
 pub enum Event {
     /// 某个目标的状态发生了变化。可丢弃：真实状态随时能从快照重新取。
     StateChanged { state: TargetState },
-    /// 某个目标从非有货变成了有货 —— 需要提醒用户的时刻。
+    /// 某个目标在本轮被确认有货 —— 需要提醒用户的时刻。
     ///
     /// **这条事件不允许丢**：它是整个程序存在的理由。投递用的是会产生背压的
     /// `send().await`，而不是丢弃式的 `try_send`。Go 版对所有事件一视同仁地
     /// 满即丢，于是界面一卡顿，用户就会看到「有货」却收不到任何提醒。
     InStock { state: TargetState },
+    /// 一轮查询已经开始。
+    ///
+    /// 这条事件专门给界面提供即时反馈：即使本轮库存与上一轮完全相同，用户也能
+    /// 明确看到监控没有复用旧结果，而是在重新查询 Apple。
+    CycleStarted {
+        /// 本次监控会话内的轮次，从 1 开始。
+        cycle: u64,
+        /// 本轮按门店聚合后的查询单元数。
+        #[serde(rename = "storeCount")]
+        store_count: usize,
+        /// 本轮覆盖的监控项数量。
+        #[serde(rename = "targetCount")]
+        target_count: usize,
+    },
     /// 一轮查询结束，带上完整快照。
     ///
     /// 快照让界面任何时候都能整体对齐，不必依赖那些可丢弃事件是否都收到了。
     CycleComplete {
+        /// 与 [`Event::CycleStarted`] 对应的轮次。
+        cycle: u64,
+        /// 从开始调度到所有门店查询结束的耗时，包含限速与会话暖场。
+        #[serde(rename = "elapsedMs")]
+        elapsed_ms: u64,
         /// 本轮是否所有目标都拿到了明确答复。
         ///
         /// 界面需要一个明确的「恢复」信号才能收起故障告警。用「所有行都没有
@@ -476,6 +495,8 @@ struct Engine<F: Fetcher> {
     /// 不用单个目标的失败次数来驱动：某个零件号下架会让它永远失败，据此退避
     /// 的话，一条陈旧的监控项就能把所有正常门店的查询频率拖慢八倍。
     cycle_failures: u32,
+    /// 当前监控会话已经开始的轮次数。暂停后重新开始会从 1 重新计数。
+    cycle_number: u64,
 }
 
 impl<F: Fetcher> Engine<F> {
@@ -488,6 +509,7 @@ impl<F: Fetcher> Engine<F> {
             states: BTreeMap::new(),
             running: false,
             cycle_failures: 0,
+            cycle_number: 0,
         }
     }
 
@@ -507,6 +529,14 @@ impl<F: Fetcher> Engine<F> {
             // 在飞的 HTTP 请求会跟着一起停。
             let groups = self.group_targets();
             let expected = expected_keys(&groups);
+            self.cycle_number = self.cycle_number.saturating_add(1);
+            let cycle = self.cycle_number;
+            let started_at = Instant::now();
+            self.emit_droppable(Event::CycleStarted {
+                cycle,
+                store_count: groups.len(),
+                target_count: expected.len(),
+            });
             let queries = run_queries(self.client.clone(), groups, self.config.concurrency);
             tokio::pin!(queries);
 
@@ -551,7 +581,13 @@ impl<F: Fetcher> Engine<F> {
                 continue;
             }
 
-            self.apply(expected, outcomes).await;
+            self.apply(
+                cycle,
+                started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
+                expected,
+                outcomes,
+            )
+            .await;
 
             if !self.running {
                 continue;
@@ -599,15 +635,7 @@ impl<F: Fetcher> Engine<F> {
         }
         self.running = running;
         if running {
-            // 暂停再恢复代表一段新的监控会话。持续运行时「有货」只提醒一次，
-            // 但用户主动重新开始后，当前仍有货的项目应当重新提醒一次。
-            // 只重置内部判定，不单独发状态事件；首轮结果会立即用真实状态覆盖，
-            // 界面不会在“有货”和“待查询”之间闪烁。
-            for state in self.states.values_mut() {
-                if state.availability.is_in_stock() {
-                    state.availability = Availability::Unknown(UnknownReason::NotYetChecked);
-                }
-            }
+            self.cycle_number = 0;
         } else {
             // 重新启动时应当从干净的节奏开始，不背着上一轮的退避。
             self.cycle_failures = 0;
@@ -666,7 +694,13 @@ impl<F: Fetcher> Engine<F> {
     }
 
     /// 把一轮的结果写进状态，并发出相应事件。
-    async fn apply(&mut self, mut missing: BTreeSet<TargetKey>, outcomes: Vec<StoreOutcome>) {
+    async fn apply(
+        &mut self,
+        cycle: u64,
+        elapsed_ms: u64,
+        mut missing: BTreeSet<TargetKey>,
+        outcomes: Vec<StoreOutcome>,
+    ) {
         let mut ok = 0usize;
         let mut failed = 0usize;
         let mut problems = 0usize;
@@ -706,18 +740,15 @@ impl<F: Fetcher> Engine<F> {
                     state.consecutive_failures = 0;
                 }
 
-                if previous == state.availability {
-                    continue;
-                }
-
                 let snapshot = state.clone();
-                let became_in_stock = snapshot.availability.is_in_stock();
-                self.emit_droppable(Event::StateChanged {
-                    state: snapshot.clone(),
-                });
-                if became_in_stock {
-                    // 只在「变为有货」的瞬间提醒一次，持续有货不会重复响；
-                    // 补货（离开有货再回来）时会再次触发。
+                if previous != snapshot.availability {
+                    self.emit_droppable(Event::StateChanged {
+                        state: snapshot.clone(),
+                    });
+                }
+                if snapshot.availability.is_in_stock() {
+                    // 用户要求每一轮只要确认有货就重新提醒。这样持续有货时也会按
+                    // 查询间隔重复响铃、打开购物袋，而不是只有第一次变为有货才执行。
                     self.emit_critical(Event::InStock { state: snapshot }).await;
                 }
             }
@@ -761,6 +792,8 @@ impl<F: Fetcher> Engine<F> {
         // 停在上一轮的取值上 —— 而那很可能正是「无货」。实测 260 个目标时连续
         // 18 轮一条都没送达。
         self.emit_critical(Event::CycleComplete {
+            cycle,
+            elapsed_ms,
             healthy: problems == 0 && ok > 0,
             snapshot: self.snapshot(),
         })

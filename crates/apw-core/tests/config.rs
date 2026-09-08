@@ -513,6 +513,6 @@ fn 配置文件路径落在用户配置目录下() {
     assert!(
         store
             .path()
-            .ends_with(Path::new("apple-pickup-watcher").join("settings.v2.json"))
+            .ends_with(Path::new("apple-store-inventory-monitor").join("settings.v2.json"))
     );
 }

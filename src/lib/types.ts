@@ -109,7 +109,8 @@ export interface Trouble {
 export type WatcherEvent =
   | { type: "stateChanged"; state: TargetState }
   | { type: "inStock"; state: TargetState }
-  | { type: "cycleComplete"; healthy: boolean; snapshot: TargetState[] }
+  | { type: "cycleStarted"; cycle: number; storeCount: number; targetCount: number }
+  | { type: "cycleComplete"; cycle: number; elapsedMs: number; healthy: boolean; snapshot: TargetState[] }
   | { type: "trouble"; reason: string; advice: TroubleAdvice | null }
   | { type: "runStateChanged"; running: boolean };
 
@@ -172,7 +173,7 @@ function describeUnknown(a: { kind: "unknown" } & UnknownReason): {
       return {
         label: "未知",
         tone: "unknown",
-        detail: `请求被 Apple 拦截：${a.detail}`,
+        detail: `请求被 Apple 拦截：${compactDiagnostic(a.detail)}`,
       };
     case "rate_limited":
       return {
@@ -184,15 +185,51 @@ function describeUnknown(a: { kind: "unknown" } & UnknownReason): {
       return {
         label: "未知",
         tone: "unknown",
-        detail: `接口返回结构与预期不符：${a.field} = ${a.raw}`,
+        detail: `接口返回结构与预期不符：${a.field} = ${compactDiagnostic(a.raw)}`,
       };
     case "apple_error":
-      return { label: "未知", tone: "unknown", detail: `Apple 返回错误：${a.message}` };
+      return { label: "未知", tone: "unknown", detail: `Apple 返回错误：${compactDiagnostic(a.message)}` };
     case "transport":
-      return { label: "未知", tone: "unknown", detail: `网络请求失败：${a.detail}` };
+      return { label: "未知", tone: "unknown", detail: describeTransportFailure(a.detail) };
     default:
       return assertNever(a);
   }
+}
+
+const MAX_DIAGNOSTIC_CHARS = 160;
+
+/** 防止后端或第三方库把 JSON、对象 ID、堆栈等调试信息直接铺进用户界面。 */
+function compactDiagnostic(raw: string): string {
+  const normalized = raw.replace(/\s+/g, " ").trim();
+  if (
+    normalized.includes("exceptionDetails") ||
+    normalized.includes('"className"') ||
+    normalized.includes('"objectId"') ||
+    normalized.includes('"stackTrace"')
+  ) {
+    return "返回了不可读的诊断信息";
+  }
+  if (normalized.length <= MAX_DIAGNOSTIC_CHARS) return normalized;
+  return `${normalized.slice(0, MAX_DIAGNOSTIC_CHARS)}…`;
+}
+
+function describeTransportFailure(raw: string): string {
+  const detail = compactDiagnostic(raw);
+  const lower = raw.toLowerCase();
+  if (
+    detail.includes("浏览器安全限制") ||
+    lower.includes("access is denied") ||
+    lower.includes("domexception")
+  ) {
+    return "浏览器安全限制阻止了本次 Apple 页面访问，程序将在下一轮自动重试";
+  }
+  if (lower.includes("chromium") && lower.includes("超时")) {
+    return "等待 Apple 页面响应超时，程序将在下一轮自动重试";
+  }
+  if (lower.includes("chromium") || lower.includes("浏览器")) {
+    return "浏览器会话未能完成本次 Apple 查询，程序将在下一轮自动重试";
+  }
+  return `网络请求失败：${detail || "暂时无法连接 Apple"}，程序将在下一轮自动重试`;
 }
 
 /** 这一行的数据是否已经不可信。 */

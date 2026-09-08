@@ -50,7 +50,10 @@ pub const MAX_SETTINGS_BYTES: usize = 1 << 20;
 ///
 /// 上游把 `user_settings.json` 直接写在进程工作目录。打包成 macOS `.app` 之后，
 /// 工作目录取决于应用被如何启动，可能是 `/` 这种不可写的位置，设置会静默丢失。
-const APP_DIR: &str = "apple-pickup-watcher";
+const APP_DIR: &str = "apple-store-inventory-monitor";
+
+/// 改名前版本使用的配置目录。只用于首次迁移，不会写入或删除。
+const PREVIOUS_APP_DIR: &str = "apple-pickup-watcher";
 
 /// 新版设置文件名。
 ///
@@ -223,6 +226,7 @@ impl Settings {
 #[derive(Debug, Clone)]
 pub struct SettingsStore {
     path: PathBuf,
+    previous_path: Option<PathBuf>,
 }
 
 impl SettingsStore {
@@ -235,17 +239,34 @@ impl SettingsStore {
         let dir = dirs::config_dir().ok_or(ConfigError::NoConfigDir)?;
         Ok(Self {
             path: dir.join(APP_DIR).join(SETTINGS_FILE),
+            previous_path: Some(dir.join(PREVIOUS_APP_DIR).join(SETTINGS_FILE)),
         })
     }
 
     /// 指向任意路径，供测试使用。
     pub fn at(path: PathBuf) -> Self {
-        Self { path }
+        Self {
+            path,
+            previous_path: None,
+        }
     }
 
     /// 设置文件的完整路径，便于在界面上告诉用户配置存在哪。
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// 首次启动新包时读取改名前版本的 v2 设置。
+    ///
+    /// 旧文件保持原样，只把解析出的设置交给调用方写入新目录。这样新旧安装包
+    /// 拥有完全不同的配置身份，同时用户现有的监控列表和提醒选项不会丢失。
+    pub fn import_previous_version(&self) -> Option<Settings> {
+        let path = self.previous_path.as_ref()?;
+        let file = File::open(path).ok()?;
+        let data = read_capped(file, MAX_SETTINGS_BYTES).ok()??;
+        let mut settings: Settings = serde_json::from_slice(&data).ok()?;
+        settings.normalize();
+        Some(settings)
     }
 
     /// 读取设置。
@@ -347,19 +368,23 @@ impl SettingsStore {
     /// 读不动、格式对不上……任何一种情况都只意味着「没有可迁移的东西」，
     /// 绝不能因此让程序起不来，也不值得为它弹一个用户看不懂的错误。
     pub fn import_legacy(&self) -> Option<Settings> {
-        let legacy_path = parent_dir(&self.path).join(LEGACY_SETTINGS_FILE);
-        // 同名即同一个文件时不做迁移：那说明调用方把新版指到了旧路径上，
-        // 「迁移自己」没有意义，还会让 import_legacy 变成一次多余的整份重读。
-        if legacy_path == self.path {
-            return None;
-        }
+        let current_legacy = parent_dir(&self.path).join(LEGACY_SETTINGS_FILE);
+        let previous_legacy = self
+            .previous_path
+            .as_ref()
+            .map(|path| parent_dir(path).join(LEGACY_SETTINGS_FILE));
 
-        let file = File::open(&legacy_path).ok()?;
-        // 旧文件同样要限量读：它和新文件躺在同一个目录里，会撑爆内存的理由
-        // 一模一样，没道理在迁移这条路径上开个口子。
-        let data = read_capped(file, MAX_SETTINGS_BYTES).ok()??;
-        let legacy: LegacySettings = serde_json::from_slice(&data).ok()?;
-        Some(legacy.into_settings())
+        std::iter::once(current_legacy)
+            .chain(previous_legacy)
+            .filter(|path| path != &self.path)
+            .find_map(|path| {
+                let file = File::open(path).ok()?;
+                // 旧文件同样要限量读：它会撑爆内存的理由与新文件完全相同，
+                // 没道理在迁移路径上开口子。
+                let data = read_capped(file, MAX_SETTINGS_BYTES).ok()??;
+                let legacy: LegacySettings = serde_json::from_slice(&data).ok()?;
+                Some(legacy.into_settings())
+            })
     }
 }
 
