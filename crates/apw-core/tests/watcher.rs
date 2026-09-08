@@ -230,6 +230,99 @@ async fn 有货提醒是边沿触发的() {
 }
 
 #[tokio::test]
+async fn 暂停后重新开始会重新武装有货提醒() {
+    let fake =
+        FakeFetcher::new(|_, store, parts| Ok(ok_response(store, parts, Availability::InStock)));
+    let (w, mut rx) = Watcher::spawn(fake, fast_config());
+    w.set_targets(vec![target("R683", "MG724CH/A")]).await;
+
+    w.start().await;
+    let first = wait_cycle(&mut rx).await;
+    assert_eq!(count_in_stock(&first), 1, "首次有货应当提醒");
+    w.stop().await;
+    while rx.try_recv().is_ok() {}
+
+    w.start().await;
+    let resumed = wait_cycle(&mut rx).await;
+    assert_eq!(
+        count_in_stock(&resumed),
+        1,
+        "暂停后重新开始时，仍有货的项目应当重新提醒一次"
+    );
+
+    let next = wait_cycle(&mut rx).await;
+    assert_eq!(
+        count_in_stock(&next),
+        0,
+        "持续运行期间库存没变化，不应每轮重复提醒"
+    );
+    w.stop().await;
+}
+
+#[tokio::test]
+async fn 一个候选有货不会停止其余候选的监控() {
+    let fake = FakeFetcher::new(|nth, store, parts| {
+        let mut statuses = BTreeMap::new();
+        for (index, part) in parts.iter().enumerate() {
+            let availability = if index <= nth {
+                Availability::InStock
+            } else {
+                Availability::OutOfStock
+            };
+            statuses.insert(
+                part.clone(),
+                PartStatus {
+                    part_number: part.clone(),
+                    availability,
+                    product_title: Some(format!("候选 {}", index + 1)),
+                    pickup_display: "available".into(),
+                },
+            );
+        }
+        Ok(StoreAvailability {
+            store_number: store.to_string(),
+            store_name: "香港广场".into(),
+            parts: statuses,
+        })
+    });
+    let (w, mut rx) = Watcher::spawn(fake.clone(), fast_config());
+    w.set_targets(vec![
+        target("R390", "FIRST/A"),
+        target("R390", "SECOND/A"),
+        target("R390", "THIRD/A"),
+    ])
+    .await;
+    w.start().await;
+
+    let mut events = Vec::new();
+    for _ in 0..3 {
+        events.extend(wait_cycle(&mut rx).await);
+    }
+    w.stop().await;
+
+    let alerted: std::collections::BTreeSet<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            Event::InStock { state } => Some(state.target.part_number.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        alerted,
+        std::collections::BTreeSet::from(["FIRST/A", "SECOND/A", "THIRD/A"]),
+        "三个候选应当在各自变为有货时分别提醒"
+    );
+    assert!(fake.call_count() >= 3, "第一个候选有货后查询循环停止了");
+    assert!(
+        w.snapshot()
+            .await
+            .iter()
+            .all(|state| state.availability.is_in_stock()),
+        "三轮后每个候选都应更新为有货"
+    );
+}
+
+#[tokio::test]
 async fn 同一门店的多个型号合并成一次请求() {
     // 既是效率问题也是风控问题：每个型号单独发一次，出站请求量会翻好几倍。
     let fake =
@@ -276,6 +369,36 @@ async fn 停止之后不再发起查询() {
         after_stop,
         "停止之后又发起了查询，说明还有循环在跑"
     );
+}
+
+#[tokio::test]
+async fn 暂停后重新开始会立即查询并继续下一轮() {
+    let fake =
+        FakeFetcher::new(|_, store, parts| Ok(ok_response(store, parts, Availability::OutOfStock)));
+    let (w, mut rx) = Watcher::spawn(fake.clone(), fast_config());
+    w.set_targets(vec![target("R683", "MG724CH/A")]).await;
+
+    w.start().await;
+    wait_cycle(&mut rx).await;
+    w.stop().await;
+    let before_resume = fake.call_count();
+
+    while rx.try_recv().is_ok() {}
+    w.start().await;
+    wait_cycle(&mut rx).await;
+    let after_first_resumed_cycle = fake.call_count();
+    assert!(
+        after_first_resumed_cycle > before_resume,
+        "重新开始后没有立即发起查询"
+    );
+
+    wait_cycle(&mut rx).await;
+    assert!(
+        fake.call_count() > after_first_resumed_cycle,
+        "重新开始只执行了第一轮，之后没有继续监控"
+    );
+    assert!(w.is_running().await, "查询循环已停止但运行状态仍应为真");
+    w.stop().await;
 }
 
 #[tokio::test]

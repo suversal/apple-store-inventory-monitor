@@ -81,9 +81,8 @@ pub enum UnknownReason {
     NotYetChecked,
     /// 请求被 Apple 边缘节点拦截。
     ///
-    /// 上游用的 `/shop/fulfillment-messages` 现在对任意请求恒定返回 HTTP 541
-    /// 加一个 128002 字节的拦截页（中国大陆站与美国站响应完全一致，同一时刻
-    /// apple.com.cn 首页正常返回 200，可排除 IP 封禁）。
+    /// Apple 的商品页会先完成浏览器环境校验；缺少有效页面会话的请求可能返回
+    /// HTTP 541。它只表示查询被拒绝，不能当作无货。
     Blocked { detail: String },
     /// 触发了频率限制，正在退避。
     RateLimited,
@@ -196,7 +195,9 @@ pub struct Region {
 impl Region {
     /// 取货状态查询接口地址。
     pub fn pickup_message_url(&self) -> String {
-        format!("{}/shop/retail/pickup-message", self.base_url)
+        // Apple 当前商品页的 fulfillmentBootstrap.pickupURL 明确指向这里。
+        // 这个端点必须在真实网页会话完成 shld 握手后访问；具体传输由宿主负责。
+        format!("{}/shop/fulfillment-messages", self.base_url)
     }
 
     /// 购物袋页面地址。
@@ -328,8 +329,7 @@ const DEFAULT_FAMILIES: &[Family] = &[
 
 /// 内置地区表。
 ///
-/// 每个 `base_url` 都经过实际请求验证：以 `/shop/retail/pickup-message` 查询该地区
-/// 的真实门店号与零件号，均返回 HTTP 200 且带有 `partsAvailability`。
+/// 每个 `base_url` 都对应 Apple 当前在线商店的正式地区入口。
 pub const REGIONS: &[Region] = &[
     Region {
         title: "中国大陆",
@@ -504,7 +504,7 @@ mod tests {
         let cn = region_by_locale("zh_CN").expect("地区表里应当有中国大陆");
         assert_eq!(
             cn.pickup_message_url(),
-            "https://www.apple.com.cn/shop/retail/pickup-message"
+            "https://www.apple.com.cn/shop/fulfillment-messages"
         );
         // 中国大陆用独立域名，不能是 apple.com/cn —— 那正是上游拼错的地方。
         assert!(!cn.base_url.contains("apple.com/cn"));

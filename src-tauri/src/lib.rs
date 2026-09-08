@@ -11,7 +11,6 @@
 use std::sync::RwLock;
 use std::time::Duration;
 
-use apw_core::apple::{AppleClient, ClientConfig};
 use apw_core::catalog::Catalog;
 use apw_core::config::{MIN_INTERVAL_SECONDS, Settings, SettingsStore};
 use apw_core::model::{Category, Product, REGIONS, Store, Target, region_by_locale};
@@ -22,6 +21,9 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
 use tauri_plugin_updater::UpdaterExt;
+
+mod chromium_fetcher;
+use chromium_fetcher::AppleChromiumFetcher;
 
 /// 前端事件通道名。前端用 `listen("watcher://event", ...)` 订阅。
 const EVENT_CHANNEL: &str = "watcher://event";
@@ -369,7 +371,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 tauri::Error::AssetNotFound("默认窗口图标缺失，无法建立托盘".into())
             })?,
         )
-        .tooltip("Apple Pickup Watcher")
+        .tooltip("果到雷达")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -467,14 +469,12 @@ pub fn run() {
             let mut notices = Vec::new();
             let (settings, store) = load_settings(&mut notices);
 
-            let client = AppleClient::new(ClientConfig::default())
-                .map_err(|e| format!("构造 Apple 客户端失败：{e}"))?;
-
             // 用 Watcher::new 而不是 Watcher::spawn：setup 回调跑在主线程上，
             // 并不处在 tokio 运行时上下文里，在这里 tokio::spawn 会 panic，
             // 而且因为发生在不可展开的回调中，进程会直接 abort。
             // 引擎任务交给 Tauri 自己的运行时去驱动。
-            let (watcher, events, engine) = Watcher::new(client, WatcherConfig::default());
+            let (watcher, events, engine) =
+                Watcher::new(AppleChromiumFetcher::new(), WatcherConfig::default());
             tauri::async_runtime::spawn(engine);
 
             {

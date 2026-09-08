@@ -133,6 +133,59 @@ async fn 全栈跑通一轮真实监控() {
     println!("\n全部 {} 项都拿到了明确答复。", snapshot.len());
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn 同店一个候选有货后仍会继续检查全部候选() {
+    let parts = ["MG724CH/A", "MG0A4CH/A", "MG364CH/A"];
+    let targets: Vec<Target> = parts
+        .iter()
+        .map(|part| Target {
+            locale: "zh_CN".into(),
+            store_number: "R390".into(),
+            store_title: "上海-香港广场".into(),
+            part_number: (*part).into(),
+            product_name: (*part).into(),
+        })
+        .collect();
+
+    let client = AppleClient::new(ClientConfig::default()).expect("构造客户端失败");
+    let (watcher, mut events) = Watcher::spawn(
+        client,
+        WatcherConfig {
+            interval: Duration::from_secs(5),
+            jitter: 0.0,
+            ..WatcherConfig::default()
+        },
+    );
+    watcher.set_targets(targets).await;
+    watcher.start().await;
+
+    let mut cycles = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    while cycles.len() < 2 {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        assert!(!remaining.is_zero(), "两轮真实监控没有在限时内完成");
+        match tokio::time::timeout(remaining, events.recv()).await {
+            Ok(Some(Event::CycleComplete { snapshot, .. })) => cycles.push(snapshot),
+            Ok(Some(_)) => {}
+            Ok(None) => panic!("事件流意外关闭"),
+            Err(_) => panic!("两轮真实监控没有在限时内完成"),
+        }
+    }
+    watcher.stop().await;
+
+    assert_eq!(cycles[0].len(), 3, "第一轮没有检查全部三个候选");
+    assert_eq!(cycles[1].len(), 3, "第二轮没有检查全部三个候选");
+    for (first, second) in cycles[0].iter().zip(&cycles[1]) {
+        assert!(
+            second.last_checked_ms > first.last_checked_ms,
+            "{} 的检查时间没有在第二轮推进",
+            second.target.part_number
+        );
+    }
+    println!("第一轮：{:?}", cycles[0]);
+    println!("第二轮：{:?}", cycles[1]);
+}
+
 /// 目录的在线刷新是否真的能从 Apple 官网抓到型号。
 ///
 /// 这条路径决定了新机发布后用户能不能自己更新型号列表，而不必等作者发版 ——

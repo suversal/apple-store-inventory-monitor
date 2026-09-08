@@ -118,8 +118,8 @@ export function describeAdvice(advice: TroubleAdvice): string {
   switch (advice) {
     case "try_another_network":
       return (
-        "这多半不是「等一会儿就好」的故障：Apple 的边缘节点正在拦你这条网络的请求，" +
-        "而同一时刻浏览器通常一切正常。换成手机热点或另一条网络，往往立刻恢复。"
+        "Apple 拒绝了这次查询，尚不能确定是会话、请求频率还是网络原因。" +
+        "程序会延长重试间隔；若持续失败，可重启应用后重试，并对照官网或其他网络检查。"
       );
     case "wait_for_update":
       return "这个你改设置或换网络都解决不了，需要等程序更新。";

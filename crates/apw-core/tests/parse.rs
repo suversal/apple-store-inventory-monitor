@@ -3,7 +3,9 @@
 //! 这些用例守的是同一条线：**任何「查不到 / 判不了」都必须是 Unknown，
 //! 绝不能变成 OutOfStock**。上游正是在这里失守，静默失效了大半年。
 
-use apw_core::apple::{ApiError, availability_from, parse_pickup_message};
+use std::time::Duration;
+
+use apw_core::apple::{ApiError, ClientConfig, availability_from, parse_pickup_message};
 use apw_core::model::{Availability, UnknownReason};
 
 /// 造一份结构正常的响应。
@@ -207,8 +209,8 @@ fn 任何请求错误都只能变成未知() {
 }
 
 #[test]
-fn 只有被拦截和限流值得重试() {
-    assert!(ApiError::Blocked(String::new()).is_retryable());
+fn 只有临时网络和限流错误适合快速重试() {
+    assert!(!ApiError::Blocked(String::new()).is_retryable());
     assert!(ApiError::RateLimited(String::new()).is_retryable());
     assert!(ApiError::Transport(String::new()).is_retryable());
     // 结构不符和业务错误重试多少次结果都一样。
@@ -220,6 +222,11 @@ fn 只有被拦截和限流值得重试() {
         }
         .is_retryable()
     );
+}
+
+#[test]
+fn 正式客户端为会话暖场留出足够间隔() {
+    assert!(ClientConfig::default().min_interval >= Duration::from_secs(2));
 }
 
 #[test]

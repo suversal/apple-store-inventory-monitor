@@ -1,24 +1,35 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
+  Activity,
   AlertTriangle,
   BellRing,
+  Clock3,
   Download,
+  MapPin,
+  PackageCheck,
+  PackageX,
   Pause,
   Play,
   Plus,
+  Radar,
   RefreshCw,
+  Settings2,
+  ShoppingBag,
+  Smartphone,
+  SquareTerminal,
   Trash2,
+  Volume2,
   X,
 } from "lucide-react";
 
 import { Combobox } from "@/components/Combobox";
+import { MultiCombobox } from "@/components/MultiCombobox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import {
   Table,
@@ -62,20 +73,28 @@ import {
   targetKey,
 } from "@/lib/types";
 
-/** 四种展示状态各自的样式。 */
 const TONE_CLASS: Record<StatusTone, string> = {
-  inStock: "bg-in-stock/15 text-in-stock border-in-stock/30 font-medium",
-  outOfStock: "bg-muted text-muted-foreground border-transparent",
-  // 「未知」必须和「无货」长得完全不一样。这是整个项目的意义所在：上游把查询
-  // 失败显示成「无货」，用户对着一个早已失效的程序空等了大半年。
-  unknown: "bg-unknown/15 text-unknown border-unknown/40 font-medium",
-  pending: "bg-transparent text-muted-foreground/60 border-dashed",
+  inStock: "bg-in-stock/12 text-in-stock border-in-stock/25",
+  outOfStock: "bg-muted/70 text-muted-foreground border-border/60",
+  unknown: "bg-unknown/12 text-unknown border-unknown/30",
+  pending: "bg-transparent text-muted-foreground/70 border-border border-dashed",
+};
+
+const TONE_DOT: Record<StatusTone, string> = {
+  inStock: "bg-in-stock shadow-[0_0_10px_var(--in-stock)]",
+  outOfStock: "bg-out-of-stock",
+  unknown: "bg-unknown",
+  pending: "bg-muted-foreground/50",
 };
 
 function StatusBadge({ availability }: { availability: Availability }) {
   const { label, tone, detail } = describeAvailability(availability);
   const badge = (
-    <Badge variant="outline" className={`min-w-18 justify-center ${TONE_CLASS[tone]}`}>
+    <Badge
+      variant="outline"
+      className={`h-7 min-w-20 justify-center gap-2 px-2.5 font-medium ${TONE_CLASS[tone]}`}
+    >
+      <span className={`size-1.5 rounded-full ${TONE_DOT[tone]}`} aria-hidden="true" />
       {label}
     </Badge>
   );
@@ -92,362 +111,538 @@ function StatusBadge({ availability }: { availability: Availability }) {
 
 export default function App() {
   const ui = useSyncExternalStore(watcherStore.subscribe, watcherStore.getSnapshot);
+  const [clockMs, setClockMs] = useState(() => Date.now());
 
   useEffect(() => {
     void connect();
-    // 刻意不在清理函数里断开：这是应用级的单一连接，窗口活着它就该活着。
-    // StrictMode 的重复调用由 connect 内部去重。
   }, []);
 
-  const [storeNumber, setStoreNumber] = useState("");
-  const [partNumber, setPartNumber] = useState("");
+  useEffect(() => {
+    if (!ui.running) return;
+    setClockMs(Date.now());
+    const timer = window.setInterval(() => setClockMs(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [ui.running]);
+
+  const [storeNumbers, setStoreNumbers] = useState<string[]>([]);
+  const [partNumbers, setPartNumbers] = useState<string[]>([]);
+  const [isAdding, setIsAdding] = useState(false);
   const [barkDraft, setBarkDraft] = useState("");
   const [intervalDraft, setIntervalDraft] = useState<number | null>(null);
 
-  // 设置从后端载入之前，输入框用后端的值做初值；之后由用户的草稿接管。
   const barkValue = barkDraft || ui.settings.barkUrl;
   const intervalValue = intervalDraft ?? ui.settings.intervalSeconds;
+  const latestCheckedMs = Math.max(0, ...ui.rows.map((row) => row.lastCheckedMs ?? 0));
+  const secondsUntilNextCheck = latestCheckedMs
+    ? Math.max(0, Math.ceil((latestCheckedMs + ui.settings.intervalSeconds * 1_000 - clockMs) / 1_000))
+    : null;
+  const runningLabel =
+    secondsUntilNextCheck === null || secondsUntilNextCheck === 0
+      ? "正在查询"
+      : `约 ${secondsUntilNextCheck} 秒后检查`;
 
   const storeOptions = useMemo(
-    () => ui.stores.map((s) => ({ value: s.number, label: s.title })),
+    () => ui.stores.map((store) => ({ value: store.number, label: store.title })),
     [ui.stores],
   );
-  // 只列当前品类。四个品类的型号加起来好几百条，全堆进一个下拉框，
-  // 想找一台 Mac 得先划过所有 iPhone。
   const productOptions = useMemo(
     () =>
       ui.products
-        .filter((p) => p.category === ui.category)
-        .map((p) => ({ value: p.partNumber, label: p.title })),
+        .filter((product) => product.category === ui.category)
+        .map((product) => ({ value: product.partNumber, label: product.title })),
     [ui.products, ui.category],
   );
 
-  const targets = useMemo(() => ui.rows.map((r) => r.target), [ui.rows]);
+  const targets = useMemo(() => ui.rows.map((row) => row.target), [ui.rows]);
+
+  useEffect(() => {
+    const valid = new Set(storeOptions.map((option) => option.value));
+    setStoreNumbers((previous) => {
+      const next = previous.filter((value) => valid.has(value));
+      return next.length === previous.length ? previous : next;
+    });
+  }, [storeOptions]);
+
+  useEffect(() => {
+    const valid = new Set(productOptions.map((option) => option.value));
+    setPartNumbers((previous) => {
+      const next = previous.filter((value) => valid.has(value));
+      return next.length === previous.length ? previous : next;
+    });
+  }, [productOptions]);
 
   const summary = useMemo(() => {
     let inStock = 0;
     let outOfStock = 0;
     let untrusted = 0;
-    for (const r of ui.rows) {
-      if (r.availability.kind === "in_stock") inStock += 1;
-      else if (r.availability.kind === "out_of_stock") outOfStock += 1;
-      if (isUntrusted(r.availability)) untrusted += 1;
+    for (const row of ui.rows) {
+      if (row.availability.kind === "in_stock") inStock += 1;
+      else if (row.availability.kind === "out_of_stock") outOfStock += 1;
+      if (isUntrusted(row.availability)) untrusted += 1;
     }
     return { inStock, outOfStock, untrusted };
   }, [ui.rows]);
 
-  const canAdd = storeNumber !== "" && partNumber !== "";
+  const pendingTargets = useMemo(() => {
+    const existing = new Set(targets.map(targetKey));
+    const stores = new Map(ui.stores.map((store) => [store.number, store]));
+    const products = new Map(ui.products.map((product) => [product.partNumber, product]));
+    const pending: Target[] = [];
+
+    for (const storeNumber of storeNumbers) {
+      const store = stores.get(storeNumber);
+      if (!store) continue;
+      for (const partNumber of partNumbers) {
+        const product = products.get(partNumber);
+        if (!product || product.category !== ui.category) continue;
+        const target: Target = {
+          locale: ui.settings.locale,
+          storeNumber: store.number,
+          storeTitle: store.title,
+          partNumber: product.partNumber,
+          productName: product.title,
+        };
+        if (!existing.has(targetKey(target))) {
+          existing.add(targetKey(target));
+          pending.push(target);
+        }
+      }
+    }
+    return pending;
+  }, [partNumbers, storeNumbers, targets, ui.category, ui.products, ui.settings.locale, ui.stores]);
+
+  const hasCompleteSelection = storeNumbers.length > 0 && partNumbers.length > 0;
+  const canAdd = pendingTargets.length > 0 && !isAdding;
+  const duplicateCount = storeNumbers.length * partNumbers.length - pendingTargets.length;
 
   async function onAdd() {
     if (!canAdd) return;
-    const store = ui.stores.find((s) => s.number === storeNumber);
-    const product = ui.products.find((p) => p.partNumber === partNumber);
-    if (!store || !product) return;
-
-    const next: Target = {
-      locale: ui.settings.locale,
-      storeNumber: store.number,
-      storeTitle: store.title,
-      partNumber: product.partNumber,
-      productName: product.title,
-    };
-    if (targets.some((t) => targetKey(t) === targetKey(next))) return;
-    await setTargets([...targets, next]);
-    setPartNumber("");
+    setIsAdding(true);
+    try {
+      if (await setTargets([...targets, ...pendingTargets])) setPartNumbers([]);
+    } finally {
+      setIsAdding(false);
+    }
   }
 
-  async function onRemove(t: Target) {
-    await setTargets(targets.filter((x) => targetKey(x) !== targetKey(t)));
+  async function onRemove(target: Target) {
+    await setTargets(targets.filter((item) => targetKey(item) !== targetKey(target)));
   }
 
   return (
-    <TooltipProvider delayDuration={200}>
-      <div className="mx-auto flex h-screen max-w-5xl flex-col gap-4 p-6">
-        <header className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">Apple Pickup Watcher</h1>
-            <p className="text-muted-foreground text-sm">
-              盯 Apple 直营店的到店取货库存，有货立刻提醒
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-muted-foreground text-sm">
-              {ui.running ? "监听中" : "已暂停"}
-            </span>
-            {ui.running ? (
-              <Button variant="secondary" onClick={() => void stopWatching()}>
-                <Pause /> 暂停
-              </Button>
-            ) : (
-              <Button onClick={() => void startWatching()} disabled={ui.rows.length === 0}>
-                <Play /> 开始
-              </Button>
-            )}
-          </div>
-        </header>
-
-        {ui.trouble !== null && (
-          <Alert variant="destructive">
-            <AlertTriangle />
-            <AlertTitle>监控当前不可信</AlertTitle>
-            <AlertDescription>
-              {ui.trouble.reason}
-              <span className="mt-1 block">
-                此时列表里的状态不代表门店的真实库存，请先排查原因，不要干等。
-              </span>
-              {ui.trouble.advice !== null && (
-                // 用户自己能做的那件事要单独拎出来。只说「被拦截了」而不说
-                // 「换条网络试试」，用户只会盯着一个反复告警的窗口发呆 ——
-                // issue #3 里那位就干等了三个小时。
-                <span className="mt-1 block font-medium">
-                  {describeAdvice(ui.trouble.advice)}
-                </span>
-              )}
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {ui.update !== null && (
-          // 只提示，不自作主张安装。用户可能正等着抢购，被强制重启是灾难。
-          <Alert>
-            <Download />
-            <AlertTitle>有新版本 {ui.update.version}</AlertTitle>
-            <AlertDescription>
-              <span>当前版本 {ui.update.currentVersion}。安装后需重启应用生效。</span>
-              <div className="mt-2 flex items-center gap-2">
-                <Button
-                  size="sm"
-                  disabled={ui.installing}
-                  onClick={() => void installUpdate()}
-                >
-                  {ui.installing ? "正在下载…" : "下载并安装"}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={dismissUpdate}>
-                  <X /> 稍后
-                </Button>
+    <TooltipProvider delayDuration={180}>
+      <div className="app-canvas min-h-screen text-foreground">
+        <main className="mx-auto flex min-h-screen w-full max-w-[1180px] flex-col gap-4 px-5 py-5 lg:h-screen lg:overflow-hidden">
+          <header className="surface-panel flex shrink-0 items-center justify-between gap-5 px-5 py-4">
+            <div className="flex min-w-0 items-center gap-3.5">
+              <div className="brand-mark" aria-hidden="true">
+                <Radar className="size-5" strokeWidth={1.8} />
               </div>
-            </AlertDescription>
-          </Alert>
-        )}
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="truncate text-lg font-semibold tracking-[-0.02em]">
+                    果到雷达
+                  </h1>
+                  <Badge variant="outline" className="hidden border-primary/20 bg-primary/8 text-primary sm:inline-flex">
+                    LIVE
+                  </Badge>
+                </div>
+                <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                  Apple 直营店库存监控
+                </p>
+              </div>
+            </div>
 
-        <section className="flex flex-wrap items-end gap-3">
-          <div className="grid gap-1.5">
-            <Label>地区</Label>
-            <Combobox
-              className="w-36"
-              options={ui.regions.map((r) => ({ value: r.locale, label: r.title }))}
-              value={ui.settings.locale}
-              onChange={(locale) => {
-                // 换地区后旧的门店和型号都不再适用，清掉待添加的选择。
-                setStoreNumber("");
-                setPartNumber("");
-                void changeLocale(locale);
-              }}
-              placeholder="选择地区"
-              searchPlaceholder="搜索地区…"
-              emptyText="没有匹配的地区"
-            />
-          </div>
+            <div className="flex shrink-0 items-center gap-2.5">
+              <div className="status-pill" role="status" aria-live="polite">
+                <span
+                  className={`size-2 rounded-full ${ui.running ? "bg-in-stock shadow-[0_0_12px_var(--in-stock)]" : "bg-muted-foreground/55"}`}
+                  aria-hidden="true"
+                />
+                <span className="hidden text-xs text-muted-foreground sm:inline">监控状态</span>
+                <span className="text-sm font-medium">{ui.running ? runningLabel : "已暂停"}</span>
+              </div>
+              {ui.running ? (
+                <Button
+                  variant="secondary"
+                  className="h-10 rounded-xl px-4"
+                  onClick={() => void stopWatching()}
+                >
+                  <Pause aria-hidden="true" /> 暂停
+                </Button>
+              ) : (
+                <Button
+                  className="h-10 rounded-xl px-4 shadow-[0_8px_24px_-12px_var(--primary)]"
+                  onClick={() => void startWatching()}
+                  disabled={ui.rows.length === 0}
+                >
+                  <Play aria-hidden="true" /> 开始监控
+                </Button>
+              )}
+            </div>
+          </header>
 
-          <div className="grid gap-1.5">
-            <Label>品类</Label>
-            <Combobox
-              className="w-36"
-              options={ui.categories.map((c) => ({ value: c.value, label: c.title }))}
-              value={ui.category}
-              onChange={(value) => {
-                // 换品类后旧的型号不再在下拉框里，清掉待添加的选择。门店不用清，
-                // 它跟品类无关。
-                setPartNumber("");
-                setCategory(value as Category);
-              }}
-              placeholder="选择品类"
-              searchPlaceholder="搜索品类…"
-              emptyText="没有匹配的品类"
-              disabled={ui.categories.length === 0}
-            />
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label>门店</Label>
-            <Combobox
-              className="w-56"
-              options={storeOptions}
-              value={storeNumber}
-              onChange={setStoreNumber}
-              placeholder="选择自提门店"
-              searchPlaceholder="搜索门店…"
-              emptyText="没有匹配的门店"
-              disabled={storeOptions.length === 0}
-            />
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label>型号</Label>
-            <Combobox
-              className="w-80"
-              options={productOptions}
-              value={partNumber}
-              onChange={setPartNumber}
-              placeholder="选择型号"
-              searchPlaceholder="搜索型号…"
-              emptyText="没有匹配的型号"
-              disabled={productOptions.length === 0}
-            />
-          </div>
-
-          <Button variant="secondary" onClick={() => void onAdd()} disabled={!canAdd}>
-            <Plus /> 添加
-          </Button>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="从 Apple 官网更新当前品类的型号列表"
-                disabled={ui.refreshing}
-                onClick={() => void refreshProducts()}
-              >
-                <RefreshCw className={ui.refreshing ? "animate-spin" : undefined} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              从 Apple 官网更新当前品类的型号列表。新机发布后用这个，不必等程序更新。
-            </TooltipContent>
-          </Tooltip>
-        </section>
-
-        <section className="flex flex-wrap items-end gap-4">
-          <div className="grid gap-1.5">
-            <Label htmlFor="interval">查询间隔（秒）</Label>
-            <Input
-              id="interval"
-              type="number"
-              min={5}
-              className="w-28 select-text"
-              value={intervalValue}
-              onChange={(e) => setIntervalDraft(e.target.valueAsNumber)}
-              onBlur={() => {
-                const s = Number.isFinite(intervalValue) ? Math.round(intervalValue) : 30;
-                setIntervalDraft(null);
-                void setIntervalSeconds(s);
-              }}
-            />
-          </div>
-
-          <div className="grid flex-1 gap-1.5">
-            <Label htmlFor="bark">Bark 推送地址（留空则不推送）</Label>
-            <Input
-              id="bark"
-              className="select-text"
-              placeholder="https://api.day.app/你的BarkKey"
-              value={barkValue}
-              onChange={(e) => setBarkDraft(e.target.value)}
-              onBlur={() => {
-                setBarkDraft("");
-                void saveSettings({ ...ui.settings, barkUrl: barkValue.trim() });
-              }}
-            />
-          </div>
-
-          <div className="flex items-center gap-2 pb-2">
-            <Switch
-              id="sound"
-              checked={ui.settings.soundEnabled}
-              onCheckedChange={(v) =>
-                void saveSettings({ ...ui.settings, soundEnabled: v })
-              }
-            />
-            <Label htmlFor="sound">提示音</Label>
-          </div>
-
-          <div className="flex items-center gap-2 pb-2">
-            <Switch
-              id="openbag"
-              checked={ui.settings.openBagOnHit}
-              onCheckedChange={(v) =>
-                void saveSettings({ ...ui.settings, openBagOnHit: v })
-              }
-            />
-            <Label htmlFor="openbag">有货时打开购物袋</Label>
-          </div>
-
-          <Button variant="ghost" className="pb-2" onClick={() => void testNotify()}>
-            <BellRing /> 测试提醒
-          </Button>
-        </section>
-
-        <Separator />
-
-        <section className="min-h-0 flex-1 overflow-hidden rounded-lg border">
-          <ScrollArea className="h-full">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-24">状态</TableHead>
-                  <TableHead>门店</TableHead>
-                  <TableHead>型号</TableHead>
-                  <TableHead className="w-24">最后检查</TableHead>
-                  <TableHead className="w-12" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {ui.rows.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-muted-foreground h-24 text-center">
-                      {ui.ready
-                        ? "还没有监控目标。选好门店和型号后点「添加」。"
-                        : "正在载入…"}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  ui.rows.map((row) => (
-                    <TableRow key={targetKey(row.target)}>
-                      <TableCell>
-                        <StatusBadge availability={row.availability} />
-                      </TableCell>
-                      <TableCell className="font-medium">{row.target.storeTitle}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {row.target.productName}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground tabular-nums">
-                        {formatTime(row.lastCheckedMs)}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="删除这条监控"
-                          onClick={() => void onRemove(row.target)}
-                        >
-                          <Trash2 />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
+          {ui.trouble !== null && (
+            <Alert variant="destructive" className="shrink-0 rounded-2xl border-destructive/25 bg-destructive/8 px-4 py-3">
+              <AlertTriangle aria-hidden="true" />
+              <AlertTitle>监控结果暂不可信</AlertTitle>
+              <AlertDescription>
+                {ui.trouble.reason}
+                <span>列表状态可能不代表真实库存，请先排查后再继续等待。</span>
+                {ui.trouble.advice !== null && (
+                  <span className="font-medium">{describeAdvice(ui.trouble.advice)}</span>
                 )}
-              </TableBody>
-            </Table>
-          </ScrollArea>
-        </section>
-
-        <footer className="text-muted-foreground text-sm">
-          监控 {ui.rows.length} 项 · 有货 {summary.inStock} · 无货 {summary.outOfStock}
-          {summary.untrusted > 0 && (
-            // 把「其中多少项查不到」单独点出来：这个数字大于 0 时，
-            // 界面上那些「无货」也未必反映真实情况。
-            <span className="text-unknown"> · 查不到 {summary.untrusted}</span>
+              </AlertDescription>
+            </Alert>
           )}
-        </footer>
 
-        <section className="h-36 shrink-0 overflow-hidden rounded-lg border">
-          <ScrollArea className="h-full p-3">
-            <pre className="text-muted-foreground font-mono text-xs leading-5 whitespace-pre-wrap select-text">
-              {ui.logs.length === 0 ? "日志会显示在这里。" : ui.logs.join("\n")}
-            </pre>
-          </ScrollArea>
-        </section>
+          {ui.update !== null && (
+            <Alert className="shrink-0 rounded-2xl border-primary/20 bg-primary/8 px-4 py-3">
+              <Download aria-hidden="true" />
+              <AlertTitle>发现新版本 {ui.update.version}</AlertTitle>
+              <AlertDescription>
+                <span>当前版本 {ui.update.currentVersion}，安装后需重启应用。</span>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <Button size="sm" disabled={ui.installing} onClick={() => void installUpdate()}>
+                    {ui.installing ? "正在下载…" : "下载并安装"}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={dismissUpdate}>
+                    <X aria-hidden="true" /> 稍后
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="grid min-h-0 flex-1 gap-4 min-[980px]:grid-cols-[minmax(0,1.65fr)_20rem]">
+            <div className="flex min-h-0 flex-col gap-4">
+              <section className="surface-panel shrink-0 p-4" aria-labelledby="create-monitor-title">
+                <div className="mb-4 flex items-start justify-between gap-4">
+                  <div>
+                    <div className="eyebrow">
+                      <Plus className="size-3.5" aria-hidden="true" /> 新建监控
+                    </div>
+                    <h2 id="create-monitor-title" className="mt-1 text-base font-semibold tracking-tight">
+                      选择想要追踪的门店与型号
+                    </h2>
+                  </div>
+                  {hasCompleteSelection && (
+                    <Badge className="border-primary/20 bg-primary/10 text-primary" variant="outline">
+                      {storeNumbers.length} × {partNumbers.length}
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-[0.9fr_0.9fr_1.3fr_2fr]">
+                  <div className="field-group">
+                    <Label className="control-label">
+                      <MapPin className="size-3.5" aria-hidden="true" /> 地区
+                    </Label>
+                    <Combobox
+                      className="control-surface w-full"
+                      options={ui.regions.map((region) => ({ value: region.locale, label: region.title }))}
+                      value={ui.settings.locale}
+                      onChange={(locale) => {
+                        setStoreNumbers([]);
+                        setPartNumbers([]);
+                        void changeLocale(locale);
+                      }}
+                      placeholder="选择地区"
+                      searchPlaceholder="搜索地区…"
+                      emptyText="没有匹配的地区"
+                      disabled={isAdding}
+                    />
+                  </div>
+
+                  <div className="field-group">
+                    <Label className="control-label">
+                      <Smartphone className="size-3.5" aria-hidden="true" /> 品类
+                    </Label>
+                    <Combobox
+                      className="control-surface w-full"
+                      options={ui.categories.map((category) => ({ value: category.value, label: category.title }))}
+                      value={ui.category}
+                      onChange={(value) => {
+                        setPartNumbers([]);
+                        setCategory(value as Category);
+                      }}
+                      placeholder="选择品类"
+                      searchPlaceholder="搜索品类…"
+                      emptyText="没有匹配的品类"
+                      disabled={isAdding || ui.categories.length === 0}
+                    />
+                  </div>
+
+                  <div className="field-group">
+                    <Label className="control-label">
+                      <MapPin className="size-3.5" aria-hidden="true" /> 门店
+                      <span className="font-normal text-muted-foreground">可多选</span>
+                    </Label>
+                    <MultiCombobox
+                      key={`stores-${ui.settings.locale}`}
+                      className="control-surface w-full"
+                      options={storeOptions}
+                      values={storeNumbers}
+                      onChange={setStoreNumbers}
+                      placeholder="选择自提门店"
+                      searchPlaceholder="搜索门店…"
+                      emptyText="没有匹配的门店"
+                      selectionUnit="家门店"
+                      disabled={isAdding || storeOptions.length === 0}
+                    />
+                  </div>
+
+                  <div className="field-group">
+                    <Label className="control-label">
+                      <PackageCheck className="size-3.5" aria-hidden="true" /> 型号
+                      <span className="font-normal text-muted-foreground">可多选</span>
+                    </Label>
+                    <MultiCombobox
+                      key={`products-${ui.settings.locale}-${ui.category}`}
+                      className="control-surface w-full"
+                      options={productOptions}
+                      values={partNumbers}
+                      onChange={setPartNumbers}
+                      placeholder="选择型号"
+                      searchPlaceholder="搜索型号…"
+                      emptyText="没有匹配的型号"
+                      selectionUnit="个型号"
+                      disabled={isAdding || productOptions.length === 0}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border/55 pt-3">
+                  <p className="min-w-0 flex-1 text-xs leading-5 text-muted-foreground" role="status">
+                    {hasCompleteSelection
+                      ? `将新增 ${pendingTargets.length} 条监控${duplicateCount > 0 ? `，跳过 ${duplicateCount} 条已有组合` : ""}`
+                      : "选择门店和型号后，系统会按全部组合创建监控。"}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon-lg"
+                          className="rounded-xl border-border/70 bg-background/40"
+                          aria-label="从 Apple 官网更新当前品类的型号列表"
+                          disabled={ui.refreshing}
+                          onClick={() => void refreshProducts()}
+                        >
+                          <RefreshCw className={ui.refreshing ? "animate-spin" : undefined} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>从 Apple 官网更新当前品类的型号列表</TooltipContent>
+                    </Tooltip>
+                    <Button
+                      className="h-10 min-w-28 rounded-xl px-4"
+                      onClick={() => void onAdd()}
+                      disabled={!canAdd}
+                    >
+                      <Plus aria-hidden="true" />
+                      {isAdding
+                        ? "添加中…"
+                        : canAdd
+                          ? `添加 ${pendingTargets.length} 项`
+                          : hasCompleteSelection
+                            ? "已在列表中"
+                            : "添加监控"}
+                    </Button>
+                  </div>
+                </div>
+              </section>
+
+              <section className="surface-panel flex min-h-[280px] flex-1 flex-col overflow-hidden" aria-labelledby="monitor-list-title">
+                <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-4 py-3.5">
+                  <div className="flex items-center gap-3">
+                    <div className="section-icon" aria-hidden="true">
+                      <Activity className="size-4" />
+                    </div>
+                    <div>
+                      <h2 id="monitor-list-title" className="text-sm font-semibold">监控列表</h2>
+                      <p className="mt-0.5 text-xs text-muted-foreground">库存变化会在这里实时更新</p>
+                    </div>
+                  </div>
+                  <span className="rounded-full border border-border/60 bg-background/40 px-2.5 py-1 text-xs tabular-nums text-muted-foreground">
+                    {ui.rows.length} 项
+                  </span>
+                </div>
+
+                <ScrollArea className="min-h-0 flex-1">
+                  <Table>
+                    <TableHeader className="sticky top-0 z-10 bg-card/95">
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="w-28 px-4 text-xs text-muted-foreground">状态</TableHead>
+                        <TableHead className="px-3 text-xs text-muted-foreground">门店</TableHead>
+                        <TableHead className="px-3 text-xs text-muted-foreground">型号</TableHead>
+                        <TableHead className="w-24 px-3 text-xs text-muted-foreground">最后检查</TableHead>
+                        <TableHead className="w-14" />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {ui.rows.length === 0 ? (
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell colSpan={5} className="h-44 text-center">
+                            <div className="mx-auto flex max-w-xs flex-col items-center">
+                              <div className="mb-3 flex size-11 items-center justify-center rounded-2xl border border-border/60 bg-muted/35 text-muted-foreground">
+                                <Radar className="size-5" aria-hidden="true" />
+                              </div>
+                              <p className="text-sm font-medium text-foreground">
+                                {ui.ready ? "还没有监控项目" : "正在载入目录…"}
+                              </p>
+                              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                {ui.ready ? "从上方选择门店和型号，添加后即可开始监控。" : "正在连接本地监控引擎，请稍候。"}
+                              </p>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        ui.rows.map((row) => (
+                          <TableRow key={targetKey(row.target)} className="group h-14 hover:bg-muted/22">
+                            <TableCell className="px-4"><StatusBadge availability={row.availability} /></TableCell>
+                            <TableCell className="px-3 font-medium">{row.target.storeTitle}</TableCell>
+                            <TableCell className="max-w-[24rem] truncate px-3 text-muted-foreground" title={row.target.productName}>
+                              {row.target.productName}
+                            </TableCell>
+                            <TableCell className="px-3 font-mono text-xs tabular-nums text-muted-foreground">
+                              {formatTime(row.lastCheckedMs)}
+                            </TableCell>
+                            <TableCell className="pr-3">
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="text-muted-foreground opacity-60 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                                aria-label="删除这条监控"
+                                disabled={isAdding}
+                                onClick={() => void onRemove(row.target)}
+                              >
+                                <Trash2 />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              </section>
+            </div>
+
+            <aside className="flex min-h-0 flex-col gap-4">
+              <section className="grid grid-cols-4 gap-2" aria-label="监控概览">
+                <div className="metric-tile">
+                  <Radar className="size-4 text-primary" aria-hidden="true" />
+                  <span className="metric-value">{ui.rows.length}</span>
+                  <span className="metric-label">监控</span>
+                </div>
+                <div className="metric-tile">
+                  <PackageCheck className="size-4 text-in-stock" aria-hidden="true" />
+                  <span className="metric-value text-in-stock">{summary.inStock}</span>
+                  <span className="metric-label">有货</span>
+                </div>
+                <div className="metric-tile">
+                  <PackageX className="size-4 text-muted-foreground" aria-hidden="true" />
+                  <span className="metric-value">{summary.outOfStock}</span>
+                  <span className="metric-label">无货</span>
+                </div>
+                <div className="metric-tile">
+                  <AlertTriangle className={`size-4 ${summary.untrusted > 0 ? "text-unknown" : "text-muted-foreground"}`} aria-hidden="true" />
+                  <span className={`metric-value ${summary.untrusted > 0 ? "text-unknown" : ""}`}>{summary.untrusted}</span>
+                  <span className="metric-label">异常</span>
+                </div>
+              </section>
+
+              <section className="surface-panel shrink-0 p-4" aria-labelledby="preferences-title">
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="section-icon" aria-hidden="true"><Settings2 className="size-4" /></div>
+                  <div>
+                    <h2 id="preferences-title" className="text-sm font-semibold">监控设置</h2>
+                    <p className="mt-0.5 text-xs text-muted-foreground">查询频率与提醒方式</p>
+                  </div>
+                </div>
+
+                <div className="field-group">
+                  <Label htmlFor="interval" className="control-label">
+                    <Clock3 className="size-3.5" aria-hidden="true" /> 查询间隔
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="interval"
+                      type="number"
+                      min={5}
+                      className="control-surface select-text pr-12 tabular-nums"
+                      value={intervalValue}
+                      onChange={(event) => setIntervalDraft(event.target.valueAsNumber)}
+                      onBlur={() => {
+                        const seconds = Number.isFinite(intervalValue) ? Math.round(intervalValue) : 30;
+                        setIntervalDraft(null);
+                        void setIntervalSeconds(seconds);
+                      }}
+                    />
+                    <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-muted-foreground">秒</span>
+                  </div>
+                </div>
+
+                <div className="mt-3 field-group">
+                  <Label htmlFor="bark" className="control-label">
+                    <BellRing className="size-3.5" aria-hidden="true" /> Bark 推送
+                  </Label>
+                  <Input
+                    id="bark"
+                    className="control-surface select-text"
+                    placeholder="https://api.day.app/你的BarkKey"
+                    value={barkValue}
+                    onChange={(event) => setBarkDraft(event.target.value)}
+                    onBlur={() => {
+                      setBarkDraft("");
+                      void saveSettings({ ...ui.settings, barkUrl: barkValue.trim() });
+                    }}
+                  />
+                </div>
+
+                <div className="mt-4 space-y-1 rounded-xl border border-border/55 bg-background/30 p-1">
+                  <div className="setting-row">
+                    <span className="flex items-center gap-2 text-sm"><Volume2 className="size-4 text-muted-foreground" aria-hidden="true" />提示音</span>
+                    <Switch
+                      id="sound"
+                      aria-label="提示音"
+                      checked={ui.settings.soundEnabled}
+                      onCheckedChange={(value) => void saveSettings({ ...ui.settings, soundEnabled: value })}
+                    />
+                  </div>
+                  <div className="setting-row">
+                    <span className="flex items-center gap-2 text-sm"><ShoppingBag className="size-4 text-muted-foreground" aria-hidden="true" />自动打开购物袋</span>
+                    <Switch
+                      id="openbag"
+                      aria-label="有货时自动打开购物袋"
+                      checked={ui.settings.openBagOnHit}
+                      onCheckedChange={(value) => void saveSettings({ ...ui.settings, openBagOnHit: value })}
+                    />
+                  </div>
+                </div>
+
+                <Button variant="outline" className="mt-3 h-10 w-full rounded-xl border-border/70 bg-background/30" onClick={() => void testNotify()}>
+                  <BellRing aria-hidden="true" /> 测试提醒
+                </Button>
+              </section>
+
+              <section className="surface-panel flex min-h-[150px] flex-1 flex-col overflow-hidden" aria-labelledby="activity-log-title">
+                <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-4 py-3">
+                  <div className="flex items-center gap-2.5">
+                    <SquareTerminal className="size-4 text-muted-foreground" aria-hidden="true" />
+                    <h2 id="activity-log-title" className="text-sm font-semibold">活动日志</h2>
+                  </div>
+                  <span className="text-[11px] tabular-nums text-muted-foreground">{ui.logs.length} 条</span>
+                </div>
+                <ScrollArea className="min-h-0 flex-1 p-3.5">
+                  <pre className="font-mono text-[11px] leading-[1.65] whitespace-pre-wrap text-muted-foreground select-text">
+                    {ui.logs.length === 0 ? "等待监控活动…" : ui.logs.join("\n")}
+                  </pre>
+                </ScrollArea>
+              </section>
+            </aside>
+          </div>
+        </main>
       </div>
     </TooltipProvider>
   );

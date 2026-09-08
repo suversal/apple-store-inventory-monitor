@@ -228,12 +228,9 @@ impl Watcher {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TroubleAdvice {
-    /// 换一条网络多半立刻见效。
+    /// 持续被拦截时，提示排查会话、请求频率及网络。
     ///
-    /// 被 Apple 边缘节点拦下（HTTP 541）时给这条。这不是「稍等一下就好」的那种
-    /// 故障：issue #3 里那位用户的浏览器一切正常、只有本程序被拦，干等三个小时
-    /// 仍在反复报错，换成手机热点立刻恢复。用户必须知道有这个动作可做，否则
-    /// 他只会盯着一个反复告警的窗口，以为程序坏了或者自己该把间隔调得更长。
+    /// HTTP 541 本身不能证明网络被封锁，更不能保证换网络就能恢复。
     TryAnotherNetwork,
     /// 用户做什么都没用，只能等新版本。
     ///
@@ -601,7 +598,17 @@ impl<F: Fetcher> Engine<F> {
             return;
         }
         self.running = running;
-        if !running {
+        if running {
+            // 暂停再恢复代表一段新的监控会话。持续运行时「有货」只提醒一次，
+            // 但用户主动重新开始后，当前仍有货的项目应当重新提醒一次。
+            // 只重置内部判定，不单独发状态事件；首轮结果会立即用真实状态覆盖，
+            // 界面不会在“有货”和“待查询”之间闪烁。
+            for state in self.states.values_mut() {
+                if state.availability.is_in_stock() {
+                    state.availability = Availability::Unknown(UnknownReason::NotYetChecked);
+                }
+            }
+        } else {
             // 重新启动时应当从干净的节奏开始，不背着上一轮的退避。
             self.cycle_failures = 0;
         }

@@ -249,7 +249,7 @@ jobs:
             这不是文件真的坏了。把应用拖进「应用程序」后执行一次：
 
             ```sh
-            xattr -cr "/Applications/Apple Pickup Watcher.app"
+            xattr -cr "/Applications/果到雷达.app"
             ```
 
             之后就能正常启动，这条命令只需要执行一次。

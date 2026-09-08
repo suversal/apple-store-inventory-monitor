@@ -22,11 +22,8 @@ use crate::model::{Availability, Region, UnknownReason};
 pub enum ApiError {
     /// 请求被 Apple 边缘节点拦截，而不是门店真的没货。
     ///
-    /// 上游项目正是死在这里：它使用的 `/shop/fulfillment-messages` 现在对任意
-    /// 请求恒定返回 HTTP 541 加一个 128002 字节的「Page Not Found」HTML 拦截页
-    /// （中国大陆站与美国站响应完全一致，且同一时刻 apple.com.cn 首页正常返回
-    /// 200，可排除 IP 封禁）。上游把这个错误当成「无货」处理，于是所有用户看到
-    /// 的都是一屏永远不会变的「无货」。
+    /// Apple 的商品页会先完成浏览器环境校验；缺少这段会话的直接 HTTP 请求可能
+    /// 返回 541 拦截页。这不是「无货」，也不能仅凭状态码断定 IP 被封。
     #[error("请求被 Apple 拦截：{0}")]
     Blocked(String),
 
@@ -62,12 +59,13 @@ impl ApiError {
         }
     }
 
-    /// 是否值得重试。结构不符和业务错误重试多少次结果都一样。
+    /// 是否适合在同一次调用里快速重试。
+    ///
+    /// 541/403 表示当前请求特征或会话已被拒绝。原样重放只会在几秒内连续制造
+    /// 更多拦截，因此交给监控层退避并在下一轮重建会话。网络瞬断、429 和服务端
+    /// 临时错误才适合在这里重试。
     pub fn is_retryable(&self) -> bool {
-        matches!(
-            self,
-            Self::Blocked(_) | Self::RateLimited(_) | Self::Transport(_)
-        )
+        matches!(self, Self::RateLimited(_) | Self::Transport(_))
     }
 }
 
@@ -80,7 +78,6 @@ const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7
 
 /// 响应体读取上限，避免异常情况下把整个拦截页甚至更大的内容读进内存。
 const MAX_RESPONSE_BYTES: usize = 4 << 20;
-
 /// 客户端配置。
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
@@ -96,7 +93,8 @@ pub struct ClientConfig {
 impl Default for ClientConfig {
     fn default() -> Self {
         Self {
-            min_interval: Duration::from_millis(500),
+            // 即使调用方并发查询多个门店，也不要向 Apple 形成毫秒级突发。
+            min_interval: Duration::from_secs(2),
             max_retries: 2,
             timeout: Duration::from_secs(15),
             user_agent: DEFAULT_USER_AGENT.to_string(),
@@ -170,12 +168,15 @@ impl AppleClient {
     /// **失败不影响查询**：暖场取不到页面时什么都不做，让真正的查询照常发出去。
     /// 让一次辅助请求的失败去决定库存判定，正是这个项目最不该有的东西。
     async fn ensure_warm(&self, region: &Region) {
-        if self.warmed.lock().await.contains(region.locale) {
+        // 检查、初始化和标记必须在同一把锁内完成。多个门店共享 Cookie 罐，
+        // 并发暖场会重复创建会话并覆盖彼此的 Cookie，导致随后的查询被拒绝。
+        let mut warmed = self.warmed.lock().await;
+        if warmed.contains(region.locale) {
             return;
         }
 
         self.throttle().await;
-        let ok = self
+        let response = self
             .http
             .get(region.bag_url())
             .header(reqwest::header::USER_AGENT, &self.config.user_agent)
@@ -185,11 +186,15 @@ impl AppleClient {
             )
             .header(reqwest::header::ACCEPT_LANGUAGE, region.accept_language())
             .send()
-            .await
-            .is_ok_and(|r| r.status().is_success());
+            .await;
 
-        if ok {
-            self.warmed.lock().await.insert(region.locale.to_string());
+        if let Ok(response) = response {
+            // 读完响应再复用连接；失败时不缓存初始化成功标记。
+            if response.status().is_success()
+                && read_body_capped(response, MAX_RESPONSE_BYTES).await.is_ok()
+            {
+                warmed.insert(region.locale.to_string());
+            }
         }
     }
 
@@ -228,19 +233,22 @@ impl AppleClient {
         }
 
         let mut query: Vec<(String, String)> = vec![
+            ("fae".into(), "true".into()),
             ("pl".into(), "true".into()),
             ("mts.0".into(), "regular".into()),
-            ("store".into(), store_number.to_string()),
         ];
         for (i, part) in parts.iter().enumerate() {
             query.push((format!("parts.{i}"), part.clone()));
         }
+        // 与 Apple 当前商品页的请求顺序保持一致：固定参数、parts.*、最后 store。
+        query.push(("store".into(), store_number.to_string()));
 
+        let pickup_url = region.pickup_message_url();
         // 先把 cookie 攒上再查。见 ensure_warm 的文档：没带 cookie 的查询会被
         // Apple 的边缘节点拦下，而且只在受审查的网络上才拦。
         self.ensure_warm(region).await;
 
-        let body = match self.get(&region.pickup_message_url(), &query, region).await {
+        let body = match self.get(&pickup_url, &query, region).await {
             Ok(body) => body,
             Err(err) => {
                 if matches!(err, ApiError::Blocked(_)) {
@@ -390,7 +398,8 @@ where
 
     for attempt in 0..=max_retries {
         if attempt > 0 {
-            // 被拦截或限流时继续以原频率猛冲只会让情况更糟。
+            // 这里只会重试网络瞬断、限流和临时服务端错误；541/403 已在第一次
+            // 响应后直接返回，不会在几秒内原样重放。
             tokio::time::sleep(Duration::from_secs(1u64 << (attempt - 1))).await;
         }
         match once().await {
@@ -503,7 +512,7 @@ struct PickupBody {
     stores: Vec<PickupStore>,
     #[serde(rename = "errorMessage", default)]
     error_message: Option<String>,
-    /// 旧版 fulfillment-messages 的嵌套结构，留作兜底，以防 Apple 把数据挪回去。
+    /// fulfillment-messages 的嵌套结构；部分时期也会返回扁平的 body.stores。
     #[serde(default)]
     content: PickupContent,
 }

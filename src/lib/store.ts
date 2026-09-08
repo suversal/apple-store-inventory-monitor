@@ -129,6 +129,10 @@ function applyEvent(event: WatcherEvent): void {
       if (isUntrusted(availability)) {
         const { detail } = describeAvailability(availability);
         pushLog(`${target.storeTitle} ${target.productName}：${detail ?? "查询失败"}`);
+      } else if (availability.kind === "out_of_stock") {
+        // 无货同样是一次成功查询。把它写出来，避免日志只出现“有货”时让人误以为
+        // 同一批次里的其他商品被跳过；状态不变化时不会再发 StateChanged，因此不刷屏。
+        pushLog(`已检查，无货：${target.storeTitle} ${target.productName}`);
       }
       break;
     }
@@ -139,6 +143,9 @@ function applyEvent(event: WatcherEvent): void {
 
     case "cycleComplete": {
       const recovered = event.healthy && state.trouble !== null;
+      const failed = event.snapshot.filter((row) => isUntrusted(row.availability)).length;
+      const inStock = event.snapshot.filter((row) => row.availability.kind === "in_stock").length;
+      const outOfStock = event.snapshot.filter((row) => row.availability.kind === "out_of_stock").length;
       update({
         rows: event.snapshot,
         // 只有引擎明说本轮健康，才收起告警。用「所有行都没错误」去反推是
@@ -146,6 +153,11 @@ function applyEvent(event: WatcherEvent): void {
         trouble: event.healthy ? null : state.trouble,
       });
       if (recovered) pushLog("查询已恢复正常。");
+      pushLog(
+        event.healthy
+          ? `本轮已检查 ${event.snapshot.length} 项：有货 ${inStock} 项、无货 ${outOfStock} 项、异常 0 项；约 ${state.settings.intervalSeconds} 秒后开始下一轮。`
+          : `本轮已检查 ${event.snapshot.length} 项：有货 ${inStock} 项、无货 ${outOfStock} 项、异常 ${failed} 项；继续监控。`,
+      );
       break;
     }
 
@@ -155,8 +167,10 @@ function applyEvent(event: WatcherEvent): void {
       break;
 
     case "runStateChanged":
-      update({ running: event.running });
-      pushLog(event.running ? "已开始监控。" : "已暂停监控。");
+      if (state.running !== event.running) {
+        update({ running: event.running });
+        pushLog(event.running ? "已开始监控。" : "已暂停监控。");
+      }
       break;
 
     default:
@@ -241,21 +255,41 @@ export async function changeLocale(locale: string): Promise<void> {
   await loadCatalog(locale);
 }
 
-export async function setTargets(targets: Target[]): Promise<void> {
+export async function setTargets(targets: Target[]): Promise<boolean> {
   try {
     const rows = await invoke<TargetState[]>("set_targets", { targets });
     update({ rows, settings: { ...state.settings, targets } });
+    return true;
   } catch (err) {
     pushLog(`更新监控列表失败：${String(err)}`);
+    return false;
   }
 }
 
 export async function startWatching(): Promise<void> {
-  await invoke("start_watching");
+  try {
+    await invoke("start_watching");
+    const running = await invoke<boolean>("is_running");
+    if (state.running !== running) {
+      update({ running });
+      pushLog(running ? "已开始监控。" : "启动命令已返回，但监控引擎没有进入运行状态。");
+    }
+  } catch (err) {
+    pushLog(`启动监控失败：${String(err)}`);
+  }
 }
 
 export async function stopWatching(): Promise<void> {
-  await invoke("stop_watching");
+  try {
+    await invoke("stop_watching");
+    const running = await invoke<boolean>("is_running");
+    if (state.running !== running) {
+      update({ running });
+      pushLog(running ? "暂停命令已返回，但监控引擎仍在运行。" : "已暂停监控。");
+    }
+  } catch (err) {
+    pushLog(`暂停监控失败：${String(err)}`);
+  }
 }
 
 export async function setIntervalSeconds(seconds: number): Promise<void> {

@@ -12,8 +12,6 @@
 
 #![cfg(feature = "live")]
 
-use std::time::Duration;
-
 use apw_core::apple::{ApiError, AppleClient, ClientConfig};
 use apw_core::catalog::Catalog;
 use apw_core::model::{Availability, Category, UnknownReason, region_by_locale};
@@ -32,12 +30,8 @@ const CASES: &[(&str, &str, &str)] = &[
 ];
 
 fn client() -> AppleClient {
-    AppleClient::new(ClientConfig {
-        // 别把真实接口当压测目标：两次请求之间隔开一点。
-        min_interval: Duration::from_secs(2),
-        ..ClientConfig::default()
-    })
-    .expect("构造客户端失败")
+    // 使用正式客户端配置，确保真实接口测试覆盖应用实际采用的请求节奏。
+    AppleClient::new(ClientConfig::default()).expect("构造客户端失败")
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -140,21 +134,25 @@ async fn 查询时必须带上cookie() {
     );
 
     let parts = vec!["MDV94TA/A".to_string()];
-    client
-        .pickup_message(region, "R713", &parts)
-        .await
-        .unwrap_or_else(|e| panic!("查询失败：{e}"));
+    let result = client.pickup_message(region, "R713", &parts).await;
 
     let cookies = client
         .cookies_for(region)
         .expect("查过一次之后，cookie 罐不该还是空的 —— 暖场或响应里的 Set-Cookie 没生效");
 
-    println!("攒到的 cookie：{cookies}");
+    // Cookie 是会话凭据，只打印名称，不把值写进测试日志。
+    let cookie_names: Vec<_> = cookies
+        .split(';')
+        .filter_map(|cookie| cookie.trim().split_once('=').map(|(name, _)| name))
+        .collect();
+    println!("攒到的 Cookie 名称：{cookie_names:?}");
     // Apple 的 shop 会话 cookie。名字变了要来更新这里，而不是删掉断言。
     assert!(
         cookies.contains("dssid2") || cookies.contains("as_dc"),
-        "攒到的 cookie 里没有 shop 的会话项：{cookies}"
+        "攒到的 cookie 里没有 shop 的会话项，只有：{cookie_names:?}"
     );
+
+    result.unwrap_or_else(|e| panic!("已成功建立 Cookie 会话，但库存查询失败：{e}"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
