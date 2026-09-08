@@ -1,12 +1,34 @@
 # 果到雷达（Apple Store Inventory Monitor）
 
-果到雷达是一款 Apple 直营店库存监控工具。选择地区、门店和具体型号后，它会定时查询到店取货库存；检测到有货时，可以播放提示音、发送系统通知、推送 Bark，并打开 Apple 购物袋页面。
+[![CI](https://github.com/suversal/apple-store-inventory-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/suversal/apple-store-inventory-monitor/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/suversal/apple-store-inventory-monitor?display_name=tag)](https://github.com/suversal/apple-store-inventory-monitor/releases/latest)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
+
+果到雷达是一款 Apple 直营店到店取货库存监控工具。选好地区、门店和具体型号后，它会定时检查库存；检测到有货时，可以播放提示音、发送系统通知、推送 Bark，并打开 Apple 购物袋页面。
 
 英文项目名为 **Apple Store Inventory Monitor**，仓库与安装包使用
 `apple-store-inventory-monitor`。项目使用 Rust、Tauri 2 和 React 编写，支持
-macOS、Windows 和 Linux。当前版本为 `0.4.0`。
+macOS、Windows 和 Linux。当前源码版本为 `0.4.0`。
 
-> 本项目与 Apple Inc. 没有关系，也没有获得 Apple 授权。它只负责查询和提醒，不会代替用户下单。
+本项目在 [ENCHIGO/apple-pickup-watcher](https://github.com/ENCHIGO/apple-pickup-watcher)
+`v0.3.2` 的代码基础上继续开发。上游项目本身是
+[hteen/apple-store-helper](https://github.com/hteen/apple-store-helper) 的 GPL-3.0
+重写版本。完整的来源、版权和修改记录见 [`NOTICE`](NOTICE)。
+
+> 本项目不是 Apple 官方软件，与 Apple Inc. 没有关系，也没有获得 Apple 授权。它只负责查询和提醒，不能预留库存，也不会替你下单。
+
+## 第一次使用，先看这里
+
+如果你只想使用软件，不需要安装 Rust、Node.js 或 pnpm。它们只供开发者从源码构建。
+
+1. 打开 [Releases](https://github.com/suversal/apple-store-inventory-monitor/releases)，按自己的电脑下载安装包。下载页为空，表示当前还没有公开发布的安装包。
+2. 确认电脑已安装 Google Chrome 或 Microsoft Edge。Linux 也可以使用 PATH 中的 Chromium。软件不会读取你平时使用的浏览器资料。
+3. 安装并打开果到雷达。macOS 和 Windows 可能会拦截未签名的应用，处理方法见[安装](#安装)。
+4. 选择地区和品类，再勾选门店与型号，点击「添加监控」。
+5. 先点一次「测试提醒」，确认系统通知、声音或 Bark 能正常收到。
+6. 点击「开始监控」。看到「未知」时先看活动日志，不要把它当成无货。
+
+最容易误解的一点是：这个工具不能保证你一定买到商品。Apple 可能限流、调整接口，库存也可能在提醒后立即变化。重要商品请同时对照 Apple 官网。
 
 ## 功能
 
@@ -28,6 +50,7 @@ macOS、Windows 和 Linux。当前版本为 `0.4.0`。
 
 | 状态 | 含义 | 是否提醒 |
 | --- | --- | --- |
+| 待查询 | 刚添加，或还没有开始第一轮查询 | 否 |
 | 有货 | Apple 明确返回该门店可取货 | 是 |
 | 无货 | Apple 明确返回该门店不可取货 | 否 |
 | 未知 | 请求被拦截、超时、限流，或响应结构无法识别 | 显示原因，不冒充无货 |
@@ -54,34 +77,54 @@ Apple 当前商品页会先完成浏览器环境校验，再请求库存接口�
 
 - Google Chrome
 - Microsoft Edge
+- Chromium（Linux，需要能从 PATH 直接启动）
 
 应用会自动查找常见安装位置。没有找到时，监控项会显示为「未知」，日志会说明缺少浏览器。
+
+目前只提供桌面版，不支持 iPhone、iPad 或 Android。Bark 只是把有货消息推送到 iPhone，真正的库存监控仍在电脑上运行。电脑休眠、关机或彻底退出应用后，监控也会停止。
 
 ## 安装
 
 从 [GitHub Releases](https://github.com/suversal/apple-store-inventory-monitor/releases) 下载对应系统的安装包。
 
+| 你的电脑 | 推荐下载 |
+| --- | --- |
+| Apple 芯片 Mac（M1、M2、M3、M4 等） | 文件名含 `aarch64` 的 `.dmg` |
+| Intel 芯片 Mac | 文件名含 `x64` 的 `.dmg` |
+| 64 位 Windows | `*-setup.exe` |
+| Ubuntu 24.04 或更新的 64 位 Linux | `*_amd64.deb` 或 `*_amd64.AppImage` |
+
+不知道 Mac 使用哪种芯片时，点击屏幕左上角苹果菜单，选择「关于本机」：显示 Apple M 系列就下载 `aarch64`，显示 Intel 就下载 `x64`。
+
 ### macOS
 
-安装包暂未经过 Apple 公证。将 `Apple Store Inventory Monitor.app` 拖入「应用程序」后，如果系统提示应用损坏或无法验证开发者，执行：
+1. 打开 `.dmg`，把 `Apple Store Inventory Monitor.app` 拖进「应用程序」。
+2. 第一次打开时，根据系统提示授予通知权限；否则有货时可能看不到系统通知。
+3. 安装包暂未经过 Apple 公证。如果系统提示无法验证开发者，先到「系统设置 → 隐私与安全性」确认被拦截的是本应用，再选择「仍要打开」。
+
+如果系统仍提示应用已损坏，并且你确认安装包来自本仓库的 Release，可以执行：
 
 ```bash
 xattr -cr "/Applications/Apple Store Inventory Monitor.app"
 ```
 
-然后重新打开应用。
+然后重新打开应用。这条命令只移除该应用的下载隔离标记，不会关闭 macOS 的全局安全功能。不要对来源不明的应用执行这条命令。
 
 ### Windows
 
-推荐使用 `*-setup.exe`。未签名版本可能触发 SmartScreen，确认文件来自本仓库 Release 后，可在「更多信息」中选择继续运行。
+推荐使用 `*-setup.exe`。未签名版本可能触发 SmartScreen。确认文件来自本仓库 Release 后，可点击「更多信息」，再选择「仍要运行」。Windows 自带 Microsoft Edge，一般不需要另装浏览器。
 
 ### Linux
 
-Release 提供 `.deb` 和 `.AppImage`。AppImage 首次运行前需要增加执行权限：
+Release 提供 x64 的 `.deb` 和 `.AppImage`。安装包在 Ubuntu 24.04 上构建，需要 glibc 2.39 或更高版本；较老的发行版请从源码构建。
+
+AppImage 首次运行前需要增加执行权限：
 
 ```bash
 chmod +x ./*.AppImage
 ```
+
+Linux 还需要自行安装 Chrome、Edge 或 Chromium。使用 Chromium 时，请确认终端可以运行 `chromium` 或 `chromium-browser`。
 
 ## 使用方法
 
@@ -94,6 +137,8 @@ chmod +x ./*.AppImage
 5. 点击右上角「开始监控」。
 
 门店和型号会按组合添加。例如，选择 2 家门店和 3 个型号，会生成 6 条监控。已存在的组合会被跳过。
+
+切换地区时，当前还没有添加的门店和型号选择会被清空；已经在监控列表里的项目不会被删除。找不到刚发布的型号时，点击「添加监控」旁边的刷新按钮，从 Apple 官网更新当前品类的型号列表。刷新失败不会清空内置列表。
 
 ### 查看结果
 
@@ -109,6 +154,10 @@ chmod +x ./*.AppImage
 第一条商品有货不会停止本轮查询。监控引擎会继续处理剩余门店和型号；持续有货时，
 每一轮都会再次执行已启用的提醒动作。
 
+如果启用了「自动打开购物袋」，持续有货也会每轮再次打开页面。只想收到通知、不想反复出现浏览器标签页时，请关闭这个选项。
+
+监控期间可以关闭主窗口，应用会留在系统托盘继续运行。不要让电脑进入睡眠，也不要从托盘菜单彻底退出，否则查询会停止。
+
 ### 查询间隔
 
 默认间隔为 30 秒。界面允许的下限是 5 秒，但长时间使用过短间隔更容易触发 Apple 风控，也不会明显提高实际抢购成功率。日常使用建议保留 30 秒或更长。
@@ -121,6 +170,23 @@ chmod +x ./*.AppImage
 - 自动打开购物袋：检测到有货后调用系统默认浏览器。
 
 「测试提醒」会测试当前提醒配置，但不会发起库存查询。
+
+#### Bark 怎么配置
+
+Bark 是一款 iPhone 推送工具，不使用 Bark 可以跳过这一段。
+
+1. 在 iPhone 安装并打开 Bark。
+2. 复制 Bark 首页显示的完整推送地址，通常形如 `https://api.day.app/你的Key`。
+3. 把整段地址粘贴到果到雷达的「Bark 推送」输入框，点击页面其他位置让设置保存。
+4. 点击「测试提醒」。手机收到消息后再开始监控。
+
+Bark 地址相当于推送凭证，不要截图发到公开 issue，也不要提交到 Git 仓库。Bark 失败不会改变库存状态，活动日志会单独说明哪个提醒渠道失败。
+
+### 应用更新
+
+应用启动后会静默检查 GitHub Releases。发现新版本时，界面会显示版本号和「下载并安装」按钮；更新不会在后台自动安装。
+
+macOS 和 Windows 安装包目前没有操作系统层面的开发者签名，但自动更新包使用本项目独立的 Tauri 更新密钥签名。这两件事不是一回事：前者关系到 Gatekeeper 或 SmartScreen 提示，后者用于阻止应用安装被篡改的更新包。
 
 ## 设置与数据
 
@@ -140,6 +206,10 @@ chmod +x ./*.AppImage
 
 ## 常见问题
 
+### Releases 页面没有可以下载的安装包
+
+这通常表示正式版本还在构建，或 Release 仍是草稿。请等待当前版本发布，不要安装 issue、网盘或陌生账号提供的同名文件。会使用开发工具的用户可以按[从源码运行](#从源码运行)自行构建。
+
 ### 启动开发版时报 `failed to run cargo metadata`
 
 终端没有找到 Rust 工具链。先载入 Cargo 环境：
@@ -150,6 +220,19 @@ pnpm tauri dev
 ```
 
 如果 `~/.cargo/bin/cargo` 不存在，需要先安装 Rust。
+
+### 源码目录改名后，构建日志仍指向旧目录
+
+Cargo 的 `target` 目录可能保留了旧项目的绝对路径。典型报错是当前正在构建 `apple-store-inventory-monitor`，却去另一个旧目录读取 Tauri 的 `permissions` 文件。
+
+在仓库根目录执行：
+
+```bash
+cargo clean
+pnpm tauri dev
+```
+
+`cargo clean` 只会清理当前项目的 Rust 编译产物，不会删除源码或用户设置。如果日志仍指向旧目录，再检查终端是否设置了 `CARGO_TARGET_DIR`，以及 `.cargo/config.toml` 中是否写死了旧路径。
 
 ### 出现 HTTP 541
 
@@ -170,16 +253,24 @@ pnpm tauri dev
 
 库存查询依赖 Apple 商品页完成的浏览器校验。Tauri 自带的 WebView 和普通 HTTP 请求在当前流程下无法稳定取得库存 JSON，因此应用使用独立 Chromium 会话。
 
+### 测试提醒没有系统通知
+
+先检查系统是否允许 `Apple Store Inventory Monitor` 发送通知，再确认勿扰模式或专注模式没有隐藏通知。提示音、系统通知和 Bark 是三个独立渠道，其中一个失败不会阻止另外两个，也不会影响库存判断。
+
 ### 关闭窗口后应用没有退出
 
 这是预期行为。关闭窗口会收进系统托盘，监控继续运行。需要彻底退出时，在托盘菜单中选择「退出」。
+
+### 电脑锁屏后还会监控吗
+
+只锁屏通常不会停止应用，但电脑进入睡眠、关机或应用被彻底退出后不会继续查询。长时间监控时，请接通电源并按自己的需要调整系统睡眠设置。
 
 ## 从源码运行
 
 ### 工具链
 
 - Rust 1.90 或更高版本
-- Node.js 当前 LTS
+- Node.js 当前 LTS（至少满足 Vite 7 的 Node.js 20.19+ 要求）
 - pnpm 9 或更高版本
 - 对应平台的 Tauri 2 系统依赖
 - Chrome 或 Edge，用于真实库存查询
@@ -190,15 +281,19 @@ macOS 需要 Xcode Command Line Tools：
 xcode-select --install
 ```
 
+Windows 需要 Microsoft C++ Build Tools，并在安装器里选择「使用 C++ 的桌面开发」。还需要 WebView2 Runtime，Windows 11 通常已经自带。
+
 Debian/Ubuntu 构建依赖：
 
 ```bash
 sudo apt update
 sudo apt install -y \
-  libwebkit2gtk-4.1-dev build-essential curl wget file \
+  libwebkit2gtk-4.1-dev libgtk-3-dev build-essential curl wget file \
   libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
-  libasound2-dev
+  libasound2-dev patchelf xdg-utils
 ```
+
+其他 Linux 发行版的包名不同，请对照 [Tauri 2 前置依赖文档](https://v2.tauri.app/start/prerequisites/)。
 
 ### 开发命令
 
@@ -242,7 +337,9 @@ cargo test -p apple-store-inventory-monitor \
 pnpm tauri build --no-sign
 ```
 
-产物位于 `target/release/bundle/`。自动更新包需要仓库维护者配置 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`；没有私钥时不能生成可被现有客户端验证的更新签名。
+产物位于 `target/release/bundle/`。自动更新包需要仓库维护者配置 `TAURI_SIGNING_PRIVATE_KEY`；私钥设置了密码时还要配置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。没有私钥时不能生成可被现有客户端验证的更新签名。
+
+正式版本由 `.github/workflows/release.yml` 构建。推送 `v*` 标签后，GitHub Actions 会生成 macOS、Windows 和 Linux 安装包，并先创建草稿 Release；确认四个平台全部成功后再公开发布，避免用户下载到缺少部分平台或 `latest.json` 尚未完整生成的版本。
 
 ## 代码结构
 
@@ -282,6 +379,22 @@ src/
 
 ## 来源与许可
 
-本项目是 [hteen/apple-store-helper](https://github.com/hteen/apple-store-helper) 的 GPL-3.0 派生重写版本，现用名为「果到雷达」。原项目版权、派生关系和修改说明见 [`NOTICE`](NOTICE)。
+本仓库直接基于 [ENCHIGO/apple-pickup-watcher](https://github.com/ENCHIGO/apple-pickup-watcher)
+`v0.3.2` 继续开发，并保留了对应 Git 历史。主要后续改动包括多门店与多型号组合监控、逐项轮次日志、重复提醒、临时 Chromium 查询会话、独立应用标识，以及「果到雷达」这一对外名称。
+
+`ENCHIGO/apple-pickup-watcher` 是 [hteen/apple-store-helper](https://github.com/hteen/apple-store-helper)
+的 GPL-3.0 重写版本。因此，本项目既保留直接上游 ENCHIGO 的贡献记录，也继续遵守最初项目的 GPL-3.0 派生要求。版权、承继资源和逐项修改说明见 [`NOTICE`](NOTICE)。
 
 本项目按 [GNU General Public License v3.0 or later](LICENSE) 发布。分发修改版本时，需要继续遵守 GPL-3.0 的源码和许可要求。
+
+## 反馈问题
+
+请在本仓库的 [Issues](https://github.com/suversal/apple-store-inventory-monitor/issues) 提交问题，并尽量附上：
+
+- 操作系统与芯片架构，例如 macOS 26 / Apple M4；
+- 应用版本；
+- 地区、门店和商品品类；
+- 活动日志中的完整错误文字；
+- 问题能否稳定复现。
+
+提交前请删掉 Bark 地址、设备 Key、个人路径及其他隐私信息。库存随时会变化，单独一张「有货」或「无货」截图通常不足以定位问题。

@@ -2,20 +2,28 @@
 NOTICE — 来源、版权与修改声明
 ================================================================================
 
-本项目 apple-store-inventory-monitor 是下述项目的修改版本（硬分叉重写）：
+本项目 apple-store-inventory-monitor 直接基于下述项目继续开发：
+
+    直接上游名称  Apple Pickup Watcher (apple-pickup-watcher)
+    直接上游地址  https://github.com/ENCHIGO/apple-pickup-watcher
+    上游维护者    ENCHIGO  <https://github.com/ENCHIGO>
+    起始版本      v0.3.2（提交 fd17a41）
+    上游许可      GNU General Public License, version 3 or later
+
+直接上游是下述早期项目的修改版本（硬分叉重写）：
 
     原项目名称  Apple Store 预约助手 (apple-store-helper)
     原项目地址  https://github.com/hteen/apple-store-helper
     原项目作者  Hteen  <https://github.com/hteen>
     原项目许可  GNU General Public License, version 3 (GPL-3.0)
 
-自 2026-08-08 起，本项目的实现语言由 Go 改为 Rust，界面框架由 Fyne 改为 Tauri，
-原有的 Go 代码已从仓库中移除。**这不改变本项目的派生关系**：本项目内嵌的门店与
-商品数据直接来自原项目，整体的产品设计（要解决什么问题、以什么形态呈现给用户、
-交互流程如何组织）同样来自原项目。因此 GPL-3.0 的义务对本项目继续完整适用，
-重写不构成「另起炉灶」。
+直接上游自 2026-08-08 起把实现语言由 Go 改为 Rust，界面框架由 Fyne 改为 Tauri，
+并移除了原有 Go 代码。本仓库保留了直接上游截至 v0.3.2 的 Git 历史，并在其上继续
+修改。**这些重写与后续修改都不改变派生关系**：本项目内嵌的门店与商品数据直接
+来自早期项目，产品目标和交互流程也承继自早期项目。因此 GPL-3.0 的义务继续完整
+适用，重写或更名都不构成「另起炉灶」。
 
-原项目贡献者（依原项目 README 所列）：
+早期项目贡献者（依其 README 所列）：
 
     @Hteen      https://github.com/hteen
     @Timssse    https://github.com/Timssse
@@ -23,9 +31,13 @@ NOTICE — 来源、版权与修改声明
     @RayJason   https://github.com/RayJason
     @Warkeeper  https://github.com/Warkeeper
 
+直接上游的具体贡献者和提交记录可在保留的 Git 历史以及
+https://github.com/ENCHIGO/apple-pickup-watcher/graphs/contributors 查看。
+
 版权声明：
 
     Copyright (C) 2020-2025 Hteen and the apple-store-helper contributors
+    Copyright (C) 2026 the apple-pickup-watcher contributors
     Copyright (C) 2026 the apple-store-inventory-monitor contributors
 
 原项目的许可条款以 GPL-3.0 全文形式完整保留在本仓库根目录的 LICENSE 文件中，
@@ -36,10 +48,12 @@ NOTICE — 来源、版权与修改声明
 修改声明（依据 GPL-3.0 第 5 条 a 款）
 --------------------------------------------------------------------------------
 
-本项目包含对原项目的显著修改。本作品的全部文件均已被修改；本项目是在原项目
-基础上进行的重新实现，而非原项目的逐字副本。
+本仓库包含直接上游截至 v0.3.2 的代码和提交历史，以及此后对应用名称、包标识、
+监控流程、提醒行为和查询会话所作的修改。直接上游对早期项目进行过显著重写；
+本仓库在该重写版本上继续开发。
 
-    修改者      apple-store-inventory-monitor 项目维护者
+    直接上游修改者  apple-pickup-watcher 项目维护者
+    后续修改者      apple-store-inventory-monitor 项目维护者
 
     2026-08-06  初次派生。以 Go + Fyne 重新实现，更换库存查询接口，引入三态
                 库存模型，重写轮询调度、HTTP 客户端与设置存储（对应版本 v0.1.x）。
