@@ -6,19 +6,9 @@ on:
   push:
     branches: ["**"]
   pull_request:
-  # 每天一次的 Apple 真实接口契约测试，见下面的 live job。
-  # 22:23 UTC = 次日 06:23 北京时间。刻意避开整点：GitHub 的定时任务在整点
-  # 排队最重，写 "0 22 * * *" 经常被推迟几十分钟。
-  #
-  # 两个已知限制，改这里之前先知道：
-  #   1. schedule 只在**默认分支**上的工作流定义生效。这份文件目前还在
-  #      rust-tauri 分支上，合并回默认分支之前定时任务一次都不会跑，
-  #      要验证只能用下面的 workflow_dispatch 手动触发。
-  #   2. 仓库连续 60 天没有活动时，GitHub 会自动停用定时任务并发邮件通知，
-  #      需要去 Actions 页面手动重新启用。
-  schedule:
-    - cron: "23 22 * * *"
-  # 手动触发：改完接口相关代码后可以立刻验一次，不必等到第二天。
+  # Apple 会拦截 GitHub 托管 runner 的机房出口，即使 HTTP/2 与 Cookie 都正确也会
+  # 返回 HTTP 541。把这种环境限制设为每日任务只会持续误报，不能代表桌面应用实际
+  # 使用的 Chromium 会话已失效，因此这里只保留人工诊断入口。
   workflow_dispatch:
 
 # 这条流水线不发布任何东西，也不写回仓库，只读足够。
@@ -26,11 +16,10 @@ permissions:
   contents: read
 
 concurrency:
-  # event_name 放进 group：定时的契约测试和 push/PR 的检查各成一组，
-  # 免得定时任务把正在跑的检查挤掉，或者反过来。
+  # event_name 放进 group：手动契约测试和 push/PR 的检查各成一组，
+  # 免得人工诊断把正在跑的检查挤掉，或者反过来。
   group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
-  # 定时任务不取消：它一天只有一次，被顶掉就等于这天没测。
-  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -50,8 +39,8 @@ jobs:
   # ---------------------------------------------------------------------------
   check:
     name: 检查（Linux）
-    # 只在 push / PR 上跑。schedule 与 workflow_dispatch 是为下面的契约测试
-    # 准备的，手动触发时没必要把整套检查再跑一遍（要重跑从 UI 上 re-run 即可）。
+    # 只在 push / PR 上跑。workflow_dispatch 是为下面的契约测试准备的，手动触发时
+    # 没必要把整套检查再跑一遍（要重跑从 UI 上 re-run 即可）。
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -216,19 +205,19 @@ jobs:
         run: cargo test
 
   # ---------------------------------------------------------------------------
-  # 针对 Apple 真实接口的契约测试，一天一次。
+  # 针对 Apple 真实接口的手动诊断测试。
   #
   # 这个 job 是这个项目存在的理由：上游就是因为 Apple 悄悄换了接口而彻底失效，
   # 又因为没有任何测试，半年时间里没人发现程序报的「无货」其实是被拦截了。
   # 单元测试拿假响应验证解析逻辑，拦不住这种事 —— 只有真的打一次 Apple 才行。
   #
   # 失败就是失败，不做任何容错：这里没有重试，也没有 continue-on-error。
-  # 「被拦截」正是要报警的信号，加重试等于把唯一的信号磨平。GitHub 会为默认分支上
-  # 失败的定时任务给仓库主人发邮件，这就是通知渠道。
+  # 但 GitHub 托管 runner 收到 541 只能说明其机房出口被 Apple 拦截，不能作为桌面
+  # 应用故障告警；需要诊断时手动触发，并结合本机 Chromium 真实链路测试判断。
   # ---------------------------------------------------------------------------
   live:
-    name: Apple 接口契约测试（每日）
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: Apple 接口契约测试（手动）
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     # 七个地区、每次请求之间至少间隔 2 秒，正常几十秒就跑完。
     # 设上限是为了防止对端挂起把 runner 一直占着。
