@@ -8,7 +8,7 @@
 
 英文项目名为 **Apple Store Inventory Monitor**，仓库与安装包使用
 `apple-store-inventory-monitor`。项目使用 Rust、Tauri 2 和 React 编写，支持
-macOS、Windows 和 Linux。当前源码版本为 `0.4.0`。
+macOS、Windows 和 Linux。当前源码版本为 `1.0.0`。
 
 本项目在 [ENCHIGO/apple-pickup-watcher](https://github.com/ENCHIGO/apple-pickup-watcher)
 `v0.3.2` 的代码基础上继续开发。上游项目本身是

@@ -271,5 +271,6 @@ jobs:
 
             ### 许可与来源
 
-            本项目基于 [hteen/apple-store-helper](https://github.com/hteen/apple-store-helper) 修改，
-            以 GPL-3.0 发布。详见仓库内的 `LICENSE` 与 `NOTICE`。
+            本项目直接基于 [ENCHIGO/apple-pickup-watcher](https://github.com/ENCHIGO/apple-pickup-watcher)
+            继续开发；该项目是 [hteen/apple-store-helper](https://github.com/hteen/apple-store-helper)
+            的 GPL-3.0 重写版本。详见仓库内的 `LICENSE` 与 `NOTICE`。
