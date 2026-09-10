@@ -109,6 +109,7 @@ fn ok_response(store: &str, parts: &[String], availability: Availability) -> Sto
                 availability: availability.clone(),
                 product_title: Some("iPhone 17".into()),
                 pickup_display: "available".into(),
+                pickup_details: None,
             },
         );
     }
@@ -328,6 +329,7 @@ async fn 一个候选有货不会停止其余候选的监控() {
                     availability,
                     product_title: Some(format!("候选 {}", index + 1)),
                     pickup_display: "available".into(),
+                    pickup_details: None,
                 },
             );
         }
@@ -545,6 +547,10 @@ async fn 个别型号缺失不会拖垮整个门店() {
     let snap = w.snapshot().await;
     let unknown = snap.iter().filter(|s| s.availability.is_unknown()).count();
     assert_eq!(unknown, 1, "应当恰好一个型号处于未知");
+    assert!(snap.iter().any(|s| matches!(
+        &s.availability,
+        Availability::Unknown(UnknownReason::ProductNotReturned { .. })
+    )));
 }
 
 #[tokio::test]
@@ -769,4 +775,52 @@ async fn wait_one_cycle(rx: &mut Receiver<Event>) {
         }
     }
     panic!("等一轮查询结束超时");
+}
+
+#[tokio::test]
+async fn 业务说明随本轮快照传递且失败后清除() {
+    let fake = FakeFetcher::new(|nth, store, _| {
+        if nth == 0 {
+            apw_core::apple::parse_pickup_message(
+                include_bytes!("fixtures/pickup_presale.json"),
+                store,
+            )
+        } else {
+            Err(ApiError::Transport("模拟超时".into()))
+        }
+    });
+    let (w, mut rx) = Watcher::spawn(fake, fast_config());
+    w.set_targets(vec![target("R683", "MJYH4CH/A")]).await;
+    w.start().await;
+    let first = wait_cycle(&mut rx).await;
+    let first_row = first
+        .iter()
+        .find_map(|e| match e {
+            Event::CycleComplete { snapshot, .. } => snapshot.first(),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(
+        first_row
+            .pickup_details
+            .as_ref()
+            .unwrap()
+            .sale_reason
+            .as_deref(),
+        Some("NOT_FOR_SALE")
+    );
+    let second = wait_cycle(&mut rx).await;
+    w.stop().await;
+    let second_row = second
+        .iter()
+        .find_map(|e| match e {
+            Event::CycleComplete { snapshot, .. } => snapshot.first(),
+            _ => None,
+        })
+        .unwrap();
+    assert!(second_row.availability.is_unknown());
+    assert!(
+        second_row.pickup_details.is_none(),
+        "本轮失败不能继续显示上一轮未发售详情"
+    );
 }

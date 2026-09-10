@@ -63,9 +63,9 @@ import {
 } from "@/lib/store";
 import {
   type Availability,
+  type PickupDetails,
   type Category,
   describeAdvice,
-  describeAvailability,
   formatTime,
   isUntrusted,
   type StatusTone,
@@ -73,9 +73,15 @@ import {
   targetKey,
 } from "@/lib/types";
 
+import { describeMonitorStatus } from "@/lib/monitorLog";
+
 const TONE_CLASS: Record<StatusTone, string> = {
   inStock: "bg-in-stock/12 text-in-stock border-in-stock/25",
-  outOfStock: "bg-muted/70 text-muted-foreground border-border/60",
+  outOfStock: "bg-out-of-stock/12 text-out-of-stock border-out-of-stock/30",
+  presale: "bg-presale/12 text-presale border-presale/30",
+  comingSoon: "bg-coming-soon/12 text-coming-soon border-coming-soon/30",
+  pickupUnsupported: "bg-pickup-unsupported/12 text-pickup-unsupported border-pickup-unsupported/30",
+  notForSale: "bg-not-for-sale/12 text-not-for-sale border-not-for-sale/30",
   unknown: "bg-unknown/12 text-unknown border-unknown/30",
   pending: "bg-transparent text-muted-foreground/70 border-border border-dashed",
 };
@@ -83,12 +89,16 @@ const TONE_CLASS: Record<StatusTone, string> = {
 const TONE_DOT: Record<StatusTone, string> = {
   inStock: "bg-in-stock shadow-[0_0_10px_var(--in-stock)]",
   outOfStock: "bg-out-of-stock",
+  presale: "bg-presale",
+  comingSoon: "bg-coming-soon",
+  pickupUnsupported: "bg-pickup-unsupported",
+  notForSale: "bg-not-for-sale",
   unknown: "bg-unknown",
   pending: "bg-muted-foreground/50",
 };
 
-function StatusBadge({ availability }: { availability: Availability }) {
-  const { label, tone, detail } = describeAvailability(availability);
+function StatusBadge({ availability, pickupDetails }: { availability: Availability; pickupDetails?: PickupDetails }) {
+  const { label, tone, detail } = describeMonitorStatus({ availability, pickupDetails });
   const badge = (
     <Badge
       variant="outline"
@@ -499,7 +509,7 @@ export default function App() {
                       ) : (
                         ui.rows.map((row) => (
                           <TableRow key={targetKey(row.target)} className="group h-14 hover:bg-muted/22">
-                            <TableCell className="px-4"><StatusBadge availability={row.availability} /></TableCell>
+                            <TableCell className="px-4"><StatusBadge availability={row.availability} pickupDetails={row.pickupDetails} /></TableCell>
                             <TableCell className="px-3 font-medium">{row.target.storeTitle}</TableCell>
                             <TableCell className="max-w-[24rem] truncate px-3 text-muted-foreground" title={row.target.productName}>
                               {row.target.productName}
@@ -543,12 +553,12 @@ export default function App() {
                 <div className="metric-tile">
                   <PackageX className="size-4 text-muted-foreground" aria-hidden="true" />
                   <span className="metric-value">{summary.outOfStock}</span>
-                  <span className="metric-label">无货</span>
+                  <span className="metric-label">不可取货</span>
                 </div>
                 <div className="metric-tile">
                   <AlertTriangle className={`size-4 ${summary.untrusted > 0 ? "text-unknown" : "text-muted-foreground"}`} aria-hidden="true" />
                   <span className={`metric-value ${summary.untrusted > 0 ? "text-unknown" : ""}`}>{summary.untrusted}</span>
-                  <span className="metric-label">异常</span>
+                  <span className="metric-label">未确认</span>
                 </div>
               </section>
 

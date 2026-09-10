@@ -31,7 +31,9 @@ use tokio::sync::{Semaphore, mpsc, oneshot};
 use tokio::task::JoinSet;
 
 use crate::apple::{ApiError, Fetcher};
-use crate::model::{Availability, Target, TargetKey, UnknownReason, region_by_locale};
+use crate::model::{
+    Availability, PickupDetails, Target, TargetKey, UnknownReason, region_by_locale,
+};
 
 /// 单个监控目标的当前状态。
 ///
@@ -43,6 +45,8 @@ use crate::model::{Availability, Target, TargetKey, UnknownReason, region_by_loc
 pub struct TargetState {
     pub target: Target,
     pub availability: Availability,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pickup_details: Option<PickupDetails>,
     /// 最近一次完成查询的时刻（Unix 毫秒），`None` 表示还没查过。
     pub last_checked_ms: Option<u64>,
     /// 连续失败次数，供界面展示。
@@ -54,6 +58,7 @@ impl TargetState {
         Self {
             target,
             availability: Availability::Unknown(UnknownReason::NotYetChecked),
+            pickup_details: None,
             last_checked_ms: None,
             consecutive_failures: 0,
         }
@@ -256,6 +261,8 @@ pub enum TroubleAdvice {
     /// 接口结构变了、或者程序内部出错时给这条。明说「你没法解决」也是一种有用的
     /// 信息 —— 至少他不会去反复重装、改设置、换网络。
     WaitForUpdate,
+    /// Apple 没有提供该型号的取货数据，先核对商品与发售状态。
+    CheckProduct,
 }
 
 /// 一条要摆到用户面前的故障说明。
@@ -279,7 +286,7 @@ struct StoreOutcome {
     locale: String,
     store_number: String,
     /// 每个**请求过**的零件号对应的判定结果。
-    parts: Vec<(String, Availability)>,
+    parts: Vec<(String, Availability, Option<PickupDetails>)>,
     /// 这次门店查询是否算成功，用于全局退避判断。
     ok: bool,
     /// 本次遇到的异常数量，用于判断整轮是否健康。
@@ -371,7 +378,7 @@ async fn query_one_store<F: Fetcher>(client: &F, group: StoreGroup) -> StoreOutc
             parts: group
                 .parts
                 .into_iter()
-                .map(|p| (p, Availability::Unknown(reason.clone())))
+                .map(|p| (p, Availability::Unknown(reason.clone()), None))
                 .collect(),
             trouble: Some(TroubleReport {
                 // 这句本身就说清了该做什么，不必再挂一条泛泛的建议。
@@ -399,10 +406,15 @@ async fn query_one_store<F: Fetcher>(client: &F, group: StoreGroup) -> StoreOutc
             let advice = match &err {
                 ApiError::Blocked(_) => Some(TroubleAdvice::TryAnotherNetwork),
                 ApiError::SchemaDrift { .. } => Some(TroubleAdvice::WaitForUpdate),
+                ApiError::NoPickupData { .. } => Some(TroubleAdvice::CheckProduct),
                 _ => None,
             };
             let trouble = advice.map(|advice| TroubleReport {
-                reason: format!("门店 {} 查询失败：{err}", group.store_number),
+                reason: if matches!(&err, ApiError::NoPickupData { .. }) {
+                    format!("门店 {} 暂无取货数据：{err}", group.store_number)
+                } else {
+                    format!("门店 {} 查询失败：{err}", group.store_number)
+                },
                 advice: Some(advice),
             });
 
@@ -412,7 +424,7 @@ async fn query_one_store<F: Fetcher>(client: &F, group: StoreGroup) -> StoreOutc
                 parts: group
                     .parts
                     .into_iter()
-                    .map(|p| (p, Availability::Unknown(reason.clone())))
+                    .map(|p| (p, Availability::Unknown(reason.clone()), None))
                     .collect(),
                 locale: group.locale,
                 store_number: group.store_number,
@@ -426,6 +438,7 @@ async fn query_one_store<F: Fetcher>(client: &F, group: StoreGroup) -> StoreOutc
             let mut problems = 0usize;
             // 真正拿到明确答复（有货或无货）的型号数。
             let mut resolved = 0usize;
+            let mut omitted = 0usize;
 
             for part in &group.parts {
                 match result.parts.get(part) {
@@ -433,12 +446,13 @@ async fn query_one_store<F: Fetcher>(client: &F, group: StoreGroup) -> StoreOutc
                         // 请求成功但响应里没有这个型号，通常意味着零件号已经下架
                         // 或写错。这属于「查不到」，绝不能当作「无货」。
                         problems += 1;
+                        omitted += 1;
                         parts.push((
                             part.clone(),
-                            Availability::Unknown(UnknownReason::SchemaDrift {
-                                field: "partsAvailability".into(),
-                                raw: format!("响应中没有型号 {part}"),
+                            Availability::Unknown(UnknownReason::ProductNotReturned {
+                                part_number: part.clone(),
                             }),
+                            None,
                         ));
                     }
                     Some(status) => {
@@ -447,7 +461,11 @@ async fn query_one_store<F: Fetcher>(client: &F, group: StoreGroup) -> StoreOutc
                         } else {
                             resolved += 1;
                         }
-                        parts.push((part.clone(), status.availability.clone()));
+                        parts.push((
+                            part.clone(),
+                            status.availability.clone(),
+                            status.pickup_details.clone(),
+                        ));
                     }
                 }
             }
@@ -458,11 +476,22 @@ async fn query_one_store<F: Fetcher>(client: &F, group: StoreGroup) -> StoreOutc
             let dead = resolved == 0 && !group.parts.is_empty();
             StoreOutcome {
                 trouble: dead.then(|| TroubleReport {
-                    reason: format!(
-                        "门店 {} 的全部型号都没能拿到明确答复，Apple 可能已调整接口",
-                        group.store_number
-                    ),
-                    advice: Some(TroubleAdvice::WaitForUpdate),
+                    reason: if omitted == group.parts.len() {
+                        format!(
+                            "Apple 的门店 {} 响应未包含本次请求的任何型号；暂无库存结论",
+                            group.store_number
+                        )
+                    } else {
+                        format!(
+                            "门店 {} 的全部型号都没能拿到明确答复，请查看逐项日志",
+                            group.store_number
+                        )
+                    },
+                    advice: Some(if omitted == group.parts.len() {
+                        TroubleAdvice::CheckProduct
+                    } else {
+                        TroubleAdvice::WaitForUpdate
+                    }),
                 }),
                 locale: group.locale,
                 store_number: group.store_number,
@@ -721,7 +750,7 @@ impl<F: Fetcher> Engine<F> {
                 });
             }
 
-            for (part, availability) in outcome.parts {
+            for (part, availability, pickup_details) in outcome.parts {
                 let key = TargetKey(format!(
                     "{}|{}|{}",
                     outcome.locale, outcome.store_number, part
@@ -733,6 +762,7 @@ impl<F: Fetcher> Engine<F> {
                 };
 
                 let previous = std::mem::replace(&mut state.availability, availability);
+                let previous_details = std::mem::replace(&mut state.pickup_details, pickup_details);
                 state.last_checked_ms = Some(now);
                 if state.availability.is_failure() {
                     state.consecutive_failures = state.consecutive_failures.saturating_add(1);
@@ -741,7 +771,8 @@ impl<F: Fetcher> Engine<F> {
                 }
 
                 let snapshot = state.clone();
-                if previous != snapshot.availability {
+                if previous != snapshot.availability || previous_details != snapshot.pickup_details
+                {
                     self.emit_droppable(Event::StateChanged {
                         state: snapshot.clone(),
                     });
@@ -765,6 +796,7 @@ impl<F: Fetcher> Engine<F> {
                     detail: "查询任务异常结束，本轮没有拿到结果".into(),
                 });
                 let previous = std::mem::replace(&mut state.availability, unknown);
+                state.pickup_details = None;
                 state.last_checked_ms = Some(now);
                 state.consecutive_failures = state.consecutive_failures.saturating_add(1);
                 (previous != state.availability).then(|| state.clone())

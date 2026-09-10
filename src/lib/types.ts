@@ -15,6 +15,8 @@ export type UnknownReason =
   | { reason: "blocked"; detail: string }
   | { reason: "rate_limited" }
   | { reason: "schema_drift"; field: string; raw: string }
+  | { reason: "no_pickup_data"; store_number: string }
+  | { reason: "product_not_returned"; part_number: string }
   | { reason: "apple_error"; message: string }
   | { reason: "transport"; detail: string };
 
@@ -31,9 +33,17 @@ export interface Target {
   productName: string;
 }
 
+export interface PickupDetails {
+  pickupDisplay: string;
+  pickupQuote: string | null;
+  saleReason: string | null;
+  saleMessage: string | null;
+}
+
 export interface TargetState {
   target: Target;
   availability: Availability;
+  pickupDetails?: PickupDetails;
   lastCheckedMs: number | null;
   consecutiveFailures: number;
 }
@@ -99,7 +109,7 @@ export interface UpdateInfo {
  * 由引擎判定并传过来，而不是让界面去匹配那句中文里有没有「拦截」两个字 ——
  * 那种写法在文案改动或加了别的语言之后会静默失效，而且不会有任何东西报错。
  */
-export type TroubleAdvice = "try_another_network" | "wait_for_update";
+export type TroubleAdvice = "try_another_network" | "wait_for_update" | "check_product";
 
 export interface Trouble {
   reason: string;
@@ -123,7 +133,9 @@ export function describeAdvice(advice: TroubleAdvice): string {
         "程序会延长重试间隔；若持续失败，可重启应用后重试，并对照官网或其他网络检查。"
       );
     case "wait_for_update":
-      return "这个你改设置或换网络都解决不了，需要等程序更新。";
+      return "返回数据与当前解析规则不一致；如果持续出现，需要进一步排查或更新程序。";
+    case "check_product":
+      return "请刷新型号目录，并核对官网是否仍销售该型号、是否已开放取货。暂无数据不等于无货。";
     default:
       return assertNever(advice);
   }
@@ -134,8 +146,8 @@ export function assertNever(x: never): never {
   throw new Error(`未处理的分支：${JSON.stringify(x)}`);
 }
 
-/** 界面上用于区分的四种展示状态。 */
-export type StatusTone = "inStock" | "outOfStock" | "unknown" | "pending";
+/** 界面上用于区分库存、购买限制及查询进度的语义配色。 */
+export type StatusTone = "inStock" | "outOfStock" | "presale" | "comingSoon" | "pickupUnsupported" | "notForSale" | "unknown" | "pending";
 
 /**
  * 把状态翻译成展示用的信息。
@@ -187,6 +199,10 @@ function describeUnknown(a: { kind: "unknown" } & UnknownReason): {
         tone: "unknown",
         detail: `接口返回结构与预期不符：${a.field} = ${compactDiagnostic(a.raw)}`,
       };
+    case "product_not_returned":
+      return { label: "未返回型号", tone: "unknown", detail: "Apple 本次门店响应未包含该 SKU；暂无库存结论，不能视为无货。" };
+    case "no_pickup_data":
+      return { label: "暂无数据", tone: "unknown", detail: "Apple 暂未返回该门店的取货数据；型号可能已下架、尚未开放取货或暂时不可查询，请刷新型号目录并核对官网。" };
     case "apple_error":
       return { label: "未知", tone: "unknown", detail: `Apple 返回错误：${compactDiagnostic(a.message)}` };
     case "transport":

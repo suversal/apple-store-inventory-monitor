@@ -25,7 +25,11 @@
   --ring: oklch(0.58 0.19 265);
   --in-stock: oklch(0.59 0.17 150);
   --unknown: oklch(0.62 0.2 35);
-  --out-of-stock: oklch(0.55 0.02 265);
+  --out-of-stock: #a61b51;
+  --presale: #1d4ed8;
+  --coming-soon: #6d28d9;
+  --pickup-unsupported: #475569;
+  --not-for-sale: #786000;
   --panel-highlight: oklch(1 0 0 / 78%);
   --panel-shadow: oklch(0.2 0.04 270 / 10%);
   --canvas-glow: oklch(0.65 0.19 265 / 12%);
@@ -52,7 +56,11 @@
   --ring: oklch(0.7 0.17 264);
   --in-stock: oklch(0.76 0.18 150);
   --unknown: oklch(0.74 0.16 50);
-  --out-of-stock: oklch(0.65 0.02 265);
+  --out-of-stock: #fb8fb1;
+  --presale: #83b8ff;
+  --coming-soon: #c4a1ff;
+  --pickup-unsupported: #b0bac9;
+  --not-for-sale: #e6cc70;
   --panel-highlight: oklch(0.205 0.02 272 / 92%);
   --panel-shadow: oklch(0.03 0.02 272 / 40%);
   --canvas-glow: oklch(0.5 0.17 270 / 13%);
@@ -84,6 +92,10 @@
   --color-in-stock: var(--in-stock);
   --color-unknown: var(--unknown);
   --color-out-of-stock: var(--out-of-stock);
+  --color-presale: var(--presale);
+  --color-coming-soon: var(--coming-soon);
+  --color-pickup-unsupported: var(--pickup-unsupported);
+  --color-not-for-sale: var(--not-for-sale);
 }
 
 @layer base {

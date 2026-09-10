@@ -11,7 +11,7 @@ use serde::Deserialize;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
-use crate::model::{Availability, Region, UnknownReason};
+use crate::model::{Availability, PickupDetails, Region, UnknownReason};
 
 /// 请求失败的分类。
 ///
@@ -35,6 +35,12 @@ pub enum ApiError {
     #[error("接口返回结构与预期不符：字段 {field} 的取值为 {raw:?}")]
     SchemaDrift { field: String, raw: String },
 
+    /// Apple 返回了已知取货节点，但其中没有门店数据；不是接口字段变更。
+    #[error(
+        "Apple 暂未提供门店 {store_number} 的取货数据；型号可能已下架、尚未开放取货或暂时不可查询"
+    )]
+    NoPickupData { store_number: String },
+
     /// Apple 明确返回了一条业务错误信息。
     #[error("Apple 返回错误：{0}")]
     Apple(String),
@@ -54,6 +60,7 @@ impl ApiError {
             Self::Blocked(detail) => UnknownReason::Blocked { detail },
             Self::RateLimited(_) => UnknownReason::RateLimited,
             Self::SchemaDrift { field, raw } => UnknownReason::SchemaDrift { field, raw },
+            Self::NoPickupData { store_number } => UnknownReason::NoPickupData { store_number },
             Self::Apple(message) => UnknownReason::AppleError { message },
             Self::Transport(detail) => UnknownReason::Transport { detail },
         }
@@ -476,6 +483,7 @@ pub struct PartStatus {
     pub product_title: Option<String>,
     /// 原始字段值，保留下来便于排查问题和适配未来新增的取值。
     pub pickup_display: String,
+    pub pickup_details: Option<PickupDetails>,
 }
 
 /// 单个门店的查询结果。
@@ -509,7 +517,7 @@ struct PickupHead {
 #[derive(Debug, Default, Deserialize)]
 struct PickupBody {
     #[serde(default)]
-    stores: Vec<PickupStore>,
+    stores: Option<Vec<PickupStore>>,
     #[serde(rename = "errorMessage", default)]
     error_message: Option<String>,
     /// fulfillment-messages 的嵌套结构；部分时期也会返回扁平的 body.stores。
@@ -519,8 +527,10 @@ struct PickupBody {
 
 #[derive(Debug, Default, Deserialize)]
 struct PickupContent {
+    #[serde(rename = "deliveryMessage", default)]
+    delivery_message: serde_json::Value,
     #[serde(rename = "pickupMessage", default)]
-    pickup_message: PickupMessageNode,
+    pickup_message: Option<PickupMessageNode>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -557,6 +567,8 @@ struct MessageTypes {
 
 #[derive(Debug, Default, Deserialize)]
 struct RegularMessage {
+    #[serde(rename = "storePickupQuote", default)]
+    store_pickup_quote: Option<String>,
     #[serde(rename = "storePickupProductTitle", default)]
     store_pickup_product_title: Option<String>,
 }
@@ -570,11 +582,28 @@ pub fn parse_pickup_message(raw: &[u8], want_store: &str) -> Result<StoreAvailab
 
     check_envelope(&resp)?;
 
-    let stores = if resp.body.stores.is_empty() {
-        &resp.body.content.pickup_message.stores
-    } else {
-        &resp.body.stores
-    };
+    let stores = resp
+        .body
+        .stores
+        .as_ref()
+        .filter(|stores| !stores.is_empty())
+        .or_else(|| {
+            resp.body
+                .content
+                .pickup_message
+                .as_ref()
+                .map(|node| &node.stores)
+        })
+        .or(resp.body.stores.as_ref())
+        .ok_or_else(|| ApiError::SchemaDrift {
+            field: "body.stores / body.content.pickupMessage".into(),
+            raw: "响应缺少已知的取货数据节点".into(),
+        })?;
+    if stores.is_empty() {
+        return Err(ApiError::NoPickupData {
+            store_number: want_store.to_string(),
+        });
+    }
 
     // 指定了 store 参数时 Apple 只返回该门店，但仍按编号核对，
     // 避免把别的门店的库存错认成目标门店的。
@@ -618,6 +647,26 @@ pub fn parse_pickup_message(raw: &[u8], want_store: &str) -> Result<StoreAvailab
                     .regular
                     .store_pickup_product_title
                     .clone(),
+                pickup_details: Some(PickupDetails {
+                    pickup_display: raw_display.clone(),
+                    pickup_quote: info.message_types.regular.store_pickup_quote.clone(),
+                    sale_reason: resp
+                        .body
+                        .content
+                        .delivery_message
+                        .get(key)
+                        .and_then(|v| v.pointer("/regular/buyability/reason"))
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned),
+                    sale_message: resp
+                        .body
+                        .content
+                        .delivery_message
+                        .get(key)
+                        .and_then(|v| v.pointer("/regular/deliveryOptionMessages/0/displayName"))
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned),
+                }),
                 pickup_display: raw_display,
             },
         );

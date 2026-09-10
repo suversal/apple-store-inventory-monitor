@@ -1,0 +1,46 @@
+{
+  "head": {
+    "status": "200"
+  },
+  "body": {
+    "content": {
+      "pickupMessage": {
+        "stores": [
+          {
+            "storeNumber": "R683",
+            "storeName": "环球港",
+            "partsAvailability": {
+              "MJYH4CH/A": {
+                "partNumber": "MJYH4CH/A",
+                "pickupDisplay": "ineligible",
+                "messageTypes": {
+                  "regular": {
+                    "storePickupQuote": "目前暂不提供 Apple Store 零售店取货服务",
+                    "storePickupProductTitle": "iPhone 18 Pro Max 1TB 勃艮第酒红色"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "deliveryMessage": {
+        "MJYH4CH/A": {
+          "regular": {
+            "buyability": {
+              "commitCode": "9361",
+              "isBuyable": false,
+              "reason": "NOT_FOR_SALE"
+            },
+            "deliveryOptionMessages": [
+              {
+                "displayName": "暂未发售",
+                "inHomeSetup": "false"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

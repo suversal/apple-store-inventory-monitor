@@ -57,6 +57,8 @@ impl Availability {
             Self::InStock => "有货",
             Self::OutOfStock => "无货",
             Self::Unknown(UnknownReason::NotYetChecked) => "待查询",
+            Self::Unknown(UnknownReason::NoPickupData { .. }) => "暂无数据",
+            Self::Unknown(UnknownReason::ProductNotReturned { .. }) => "未返回型号",
             Self::Unknown(_) => "未知",
         }
     }
@@ -90,6 +92,10 @@ pub enum UnknownReason {
     ///
     /// 必须让用户看见。带上出问题的字段与原始取值，否则排查时无从下手。
     SchemaDrift { field: String, raw: String },
+    /// 已知取货节点为空，不代表无货，也不代表接口结构变化。
+    NoPickupData { store_number: String },
+    /// 门店返回了其他商品，但没有返回请求的零件号。
+    ProductNotReturned { part_number: String },
     /// Apple 明确返回了一条业务错误信息。
     AppleError { message: String },
     /// 网络层面的失败：连不上、超时、TLS 出错等。
@@ -106,6 +112,12 @@ impl UnknownReason {
             Self::SchemaDrift { field, raw } => {
                 format!("接口返回结构与预期不符：字段 {field} 的取值为 {raw:?}")
             }
+            Self::NoPickupData { store_number } => format!(
+                "Apple 暂未提供门店 {store_number} 的取货数据；请刷新型号目录并核对官网是否仍销售该型号、是否已开放取货，暂无数据不等于无货"
+            ),
+            Self::ProductNotReturned { part_number } => {
+                format!("Apple 本次门店响应未包含型号 {part_number}；暂无库存结论，不能视为无货")
+            }
             Self::AppleError { message } => format!("Apple 返回错误：{message}"),
             Self::Transport { detail } => format!("网络请求失败：{detail}"),
         }
@@ -117,6 +129,16 @@ impl UnknownReason {
     pub fn is_failure(&self) -> bool {
         !matches!(self, Self::NotYetChecked)
     }
+}
+
+/// 本轮 Apple 返回的商品业务说明，不包含请求头、会话或完整响应。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickupDetails {
+    pub pickup_display: String,
+    pub pickup_quote: Option<String>,
+    pub sale_reason: Option<String>,
+    pub sale_message: Option<String>,
 }
 
 /// 一个可监控的商品品类。

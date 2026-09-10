@@ -198,3 +198,37 @@ fn 监控目标能原样往返() {
     let back: Target = serde_json::from_str(&json).expect("反序列化失败");
     assert_eq!(target, back);
 }
+
+#[test]
+fn 暂无取货数据保留未知类型并提示核对商品() {
+    assert_eq!(
+        to_value(&Availability::Unknown(UnknownReason::NoPickupData {
+            store_number: "R581".into()
+        })),
+        json!({"kind":"unknown","reason":"no_pickup_data","store_number":"R581"})
+    );
+    assert_eq!(
+        to_value(&TroubleAdvice::CheckProduct),
+        json!("check_product")
+    );
+}
+
+#[test]
+fn 缺失型号与业务说明的前端协议稳定() {
+    assert_eq!(
+        to_value(&Availability::Unknown(UnknownReason::ProductNotReturned {
+            part_number: "OLD/A".into()
+        })),
+        json!({"kind":"unknown","reason":"product_not_returned","part_number":"OLD/A"})
+    );
+    let detail = apw_core::model::PickupDetails {
+        pickup_display: "ineligible".into(),
+        pickup_quote: Some("暂不提供取货".into()),
+        sale_reason: Some("NOT_FOR_SALE".into()),
+        sale_message: Some("暂未发售".into()),
+    };
+    assert_eq!(
+        to_value(&detail),
+        json!({"pickupDisplay":"ineligible","pickupQuote":"暂不提供取货","saleReason":"NOT_FOR_SALE","saleMessage":"暂未发售"})
+    );
+}

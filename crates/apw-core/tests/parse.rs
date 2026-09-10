@@ -234,3 +234,69 @@ fn 大小写与空白不影响判定() {
     assert_eq!(availability_from("  AVAILABLE  "), Availability::InStock);
     assert_eq!(availability_from("Unavailable"), Availability::OutOfStock);
 }
+
+#[test]
+fn 已知取货节点为空是暂无数据而不是接口损坏或无货() {
+    for raw in [
+        r#"{"head":{"status":"200"},"body":{"content":{"deliveryMessage":{"processing":""},"pickupMessage":{}}}}"#,
+        r#"{"head":{"status":"200"},"body":{"stores":[]}}"#,
+    ] {
+        let err = parse_pickup_message(raw.as_bytes(), "R581").unwrap_err();
+        assert!(matches!(&err, ApiError::NoPickupData { store_number } if store_number == "R581"));
+        assert!(!err.is_retryable());
+        let status = Availability::Unknown(err.into_unknown_reason());
+        assert_eq!(status.label(), "暂无数据");
+        assert!(!status.is_in_stock());
+        assert!(
+            status
+                .describe_reason()
+                .unwrap()
+                .contains("暂无数据不等于无货")
+        );
+    }
+}
+
+#[test]
+fn 缺少取货节点或节点类型改变仍是结构错误() {
+    for raw in [
+        r#"{}"#,
+        r#"{"body":{"stores":{}}}"#,
+        r#"{"body":{"content":{"pickupMessage":"unexpected"}}}"#,
+    ] {
+        assert!(matches!(
+            parse_pickup_message(raw.as_bytes(), "R581"),
+            Err(ApiError::SchemaDrift { .. })
+        ));
+    }
+}
+
+#[test]
+fn 业务错误优先于空取货节点() {
+    let raw = br#"{"body":{"errorMessage":"Product invalid","content":{"pickupMessage":{}}}}"#;
+    assert!(matches!(
+        parse_pickup_message(raw, "R581"),
+        Err(ApiError::Apple(_))
+    ));
+}
+
+#[test]
+fn 新品实际响应保留未发售与不支持取货的原始说明() {
+    let got = parse_pickup_message(include_bytes!("fixtures/pickup_presale.json"), "R683").unwrap();
+    let part = &got.parts["MJYH4CH/A"];
+    assert_eq!(part.availability, Availability::OutOfStock);
+    let detail = part.pickup_details.as_ref().unwrap();
+    assert_eq!(detail.pickup_display, "ineligible");
+    assert_eq!(detail.sale_reason.as_deref(), Some("NOT_FOR_SALE"));
+    assert_eq!(detail.sale_message.as_deref(), Some("暂未发售"));
+    assert!(detail.pickup_quote.as_ref().unwrap().contains("暂不提供"));
+}
+
+#[test]
+fn 送货数据缺失或形状变化不阻止有效取货判定() {
+    let raw = response(&part("available"));
+    let got = parse_pickup_message(raw.as_bytes(), "R683").unwrap();
+    let detail = got.parts["MG724CH/A"].pickup_details.as_ref().unwrap();
+    assert_eq!(detail.sale_reason, None);
+    assert_eq!(detail.sale_message, None);
+    assert_eq!(got.parts["MG724CH/A"].availability, Availability::InStock);
+}

@@ -26,7 +26,8 @@ import type {
   UpdateInfo,
   WatcherEvent,
 } from "./types";
-import { assertNever, describeAvailability } from "./types";
+import { assertNever } from "./types";
+import { describeCycleRow, describeCycleSummary } from "./monitorLog";
 
 const EVENT_CHANNEL = "watcher://event";
 const NOTICE_CHANNEL = "watcher://notice";
@@ -128,14 +129,6 @@ function formatElapsed(ms: number): string {
   return `${(ms / 1_000).toFixed(1)} 秒`;
 }
 
-function describeCycleRow(cycle: number, row: TargetState): string {
-  const target = `${row.target.storeTitle} ${row.target.productName}`;
-  if (row.availability.kind === "in_stock") return `第 ${cycle} 轮 · 有货：${target}`;
-  if (row.availability.kind === "out_of_stock") return `第 ${cycle} 轮 · 无货：${target}`;
-  const detail = describeAvailability(row.availability).detail ?? "本轮没有拿到可信结果";
-  return `第 ${cycle} 轮 · 异常：${target}（${detail}）`;
-}
-
 function applyEvent(event: WatcherEvent): void {
   switch (event.type) {
     case "stateChanged": {
@@ -167,9 +160,8 @@ function applyEvent(event: WatcherEvent): void {
       const lines = event.snapshot.map((row) => describeCycleRow(event.cycle, row));
       if (recovered) lines.unshift("查询已恢复正常。");
       lines.push(
-        event.healthy
-          ? `第 ${event.cycle} 轮查询完成（耗时 ${formatElapsed(event.elapsedMs)}）；约 ${state.settings.intervalSeconds} 秒后开始下一轮。`
-          : `第 ${event.cycle} 轮查询完成（耗时 ${formatElapsed(event.elapsedMs)}）；异常项目将在下一轮自动重试。`,
+        `第 ${event.cycle} 轮完成（${formatElapsed(event.elapsedMs)}）：${describeCycleSummary(event.snapshot)}。` +
+        (event.healthy ? `约 ${state.settings.intervalSeconds} 秒后查询。` : "未取得结果的项目将自动重试；请按逐项原因核对。"),
       );
       pushLogs(lines);
       break;
