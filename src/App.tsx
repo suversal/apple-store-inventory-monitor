@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 
+import { describeUpdateProgress, updatePercent } from "@/lib/updateStatus";
 import { Combobox } from "@/components/Combobox";
 import { MultiCombobox } from "@/components/MultiCombobox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -51,6 +52,7 @@ import {
   connect,
   dismissUpdate,
   installUpdate,
+  openReleasePage,
   refreshProducts,
   saveSettings,
   setCategory,
@@ -74,6 +76,7 @@ import {
 } from "@/lib/types";
 
 import { describeMonitorStatus } from "@/lib/monitorLog";
+import { compareNewestProducts, sortMonitorsNewestFirst } from "@/lib/productOrder";
 
 const TONE_CLASS: Record<StatusTone, string> = {
   inStock: "bg-in-stock/12 text-in-stock border-in-stock/25",
@@ -159,9 +162,12 @@ export default function App() {
     () =>
       ui.products
         .filter((product) => product.category === ui.category)
+        .sort(compareNewestProducts)
         .map((product) => ({ value: product.partNumber, label: product.title })),
     [ui.products, ui.category],
   );
+
+  const sortedRows = useMemo(() => sortMonitorsNewestFirst(ui.rows), [ui.rows]);
 
   const targets = useMemo(() => ui.rows.map((row) => row.target), [ui.rows]);
 
@@ -258,7 +264,7 @@ export default function App() {
                   </Badge>
                 </div>
                 <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                  Apple 直营店库存监控
+                  Apple 直营店取货库存监控
                 </p>
               </div>
             </div>
@@ -309,14 +315,27 @@ export default function App() {
           {ui.update !== null && (
             <Alert className="shrink-0 rounded-2xl border-primary/20 bg-primary/8 px-4 py-3">
               <Download aria-hidden="true" />
-              <AlertTitle>发现新版本 {ui.update.version}</AlertTitle>
+              <AlertTitle>{ui.updateInstalled ? "更新已安装" : "发现新版本"} {ui.update.version}</AlertTitle>
               <AlertDescription>
-                <span>当前版本 {ui.update.currentVersion}，安装后需重启应用。</span>
+                <span>{ui.updateInstalled ? "请退出并重新打开应用，新版本才会生效。" : `当前版本 ${ui.update.currentVersion}，安装后需重启应用。`}</span>
+                {ui.updateProgress !== null && (
+                  <div className="w-full space-y-1" role="status" aria-live="polite">
+                    <span>{describeUpdateProgress(ui.updateProgress)}</span>
+                    {ui.updateProgress.phase === "downloading" && (
+                      <progress className="block h-2 w-full max-w-sm accent-primary" aria-label="更新下载进度"
+                        max={100} value={updatePercent(ui.updateProgress)} />
+                    )}
+                  </div>
+                )}
+                {ui.updateError !== null && <p className="break-words text-destructive" role="alert">{ui.updateError}</p>}
                 <div className="mt-1.5 flex items-center gap-2">
-                  <Button size="sm" disabled={ui.installing} onClick={() => void installUpdate()}>
-                    {ui.installing ? "正在下载…" : "下载并安装"}
+                  <Button size="sm" disabled={ui.installing || ui.updateInstalled} onClick={() => void installUpdate()}>
+                    {ui.updateInstalled ? "已安装" : ui.installing ? "正在更新…" : ui.updateError ? "重试" : "下载并安装"}
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={dismissUpdate}>
+                  {ui.updateError !== null && (
+                    <Button size="sm" variant="outline" onClick={() => void openReleasePage()}>下载安装包</Button>
+                  )}
+                  <Button size="sm" variant="ghost" disabled={ui.installing} onClick={dismissUpdate}>
                     <X aria-hidden="true" /> 稍后
                   </Button>
                 </div>
@@ -470,7 +489,7 @@ export default function App() {
                     </div>
                     <div>
                       <h2 id="monitor-list-title" className="text-sm font-semibold">监控列表</h2>
-                      <p className="mt-0.5 text-xs text-muted-foreground">库存变化会在这里实时更新</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">新款优先 · 库存变化实时更新</p>
                     </div>
                   </div>
                   <span className="rounded-full border border-border/60 bg-background/40 px-2.5 py-1 text-xs tabular-nums text-muted-foreground">
@@ -507,7 +526,7 @@ export default function App() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        ui.rows.map((row) => (
+                        sortedRows.map((row) => (
                           <TableRow key={targetKey(row.target)} className="group h-14 hover:bg-muted/22">
                             <TableCell className="px-4"><StatusBadge availability={row.availability} pickupDetails={row.pickupDetails} /></TableCell>
                             <TableCell className="px-3 font-medium">{row.target.storeTitle}</TableCell>

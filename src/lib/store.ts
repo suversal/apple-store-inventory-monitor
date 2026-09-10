@@ -10,6 +10,7 @@
  * 设计的，而我们的数据源正是 Rust。再套一层状态库只会制造「再存一份」的诱惑。
  */
 
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
@@ -28,6 +29,8 @@ import type {
 } from "./types";
 import { assertNever } from "./types";
 import { describeCycleRow, describeCycleSummary } from "./monitorLog";
+
+import { describeUpdateError, type UpdateProgress } from "./updateStatus";
 
 const EVENT_CHANNEL = "watcher://event";
 const NOTICE_CHANNEL = "watcher://notice";
@@ -59,6 +62,9 @@ export interface UiState {
   update: UpdateInfo | null;
   /** 正在下载安装更新。 */
   installing: boolean;
+  updateProgress: UpdateProgress | null;
+  updateError: string | null;
+  updateInstalled: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -85,6 +91,9 @@ let state: UiState = {
   ready: false,
   update: null,
   installing: false,
+  updateProgress: null,
+  updateError: null,
+  updateInstalled: false,
 };
 
 const listeners = new Set<() => void>();
@@ -369,18 +378,38 @@ export async function checkForUpdate(opts?: { quiet?: boolean }): Promise<void> 
  * 自作主张地下载、替换、重启，正好会赶上最不该被打断的时刻。
  */
 export async function installUpdate(): Promise<void> {
-  if (state.installing) return;
-  update({ installing: true });
+  if (state.installing || state.updateInstalled) return;
+  update({ installing: true, updateError: null,
+    updateProgress: { phase: "checking", downloaded: 0, total: null } });
+  let unlisten: UnlistenFn | undefined;
   try {
+    // 先监听再发起下载，保证首个进度事件不会丢失。
+    unlisten = await listen<UpdateProgress>("watcher://update-progress", (event) => {
+      update({ updateProgress: event.payload });
+    });
     await invoke("install_update");
-    pushLog("更新已安装，重启应用后生效。");
+    update({ updateInstalled: true, updateProgress: null });
+    pushLog("更新已安装，请退出并重新打开应用。");
   } catch (err) {
-    pushLog(`安装更新失败：${String(err)}`);
+    const message = describeUpdateError(err);
+    update({ updateError: message, updateProgress: null });
+    pushLog(message);
   } finally {
+    unlisten?.();
     update({ installing: false });
   }
 }
 
 export function dismissUpdate(): void {
-  update({ update: null });
+  if (state.installing) return;
+  update({ update: null, updateError: null });
+}
+
+/** 自动更新不可用时，打开本项目的完整安装包下载页。 */
+export async function openReleasePage(): Promise<void> {
+  try {
+    await openUrl("https://github.com/suversal/apple-store-inventory-monitor/releases/latest");
+  } catch (err) {
+    update({ updateError: `无法打开下载页：${String(err)}` });
+  }
 }

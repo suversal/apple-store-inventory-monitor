@@ -116,6 +116,9 @@ jobs:
       - name: 安装前端依赖
         run: pnpm install --frozen-lockfile
 
+      - name: 前端状态与更新提示测试
+        run: pnpm test
+
       - name: TypeScript 类型检查
         run: pnpm exec tsc --noEmit
 

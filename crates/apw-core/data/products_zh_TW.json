@@ -1,6 +1,78 @@
 [
   {
     "category": "iphone",
+    "family": "iphone-16",
+    "data": {
+      "products": [
+        {
+          "partNumber": "MYE73ZP/A",
+          "familyType": "iphone16",
+          "dimensionCapacity": "128gb",
+          "dimensionScreensize": "6_1inch",
+          "dimensionColor": "black"
+        },
+        {
+          "partNumber": "MYE93ZP/A",
+          "familyType": "iphone16",
+          "dimensionCapacity": "128gb",
+          "dimensionScreensize": "6_1inch",
+          "dimensionColor": "white"
+        },
+        {
+          "partNumber": "MYEA3ZP/A",
+          "familyType": "iphone16",
+          "dimensionCapacity": "128gb",
+          "dimensionScreensize": "6_1inch",
+          "dimensionColor": "pink"
+        },
+        {
+          "partNumber": "MYEC3ZP/A",
+          "familyType": "iphone16",
+          "dimensionCapacity": "128gb",
+          "dimensionScreensize": "6_1inch",
+          "dimensionColor": "ultramarine"
+        },
+        {
+          "partNumber": "MYED3ZP/A",
+          "familyType": "iphone16",
+          "dimensionCapacity": "128gb",
+          "dimensionScreensize": "6_1inch",
+          "dimensionColor": "teal"
+        }
+      ],
+      "displayValues": {
+        "dimensionScreensize": {
+          "6_1inch": {
+            "value": "iPhone&nbsp;16\n<span class=\"form-label-small\">6.1 吋顯示器<as-footnote data-id=\"8054edc379d142293eb3940b1a8ea8d1\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote><br /><br />配備 128GB 儲存空間</span>"
+          }
+        },
+        "dimensionColor": {
+          "black": {
+            "value": "黑色"
+          },
+          "pink": {
+            "value": "粉紅色"
+          },
+          "teal": {
+            "value": "湖水綠色"
+          },
+          "ultramarine": {
+            "value": "湛海藍色"
+          },
+          "white": {
+            "value": "白色"
+          }
+        },
+        "dimensionCapacity": {
+          "128gb": {
+            "value": "128<small>GB</small><as-footnote data-id=\"6c341d797a26c8d39cc2f0a6925a8d4e\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>1</sup></as-footnote>"
+          }
+        }
+      }
+    }
+  },
+  {
+    "category": "iphone",
     "family": "iphone-17",
     "data": {
       "products": [
@@ -96,172 +168,317 @@
   },
   {
     "category": "iphone",
-    "family": "iphone-17-pro",
+    "family": "iphone-17e",
     "data": {
       "products": [
         {
-          "partNumber": "MFYM4ZP/A",
-          "familyType": "iphone17promax",
+          "partNumber": "MHRV4ZP/A",
+          "familyType": "iphone17e",
+          "dimensionCapacity": "256gb",
+          "dimensionColor": "black"
+        },
+        {
+          "partNumber": "MHRW4ZP/A",
+          "familyType": "iphone17e",
+          "dimensionCapacity": "256gb",
+          "dimensionColor": "white"
+        },
+        {
+          "partNumber": "MHRX4ZP/A",
+          "familyType": "iphone17e",
+          "dimensionCapacity": "256gb",
+          "dimensionColor": "soft_pink"
+        },
+        {
+          "partNumber": "MHRY4ZP/A",
+          "familyType": "iphone17e",
+          "dimensionCapacity": "512gb",
+          "dimensionColor": "black"
+        },
+        {
+          "partNumber": "MHU04ZP/A",
+          "familyType": "iphone17e",
+          "dimensionCapacity": "512gb",
+          "dimensionColor": "white"
+        },
+        {
+          "partNumber": "MHU34ZP/A",
+          "familyType": "iphone17e",
+          "dimensionCapacity": "512gb",
+          "dimensionColor": "soft_pink"
+        }
+      ],
+      "displayValues": {
+        "dimensionColor": {
+          "black": {
+            "value": "黑色"
+          },
+          "soft_pink": {
+            "value": "嫩粉色"
+          },
+          "white": {
+            "value": "白色"
+          }
+        },
+        "dimensionCapacity": {
+          "256gb": {
+            "value": "256<small>GB</small><as-footnote data-id=\"6c341d797a26c8d39cc2f0a6925a8d4e\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>1</sup></as-footnote>"
+          },
+          "512gb": {
+            "value": "512<small>GB</small><as-footnote data-id=\"6c341d797a26c8d39cc2f0a6925a8d4e\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>1</sup></as-footnote>"
+          }
+        }
+      }
+    }
+  },
+  {
+    "category": "iphone",
+    "family": "iphone-18-pro",
+    "data": {
+      "products": [
+        {
+          "partNumber": "MJRP4ZP/A",
+          "familyType": "iphone18pro",
+          "dimensionCapacity": "256gb",
+          "dimensionScreensize": "6_3inch",
+          "dimensionColor": "black"
+        },
+        {
+          "partNumber": "MJRQ4ZP/A",
+          "familyType": "iphone18pro",
+          "dimensionCapacity": "256gb",
+          "dimensionScreensize": "6_3inch",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MJRR4ZP/A",
+          "familyType": "iphone18pro",
+          "dimensionCapacity": "256gb",
+          "dimensionScreensize": "6_3inch",
+          "dimensionColor": "burgundy"
+        },
+        {
+          "partNumber": "MJRT4ZP/A",
+          "familyType": "iphone18pro",
+          "dimensionCapacity": "256gb",
+          "dimensionScreensize": "6_3inch",
+          "dimensionColor": "glacier"
+        },
+        {
+          "partNumber": "MJRU4ZP/A",
+          "familyType": "iphone18pro",
+          "dimensionCapacity": "512gb",
+          "dimensionScreensize": "6_3inch",
+          "dimensionColor": "black"
+        },
+        {
+          "partNumber": "MJRV4ZP/A",
+          "familyType": "iphone18pro",
+          "dimensionCapacity": "512gb",
+          "dimensionScreensize": "6_3inch",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MJRW4ZP/A",
+          "familyType": "iphone18pro",
+          "dimensionCapacity": "512gb",
+          "dimensionScreensize": "6_3inch",
+          "dimensionColor": "burgundy"
+        },
+        {
+          "partNumber": "MJRX4ZP/A",
+          "familyType": "iphone18pro",
+          "dimensionCapacity": "512gb",
+          "dimensionScreensize": "6_3inch",
+          "dimensionColor": "glacier"
+        },
+        {
+          "partNumber": "MJRY4ZP/A",
+          "familyType": "iphone18pro",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "6_3inch",
+          "dimensionColor": "black"
+        },
+        {
+          "partNumber": "MJT04ZP/A",
+          "familyType": "iphone18pro",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "6_3inch",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MJT14ZP/A",
+          "familyType": "iphone18pro",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "6_3inch",
+          "dimensionColor": "burgundy"
+        },
+        {
+          "partNumber": "MJT24ZP/A",
+          "familyType": "iphone18pro",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "6_3inch",
+          "dimensionColor": "glacier"
+        },
+        {
+          "partNumber": "MJT34ZP/A",
+          "familyType": "iphone18pro",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "6_3inch",
+          "dimensionColor": "black"
+        },
+        {
+          "partNumber": "MJT44ZP/A",
+          "familyType": "iphone18pro",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "6_3inch",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MJT54ZP/A",
+          "familyType": "iphone18pro",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "6_3inch",
+          "dimensionColor": "burgundy"
+        },
+        {
+          "partNumber": "MJT64ZP/A",
+          "familyType": "iphone18pro",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "6_3inch",
+          "dimensionColor": "glacier"
+        },
+        {
+          "partNumber": "MJXN4ZP/A",
+          "familyType": "iphone18promax",
+          "dimensionCapacity": "256gb",
+          "dimensionScreensize": "6_9inch",
+          "dimensionColor": "black"
+        },
+        {
+          "partNumber": "MJXP4ZP/A",
+          "familyType": "iphone18promax",
           "dimensionCapacity": "256gb",
           "dimensionScreensize": "6_9inch",
           "dimensionColor": "silver"
         },
         {
-          "partNumber": "MFYN4ZP/A",
-          "familyType": "iphone17promax",
+          "partNumber": "MJXQ4ZP/A",
+          "familyType": "iphone18promax",
           "dimensionCapacity": "256gb",
           "dimensionScreensize": "6_9inch",
-          "dimensionColor": "cosmicorange"
+          "dimensionColor": "burgundy"
         },
         {
-          "partNumber": "MFYP4ZP/A",
-          "familyType": "iphone17promax",
+          "partNumber": "MJXR4ZP/A",
+          "familyType": "iphone18promax",
           "dimensionCapacity": "256gb",
           "dimensionScreensize": "6_9inch",
-          "dimensionColor": "deepblue"
+          "dimensionColor": "glacier"
         },
         {
-          "partNumber": "MFYQ4ZP/A",
-          "familyType": "iphone17promax",
+          "partNumber": "MJXT4ZP/A",
+          "familyType": "iphone18promax",
+          "dimensionCapacity": "512gb",
+          "dimensionScreensize": "6_9inch",
+          "dimensionColor": "black"
+        },
+        {
+          "partNumber": "MJXU4ZP/A",
+          "familyType": "iphone18promax",
           "dimensionCapacity": "512gb",
           "dimensionScreensize": "6_9inch",
           "dimensionColor": "silver"
         },
         {
-          "partNumber": "MFYT4ZP/A",
-          "familyType": "iphone17promax",
+          "partNumber": "MJXV4ZP/A",
+          "familyType": "iphone18promax",
           "dimensionCapacity": "512gb",
           "dimensionScreensize": "6_9inch",
-          "dimensionColor": "cosmicorange"
+          "dimensionColor": "burgundy"
         },
         {
-          "partNumber": "MFYU4ZP/A",
-          "familyType": "iphone17promax",
+          "partNumber": "MJXW4ZP/A",
+          "familyType": "iphone18promax",
           "dimensionCapacity": "512gb",
           "dimensionScreensize": "6_9inch",
-          "dimensionColor": "deepblue"
+          "dimensionColor": "glacier"
         },
         {
-          "partNumber": "MFYV4ZP/A",
-          "familyType": "iphone17promax",
+          "partNumber": "MJXX4ZP/A",
+          "familyType": "iphone18promax",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "6_9inch",
+          "dimensionColor": "black"
+        },
+        {
+          "partNumber": "MJXY4ZP/A",
+          "familyType": "iphone18promax",
           "dimensionCapacity": "1tb",
           "dimensionScreensize": "6_9inch",
           "dimensionColor": "silver"
         },
         {
-          "partNumber": "MFYW4ZP/A",
-          "familyType": "iphone17promax",
+          "partNumber": "MJY04ZP/A",
+          "familyType": "iphone18promax",
           "dimensionCapacity": "1tb",
           "dimensionScreensize": "6_9inch",
-          "dimensionColor": "cosmicorange"
+          "dimensionColor": "burgundy"
         },
         {
-          "partNumber": "MFYX4ZP/A",
-          "familyType": "iphone17promax",
+          "partNumber": "MJY14ZP/A",
+          "familyType": "iphone18promax",
           "dimensionCapacity": "1tb",
           "dimensionScreensize": "6_9inch",
-          "dimensionColor": "deepblue"
+          "dimensionColor": "glacier"
         },
         {
-          "partNumber": "MFYY4ZP/A",
-          "familyType": "iphone17promax",
+          "partNumber": "MJY24ZP/A",
+          "familyType": "iphone18promax",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "6_9inch",
+          "dimensionColor": "black"
+        },
+        {
+          "partNumber": "MJY34ZP/A",
+          "familyType": "iphone18promax",
           "dimensionCapacity": "2tb",
           "dimensionScreensize": "6_9inch",
           "dimensionColor": "silver"
         },
         {
-          "partNumber": "MG004ZP/A",
-          "familyType": "iphone17promax",
+          "partNumber": "MJY44ZP/A",
+          "familyType": "iphone18promax",
           "dimensionCapacity": "2tb",
           "dimensionScreensize": "6_9inch",
-          "dimensionColor": "cosmicorange"
+          "dimensionColor": "burgundy"
         },
         {
-          "partNumber": "MG014ZP/A",
-          "familyType": "iphone17promax",
+          "partNumber": "MJY54ZP/A",
+          "familyType": "iphone18promax",
           "dimensionCapacity": "2tb",
           "dimensionScreensize": "6_9inch",
-          "dimensionColor": "deepblue"
-        },
-        {
-          "partNumber": "MG8G4ZP/A",
-          "familyType": "iphone17pro",
-          "dimensionCapacity": "256gb",
-          "dimensionScreensize": "6_3inch",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MG8H4ZP/A",
-          "familyType": "iphone17pro",
-          "dimensionCapacity": "256gb",
-          "dimensionScreensize": "6_3inch",
-          "dimensionColor": "cosmicorange"
-        },
-        {
-          "partNumber": "MG8J4ZP/A",
-          "familyType": "iphone17pro",
-          "dimensionCapacity": "256gb",
-          "dimensionScreensize": "6_3inch",
-          "dimensionColor": "deepblue"
-        },
-        {
-          "partNumber": "MG8K4ZP/A",
-          "familyType": "iphone17pro",
-          "dimensionCapacity": "512gb",
-          "dimensionScreensize": "6_3inch",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MG8M4ZP/A",
-          "familyType": "iphone17pro",
-          "dimensionCapacity": "512gb",
-          "dimensionScreensize": "6_3inch",
-          "dimensionColor": "cosmicorange"
-        },
-        {
-          "partNumber": "MG8N4ZP/A",
-          "familyType": "iphone17pro",
-          "dimensionCapacity": "512gb",
-          "dimensionScreensize": "6_3inch",
-          "dimensionColor": "deepblue"
-        },
-        {
-          "partNumber": "MG8P4ZP/A",
-          "familyType": "iphone17pro",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "6_3inch",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MG8Q4ZP/A",
-          "familyType": "iphone17pro",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "6_3inch",
-          "dimensionColor": "cosmicorange"
-        },
-        {
-          "partNumber": "MG8R4ZP/A",
-          "familyType": "iphone17pro",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "6_3inch",
-          "dimensionColor": "deepblue"
+          "dimensionColor": "glacier"
         }
       ],
       "displayValues": {
         "dimensionScreensize": {
           "6_3inch": {
-            "value": "iPhone&nbsp;17&nbsp;Pro\n<span class=\"form-label-small\">6.3 吋顯示器<as-footnote data-id=\"8054edc379d142293eb3940b1a8ea8d1\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote></span>"
+            "value": "iPhone&nbsp;18&nbsp;Pro\n<span class=\"form-label-small\">6.3 吋顯示器<as-footnote data-id=\"8054edc379d142293eb3940b1a8ea8d1\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote></span>"
           },
           "6_9inch": {
-            "value": "iPhone&nbsp;17&nbsp;Pro&nbsp;Max\n<span class=\"form-label-small\">6.9 吋顯示器<as-footnote data-id=\"8054edc379d142293eb3940b1a8ea8d1\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote></span>"
+            "value": "iPhone&nbsp;18&nbsp;Pro&nbsp;Max\n<span class=\"form-label-small\">6.9 吋顯示器<as-footnote data-id=\"8054edc379d142293eb3940b1a8ea8d1\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote></span>"
           }
         },
         "dimensionColor": {
-          "cosmicorange": {
-            "value": "宇宙橙色"
+          "black": {
+            "value": "黑色"
           },
-          "deepblue": {
-            "value": "藏藍色"
+          "burgundy": {
+            "value": "勃根地紅色"
+          },
+          "glacier": {
+            "value": "冰川藍色"
           },
           "silver": {
             "value": "銀色"
@@ -392,480 +609,283 @@
     }
   },
   {
-    "category": "ipad",
-    "family": "ipad-pro",
+    "category": "iphone",
+    "family": "iphone-duo",
     "data": {
       "products": [
         {
-          "partNumber": "MDWK4TA/A",
-          "familyType": "ipadpro11_m5_2025",
+          "partNumber": "MK2D4ZP/A",
+          "familyType": "iphoneduo",
           "dimensionCapacity": "256gb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "spaceblack"
+          "dimensionColor": "starwhite"
         },
         {
-          "partNumber": "MDWL4TA/A",
-          "familyType": "ipadpro11_m5_2025",
+          "partNumber": "MK2E4ZP/A",
+          "familyType": "iphoneduo",
           "dimensionCapacity": "256gb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "silver"
+          "dimensionColor": "nightsky"
         },
         {
-          "partNumber": "MDWM4TA/A",
-          "familyType": "ipadpro11_m5_2025",
+          "partNumber": "MK2F4ZP/A",
+          "familyType": "iphoneduo",
           "dimensionCapacity": "512gb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "spaceblack"
+          "dimensionColor": "starwhite"
         },
         {
-          "partNumber": "MDWN4TA/A",
-          "familyType": "ipadpro11_m5_2025",
+          "partNumber": "MK2G4ZP/A",
+          "familyType": "iphoneduo",
           "dimensionCapacity": "512gb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "silver"
+          "dimensionColor": "nightsky"
         },
         {
-          "partNumber": "MDWP4TA/A",
-          "familyType": "ipadpro11_m5_2025",
+          "partNumber": "MK2H4ZP/A",
+          "familyType": "iphoneduo",
           "dimensionCapacity": "1tb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "spaceblack"
+          "dimensionColor": "starwhite"
         },
         {
-          "partNumber": "MDWQ4TA/A",
-          "familyType": "ipadpro11_m5_2025",
+          "partNumber": "MK2J4ZP/A",
+          "familyType": "iphoneduo",
           "dimensionCapacity": "1tb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "silver"
+          "dimensionColor": "nightsky"
         },
         {
-          "partNumber": "MDWR4TA/A",
-          "familyType": "ipadpro11_m5_2025",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "matte",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "MDWT4TA/A",
-          "familyType": "ipadpro11_m5_2025",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "matte",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MDWU4TA/A",
-          "familyType": "ipadpro11_m5_2025",
+          "partNumber": "MK2K4ZP/A",
+          "familyType": "iphoneduo",
           "dimensionCapacity": "2tb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "spaceblack"
+          "dimensionColor": "starwhite"
         },
         {
-          "partNumber": "MDWV4TA/A",
-          "familyType": "ipadpro11_m5_2025",
+          "partNumber": "MK2L4ZP/A",
+          "familyType": "iphoneduo",
           "dimensionCapacity": "2tb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MDWW4TA/A",
-          "familyType": "ipadpro11_m5_2025",
-          "dimensionCapacity": "2tb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "matte",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "MDWX4TA/A",
-          "familyType": "ipadpro11_m5_2025",
-          "dimensionCapacity": "2tb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "matte",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MDYJ4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "256gb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "MDYK4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "256gb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MDYL4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "512gb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "MDYM4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "512gb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MDYN4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "MDYP4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MDYQ4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "matte",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "MDYR4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "matte",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MDYT4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "2tb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "MDYU4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "2tb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MDYV4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "2tb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "matte",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "MDYW4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "2tb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "matte",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "ME2N4TA/A",
-          "familyType": "ipadpro11_m5_2025",
-          "dimensionCapacity": "256gb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "ME2P4TA/A",
-          "familyType": "ipadpro11_m5_2025",
-          "dimensionCapacity": "256gb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "ME2Q4TA/A",
-          "familyType": "ipadpro11_m5_2025",
-          "dimensionCapacity": "512gb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "ME2T4TA/A",
-          "familyType": "ipadpro11_m5_2025",
-          "dimensionCapacity": "512gb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "ME2U4TA/A",
-          "familyType": "ipadpro11_m5_2025",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "ME2V4TA/A",
-          "familyType": "ipadpro11_m5_2025",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "ME2W4TA/A",
-          "familyType": "ipadpro11_m5_2025",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "matte",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "ME2X4TA/A",
-          "familyType": "ipadpro11_m5_2025",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "matte",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "ME2Y4TA/A",
-          "familyType": "ipadpro11_m5_2025",
-          "dimensionCapacity": "2tb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "ME6A4TA/A",
-          "familyType": "ipadpro11_m5_2025",
-          "dimensionCapacity": "2tb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "ME6C4TA/A",
-          "familyType": "ipadpro11_m5_2025",
-          "dimensionCapacity": "2tb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "matte",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "ME6D4TA/A",
-          "familyType": "ipadpro11_m5_2025",
-          "dimensionCapacity": "2tb",
-          "dimensionScreensize": "11inch",
-          "dimensionFinish": "matte",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "ME7W4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "256gb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "ME7X4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "256gb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "ME7Y4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "512gb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "ME8C4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "512gb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "ME8D4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "ME8F4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "ME8G4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "matte",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "ME8H4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "1tb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "matte",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "ME8J4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "2tb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "ME8K4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "2tb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "glossy",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "ME8M4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "2tb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "matte",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "spaceblack"
-        },
-        {
-          "partNumber": "ME8N4TA/A",
-          "familyType": "ipadpro13_m5_2025",
-          "dimensionCapacity": "2tb",
-          "dimensionScreensize": "13inch",
-          "dimensionFinish": "matte",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "silver"
+          "dimensionColor": "nightsky"
         }
       ],
       "displayValues": {
-        "dimensionScreensize": {
-          "11inch": {
-            "value": "11 吋機型<div class=\"form-label-small\">Ultra&nbsp;Retina&nbsp;XDR 顯示器</div>"
-          },
-          "13inch": {
-            "value": "13 吋機型<div class=\"form-label-small\">Ultra&nbsp;Retina&nbsp;XDR 顯示器</div>"
-          }
-        },
         "dimensionColor": {
-          "silver": {
-            "value": "銀色"
+          "nightsky": {
+            "value": "夜空色"
           },
-          "spaceblack": {
-            "value": "太空黑色"
+          "starwhite": {
+            "value": "星光白色"
           }
         },
         "dimensionCapacity": {
           "1tb": {
-            "value": "1<small>TB</small> 儲存裝置<as-footnote data-id=\"e5a7a109be4b57ed5106570bd8020b91\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote>\n<div class=\"typography-caption\">16GB 記憶體</div>\n<div class=\"form-label-small\">M5 晶片：<br />10 核心 CPU、10 核心 GPU</div>"
+            "value": "1<small>TB</small><as-footnote data-id=\"6c341d797a26c8d39cc2f0a6925a8d4e\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>1</sup></as-footnote>\n"
           },
           "256gb": {
-            "value": "256<small>GB</small> 儲存裝置<as-footnote data-id=\"e5a7a109be4b57ed5106570bd8020b91\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote>\n<div class=\"typography-caption\">12GB 記憶體</div>\n<div class=\"form-label-small\">M5 晶片：<br />9 核心 CPU、10 核心 GPU</div>"
+            "value": "256<small>GB</small><as-footnote data-id=\"6c341d797a26c8d39cc2f0a6925a8d4e\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>1</sup></as-footnote>"
           },
           "2tb": {
-            "value": "2<small>TB</small> 儲存裝置<as-footnote data-id=\"e5a7a109be4b57ed5106570bd8020b91\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote>\n<div class=\"typography-caption\">16GB 記憶體</div>\n<div class=\"form-label-small\">M5 晶片：<br />10 核心 CPU、10 核心 GPU</div>"
+            "value": "2<small>TB</small><as-footnote data-id=\"6c341d797a26c8d39cc2f0a6925a8d4e\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>1</sup></as-footnote>"
           },
           "512gb": {
-            "value": "512<small>GB</small>儲存裝置<as-footnote data-id=\"e5a7a109be4b57ed5106570bd8020b91\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote>\n<div class=\"typography-caption\">12GB 記憶體</div>\n<div class=\"form-label-small\">M5 晶片：<br />9 核心 CPU、10 核心 GPU</div>"
+            "value": "512<small>GB</small><as-footnote data-id=\"6c341d797a26c8d39cc2f0a6925a8d4e\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>1</sup></as-footnote>"
+          }
+        }
+      }
+    }
+  },
+  {
+    "category": "ipad",
+    "family": "ipad",
+    "data": {
+      "products": [
+        {
+          "partNumber": "MD3Y4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "128gb",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MD4A4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "128gb",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "blue"
+        },
+        {
+          "partNumber": "MD4D4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "128gb",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "yellow"
+        },
+        {
+          "partNumber": "MD4E4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "128gb",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "pink"
+        },
+        {
+          "partNumber": "MD4G4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "256gb",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MD4H4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "256gb",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "blue"
+        },
+        {
+          "partNumber": "MD4J4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "256gb",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "yellow"
+        },
+        {
+          "partNumber": "MD4P4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "256gb",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "pink"
+        },
+        {
+          "partNumber": "MD4Q4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "512gb",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MD4Y4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "512gb",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "blue"
+        },
+        {
+          "partNumber": "MD5A4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "512gb",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "yellow"
+        },
+        {
+          "partNumber": "MD5C4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "512gb",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "pink"
+        },
+        {
+          "partNumber": "MD7F4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "128gb",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MD7G4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "128gb",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "blue"
+        },
+        {
+          "partNumber": "MD7H4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "128gb",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "yellow"
+        },
+        {
+          "partNumber": "MD7J4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "128gb",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "pink"
+        },
+        {
+          "partNumber": "MD7K4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "256gb",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MD7L4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "256gb",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "blue"
+        },
+        {
+          "partNumber": "MD7M4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "256gb",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "yellow"
+        },
+        {
+          "partNumber": "MD7N4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "256gb",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "pink"
+        },
+        {
+          "partNumber": "MD7P4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "512gb",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MD7Q4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "512gb",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "blue"
+        },
+        {
+          "partNumber": "MD7R4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "512gb",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "yellow"
+        },
+        {
+          "partNumber": "MD7T4TA/A",
+          "familyType": "ipada16_2025",
+          "dimensionCapacity": "512gb",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "pink"
+        }
+      ],
+      "displayValues": {
+        "dimensionColor": {
+          "blue": {
+            "value": "藍色"
+          },
+          "pink": {
+            "value": "粉紅色"
+          },
+          "silver": {
+            "value": "銀色"
+          },
+          "yellow": {
+            "value": "黃色"
           }
         },
-        "dimensionFinish": {
-          "glossy": {
-            "value": "標準玻璃"
+        "dimensionCapacity": {
+          "128gb": {
+            "value": "128<small>GB<as-footnote data-id=\"bfdc3fa0145f0c58aa770d6d0542dbf2\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote></small>"
           },
-          "matte": {
-            "value": "奈米紋理玻璃\n<div class=\"form-label-small\">於配備 1TB 或 2TB 儲存空間的機型提供</div>"
+          "256gb": {
+            "value": "256<small>GB<as-footnote data-id=\"bfdc3fa0145f0c58aa770d6d0542dbf2\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote></small>"
+          },
+          "512gb": {
+            "value": "512<small>GB<as-footnote data-id=\"bfdc3fa0145f0c58aa770d6d0542dbf2\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote></small>"
           }
         },
         "dimensionConnection": {
@@ -1447,217 +1467,6 @@
   },
   {
     "category": "ipad",
-    "family": "ipad",
-    "data": {
-      "products": [
-        {
-          "partNumber": "MD3Y4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "128gb",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MD4A4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "128gb",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "blue"
-        },
-        {
-          "partNumber": "MD4D4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "128gb",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "yellow"
-        },
-        {
-          "partNumber": "MD4E4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "128gb",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "pink"
-        },
-        {
-          "partNumber": "MD4G4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "256gb",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MD4H4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "256gb",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "blue"
-        },
-        {
-          "partNumber": "MD4J4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "256gb",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "yellow"
-        },
-        {
-          "partNumber": "MD4P4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "256gb",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "pink"
-        },
-        {
-          "partNumber": "MD4Q4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "512gb",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MD4Y4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "512gb",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "blue"
-        },
-        {
-          "partNumber": "MD5A4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "512gb",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "yellow"
-        },
-        {
-          "partNumber": "MD5C4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "512gb",
-          "dimensionConnection": "wifi",
-          "dimensionColor": "pink"
-        },
-        {
-          "partNumber": "MD7F4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "128gb",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MD7G4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "128gb",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "blue"
-        },
-        {
-          "partNumber": "MD7H4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "128gb",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "yellow"
-        },
-        {
-          "partNumber": "MD7J4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "128gb",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "pink"
-        },
-        {
-          "partNumber": "MD7K4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "256gb",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MD7L4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "256gb",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "blue"
-        },
-        {
-          "partNumber": "MD7M4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "256gb",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "yellow"
-        },
-        {
-          "partNumber": "MD7N4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "256gb",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "pink"
-        },
-        {
-          "partNumber": "MD7P4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "512gb",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "silver"
-        },
-        {
-          "partNumber": "MD7Q4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "512gb",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "blue"
-        },
-        {
-          "partNumber": "MD7R4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "512gb",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "yellow"
-        },
-        {
-          "partNumber": "MD7T4TA/A",
-          "familyType": "ipada16_2025",
-          "dimensionCapacity": "512gb",
-          "dimensionConnection": "wificell",
-          "dimensionColor": "pink"
-        }
-      ],
-      "displayValues": {
-        "dimensionColor": {
-          "blue": {
-            "value": "藍色"
-          },
-          "pink": {
-            "value": "粉紅色"
-          },
-          "silver": {
-            "value": "銀色"
-          },
-          "yellow": {
-            "value": "黃色"
-          }
-        },
-        "dimensionCapacity": {
-          "128gb": {
-            "value": "128<small>GB<as-footnote data-id=\"bfdc3fa0145f0c58aa770d6d0542dbf2\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote></small>"
-          },
-          "256gb": {
-            "value": "256<small>GB<as-footnote data-id=\"bfdc3fa0145f0c58aa770d6d0542dbf2\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote></small>"
-          },
-          "512gb": {
-            "value": "512<small>GB<as-footnote data-id=\"bfdc3fa0145f0c58aa770d6d0542dbf2\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote></small>"
-          }
-        },
-        "dimensionConnection": {
-          "wifi": {
-            "value": "Wi-Fi<div class=\"form-label-small\">每部 iPad 皆可連線 Wi-Fi，你可以撥打電話、傳送訊息，以及使用 FaceTime。</div>"
-          },
-          "wificell": {
-            "value": "Wi-Fi + 行動網路<div class=\"form-label-small\">Wi-Fi + 行動網路機型讓你在無法使用 Wi-Fi 時也能進行連線。</div>"
-          }
-        }
-      }
-    }
-  },
-  {
-    "category": "ipad",
     "family": "ipad-mini",
     "data": {
       "products": [
@@ -1868,12 +1677,710 @@
     }
   },
   {
+    "category": "ipad",
+    "family": "ipad-pro",
+    "data": {
+      "products": [
+        {
+          "partNumber": "MDWK4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "256gb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "MDWL4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "256gb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MDWM4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "512gb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "MDWN4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "512gb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MDWP4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "MDWQ4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MDWR4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "matte",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "MDWT4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "matte",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MDWU4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "MDWV4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MDWW4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "matte",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "MDWX4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "matte",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MDYJ4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "256gb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "MDYK4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "256gb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MDYL4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "512gb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "MDYM4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "512gb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MDYN4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "MDYP4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MDYQ4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "matte",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "MDYR4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "matte",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MDYT4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "MDYU4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "MDYV4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "matte",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "MDYW4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "matte",
+          "dimensionConnection": "wifi",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "ME2N4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "256gb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "ME2P4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "256gb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "ME2Q4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "512gb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "ME2T4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "512gb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "ME2U4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "ME2V4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "ME2W4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "matte",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "ME2X4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "matte",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "ME2Y4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "ME6A4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "ME6C4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "matte",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "ME6D4TA/A",
+          "familyType": "ipadpro11_m5_2025",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "11inch",
+          "dimensionFinish": "matte",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "ME7W4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "256gb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "ME7X4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "256gb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "ME7Y4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "512gb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "ME8C4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "512gb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "ME8D4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "ME8F4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "ME8G4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "matte",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "ME8H4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "1tb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "matte",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "ME8J4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "ME8K4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "glossy",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "silver"
+        },
+        {
+          "partNumber": "ME8M4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "matte",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "spaceblack"
+        },
+        {
+          "partNumber": "ME8N4TA/A",
+          "familyType": "ipadpro13_m5_2025",
+          "dimensionCapacity": "2tb",
+          "dimensionScreensize": "13inch",
+          "dimensionFinish": "matte",
+          "dimensionConnection": "wificell",
+          "dimensionColor": "silver"
+        }
+      ],
+      "displayValues": {
+        "dimensionScreensize": {
+          "11inch": {
+            "value": "11 吋機型<div class=\"form-label-small\">Ultra&nbsp;Retina&nbsp;XDR 顯示器</div>"
+          },
+          "13inch": {
+            "value": "13 吋機型<div class=\"form-label-small\">Ultra&nbsp;Retina&nbsp;XDR 顯示器</div>"
+          }
+        },
+        "dimensionColor": {
+          "silver": {
+            "value": "銀色"
+          },
+          "spaceblack": {
+            "value": "太空黑色"
+          }
+        },
+        "dimensionCapacity": {
+          "1tb": {
+            "value": "1<small>TB</small> 儲存裝置<as-footnote data-id=\"e5a7a109be4b57ed5106570bd8020b91\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote>\n<div class=\"typography-caption\">16GB 記憶體</div>\n<div class=\"form-label-small\">M5 晶片：<br />10 核心 CPU、10 核心 GPU</div>"
+          },
+          "256gb": {
+            "value": "256<small>GB</small> 儲存裝置<as-footnote data-id=\"e5a7a109be4b57ed5106570bd8020b91\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote>\n<div class=\"typography-caption\">12GB 記憶體</div>\n<div class=\"form-label-small\">M5 晶片：<br />9 核心 CPU、10 核心 GPU</div>"
+          },
+          "2tb": {
+            "value": "2<small>TB</small> 儲存裝置<as-footnote data-id=\"e5a7a109be4b57ed5106570bd8020b91\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote>\n<div class=\"typography-caption\">16GB 記憶體</div>\n<div class=\"form-label-small\">M5 晶片：<br />10 核心 CPU、10 核心 GPU</div>"
+          },
+          "512gb": {
+            "value": "512<small>GB</small>儲存裝置<as-footnote data-id=\"e5a7a109be4b57ed5106570bd8020b91\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>2</sup></as-footnote>\n<div class=\"typography-caption\">12GB 記憶體</div>\n<div class=\"form-label-small\">M5 晶片：<br />9 核心 CPU、10 核心 GPU</div>"
+          }
+        },
+        "dimensionFinish": {
+          "glossy": {
+            "value": "標準玻璃"
+          },
+          "matte": {
+            "value": "奈米紋理玻璃\n<div class=\"form-label-small\">於配備 1TB 或 2TB 儲存空間的機型提供</div>"
+          }
+        },
+        "dimensionConnection": {
+          "wifi": {
+            "value": "Wi-Fi<div class=\"form-label-small\">每部 iPad 皆可連線 Wi-Fi，你可以撥打電話、傳送訊息，以及使用 FaceTime。</div>"
+          },
+          "wificell": {
+            "value": "Wi-Fi + 行動網路<div class=\"form-label-small\">Wi-Fi + 行動網路機型讓你在無法使用 Wi-Fi 時也能進行連線。</div>"
+          }
+        }
+      }
+    }
+  },
+  {
+    "category": "mac",
+    "family": "imac",
+    "data": {
+      "products": [
+        {
+          "btrOrFdPartNumber": "MWUC3TA/A",
+          "aosContainerPartNumber": "IMAC_2024_ROC_STAND_SILVER_G",
+          "dimensions": {
+            "chassis-dimensionColor": "silver",
+            "processor-cpuCoreCount-gpuCoreCount": "8-8"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MWUE3TA/A",
+          "aosContainerPartNumber": "IMAC_2024_ROC_STAND_GREEN_G",
+          "dimensions": {
+            "chassis-dimensionColor": "green",
+            "processor-cpuCoreCount-gpuCoreCount": "8-8"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MWUF3TA/A",
+          "aosContainerPartNumber": "IMAC_2024_ROC_STAND_BLUE_G",
+          "dimensions": {
+            "chassis-dimensionColor": "blue",
+            "processor-cpuCoreCount-gpuCoreCount": "8-8"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MWUG3TA/A",
+          "aosContainerPartNumber": "IMAC_2024_ROC_STAND_PINK_G",
+          "dimensions": {
+            "chassis-dimensionColor": "pink",
+            "processor-cpuCoreCount-gpuCoreCount": "8-8"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MWUU3TA/A",
+          "aosContainerPartNumber": "IMAC_2024_ROC_STAND_SILVER_BBU",
+          "dimensions": {
+            "chassis-dimensionColor": "silver",
+            "processor-cpuCoreCount-gpuCoreCount": "10-10"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MWUY3TA/A",
+          "aosContainerPartNumber": "IMAC_2024_ROC_STAND_GREEN_BBU",
+          "dimensions": {
+            "chassis-dimensionColor": "green",
+            "processor-cpuCoreCount-gpuCoreCount": "10-10"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MWV13TA/A",
+          "aosContainerPartNumber": "IMAC_2024_ROC_STAND_BLUE_BBU",
+          "dimensions": {
+            "chassis-dimensionColor": "blue",
+            "processor-cpuCoreCount-gpuCoreCount": "10-10"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MWV43TA/A",
+          "aosContainerPartNumber": "IMAC_2024_ROC_STAND_PINK_BBU",
+          "dimensions": {
+            "chassis-dimensionColor": "pink",
+            "processor-cpuCoreCount-gpuCoreCount": "10-10"
+          }
+        }
+      ],
+      "macProductLinks": [
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-%E7%B2%89%E7%B4%85%E8%89%B2-m4-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-256gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-%E7%AB%8B%E6%9E%B6",
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-%E7%B2%89%E7%B4%85%E8%89%B2-m4-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-%E7%AB%8B%E6%9E%B6",
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-%E7%B2%89%E7%B4%85%E8%89%B2-m4-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-%E7%AB%8B%E6%9E%B6",
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-%E7%B2%89%E7%B4%85%E8%89%B2-m4-%E6%99%B6%E7%89%87-8-%E6%A0%B8%E5%BF%83-cpu-8-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-256gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E7%AB%8B%E6%9E%B6",
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-%E7%B6%A0%E8%89%B2-m4-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-256gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-%E7%AB%8B%E6%9E%B6",
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-%E7%B6%A0%E8%89%B2-m4-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-%E7%AB%8B%E6%9E%B6",
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-%E7%B6%A0%E8%89%B2-m4-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-%E7%AB%8B%E6%9E%B6",
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-%E7%B6%A0%E8%89%B2-m4-%E6%99%B6%E7%89%87-8-%E6%A0%B8%E5%BF%83-cpu-8-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-256gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E7%AB%8B%E6%9E%B6",
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-blue-m4-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-256gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-%E7%AB%8B%E6%9E%B6",
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-blue-m4-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-%E7%AB%8B%E6%9E%B6",
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-blue-m4-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-%E7%AB%8B%E6%9E%B6",
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-blue-m4-%E6%99%B6%E7%89%87-8-%E6%A0%B8%E5%BF%83-cpu-8-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-256gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E7%AB%8B%E6%9E%B6",
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-silver-m4-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-256gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E5%A5%88%E7%B1%B3%E7%B4%8B%E7%90%86%E7%8E%BB%E7%92%83-%E7%AB%8B%E6%9E%B6",
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-silver-m4-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-256gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-%E7%AB%8B%E6%9E%B6",
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-silver-m4-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-%E7%AB%8B%E6%9E%B6",
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-silver-m4-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-%E7%AB%8B%E6%9E%B6",
+        "https://www.apple.com/tw/shop/buy-mac/imac/24-%E5%90%8B-silver-m4-%E6%99%B6%E7%89%87-8-%E6%A0%B8%E5%BF%83-cpu-8-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-256gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE-%E7%AB%8B%E6%9E%B6"
+      ],
+      "mainDisplayValues": {
+        "chassis-dimensionColor": {
+          "blue": {
+            "header": "藍色"
+          },
+          "green": {
+            "header": "綠色"
+          },
+          "pink": {
+            "header": "粉紅色"
+          },
+          "silver": {
+            "header": "銀色"
+          }
+        },
+        "processor-cpuCoreCount-gpuCoreCount": {
+          "10-10": {
+            "header": "M4 晶片具備四個 Thunderbolt&nbsp;埠<div class=\"form-label-small\">10&nbsp;核心&nbsp;CPU、10&nbsp;核心&nbsp;GPU、16&nbsp;核心神經網路引擎</div>"
+          },
+          "8-8": {
+            "header": "M4 晶片具備兩個 Thunderbolt&nbsp;埠<div class=\"form-label-small\">8&nbsp;核心&nbsp;CPU、8&nbsp;核心&nbsp;GPU、 16核心神經網路引擎</div>"
+          }
+        }
+      }
+    }
+  },
+  {
+    "category": "mac",
+    "family": "mac-mini",
+    "data": {
+      "products": [
+        {
+          "btrOrFdPartNumber": "MHQK4TA/A",
+          "aosContainerPartNumber": "RO_MACMINI_M6_GOO_BET_BES_2026",
+          "dimensions": {
+            "processor-dimensionChip": "m6",
+            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m6-12-12"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MHQN4TA/A",
+          "aosContainerPartNumber": "RO_MACMINI_M5PRO_ULT_2026",
+          "dimensions": {
+            "processor-dimensionChip": "m5pro",
+            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5pro-15-16"
+          }
+        }
+      ],
+      "macProductLinks": [
+        "https://www.apple.com/tw/shop/buy-mac/mac-mini/m5-pro-%E6%99%B6%E7%89%87-15-%E6%A0%B8%E5%BF%83-cpu-16-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/mac-mini/m5-pro-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-20-%E6%A0%B8%E5%BF%83-gpu-64gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/mac-mini/m6-%E6%99%B6%E7%89%87-12-%E6%A0%B8%E5%BF%83-cpu-12-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-256gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/mac-mini/m6-%E6%99%B6%E7%89%87-12-%E6%A0%B8%E5%BF%83-cpu-12-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/mac-mini/m6-%E6%99%B6%E7%89%87-12-%E6%A0%B8%E5%BF%83-cpu-12-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/mac-mini/m6-%E6%99%B6%E7%89%87-12-%E6%A0%B8%E5%BF%83-cpu-12-%E6%A0%B8%E5%BF%83-gpu-32gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE"
+      ],
+      "mainDisplayValues": {
+        "processor-dimensionChip": {
+          "m5pro": {
+            "header": "M5&nbsp;Pro 晶片 <div class=\"form-label-small\">提供更強悍的的效能和更高的記憶體選項，可駕馭繁重的工作流程。</div>"
+          },
+          "m6": {
+            "header": "M6 晶片 <div class=\"form-label-small\">疾速飛快，效能表現躍升新境界，助你輕鬆搞定日常的個人、專業和創意任務。</div>"
+          }
+        },
+        "processor-dimensionChip-cpuCoreCount-gpuCoreCount": {
+          "m5pro-15-16": {
+            "header": "<span class=\"rf-dsupgrade-block\">15&nbsp;核心&nbsp;CPU、</span><br />\n<span class=\"rf-dsupgrade-block\">16&nbsp;核心&nbsp;GPU</span>"
+          }
+        }
+      }
+    }
+  },
+  {
+    "category": "mac",
+    "family": "mac-studio",
+    "data": {
+      "products": [
+        {
+          "btrOrFdPartNumber": "MHL64TA/A",
+          "aosContainerPartNumber": "RO_MACSTUDIO_M5MAX_M5ULTRA_BET_BES_2026",
+          "dimensions": {
+            "processor-dimensionChip": "m5max",
+            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5max-18-32"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MHL74TA/A",
+          "aosContainerPartNumber": "RO_MACSTUDIO_M5MAX_M5ULTRA_BET_BES_2026",
+          "dimensions": {
+            "processor-dimensionChip": "m5ultra",
+            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5ultra-30-64"
+          }
+        }
+      ],
+      "macProductLinks": [
+        "https://www.apple.com/tw/shop/buy-mac/mac-studio/m5-max-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-32-%E6%A0%B8%E5%BF%83-gpu-36gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/mac-studio/m5-max-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-40-%E6%A0%B8%E5%BF%83-gpu-64gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/mac-studio/m5-ultra-%E6%99%B6%E7%89%87-30-%E6%A0%B8%E5%BF%83-cpu-64-%E6%A0%B8%E5%BF%83-gpu-96gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE"
+      ],
+      "mainDisplayValues": {
+        "processor-dimensionChip": {
+          "m5max": {
+            "header": "M5&nbsp;Max&nbsp;晶片 <div class=\"form-label-small\">絕佳的速度和實力，能輕鬆駕馭創意計畫案與專業工作流程。</div>"
+          },
+          "m5ultra": {
+            "header": "M5&nbsp;Ultra&nbsp;晶片 <div class=\"form-label-small\">我們最強大的晶片，超強效能前所未見，專為頂尖需求的專業工作流程而生。</div>"
+          }
+        },
+        "processor-dimensionChip-cpuCoreCount-gpuCoreCount": {
+          "m5max-18-32": {
+            "header": "<span class=\"rf-dsupgrade-block\">18&nbsp;核心&nbsp;CPU、</span><span class=\"rf-dsupgrade-block\">32&nbsp;核心&nbsp;GPU</span>"
+          },
+          "m5ultra-30-64": {
+            "header": "<span class=\"rf-dsupgrade-block\">30&nbsp;核心&nbsp;CPU、</span><span class=\"rf-dsupgrade-block\">64&nbsp;核心&nbsp;GPU</span>"
+          }
+        }
+      }
+    }
+  },
+  {
     "category": "mac",
     "family": "macbook-air",
     "data": {
       "products": [
         {
           "btrOrFdPartNumber": "MDH74TA/A",
+          "aosContainerPartNumber": "RO_MBA_M5_13_INCH_SILVER_GOO_2026",
           "dimensions": {
             "chassis-dimensionColor": "silver",
             "processor-cpuCoreCount-gpuCoreCount": "10-8",
@@ -1882,6 +2389,7 @@
         },
         {
           "btrOrFdPartNumber": "MDHA4TA/A",
+          "aosContainerPartNumber": "RO_MBA_M5_13_INCH_STARLIGHT_GOO_2026",
           "dimensions": {
             "chassis-dimensionColor": "starlight",
             "processor-cpuCoreCount-gpuCoreCount": "10-8",
@@ -1890,6 +2398,7 @@
         },
         {
           "btrOrFdPartNumber": "MDHE4TA/A",
+          "aosContainerPartNumber": "RO_MBA_M5_13_INCH_MIDNIGHT_GOO_2026",
           "dimensions": {
             "chassis-dimensionColor": "midnight",
             "processor-cpuCoreCount-gpuCoreCount": "10-8",
@@ -1898,6 +2407,7 @@
         },
         {
           "btrOrFdPartNumber": "MDHH4TA/A",
+          "aosContainerPartNumber": "RO_MBA_M5_13_INCH_SKYBLUE_GOO_2026",
           "dimensions": {
             "chassis-dimensionColor": "skyblue",
             "processor-cpuCoreCount-gpuCoreCount": "10-8",
@@ -1906,6 +2416,7 @@
         },
         {
           "btrOrFdPartNumber": "MDV94TA/A",
+          "aosContainerPartNumber": "RO_MBA_M5_15_INCH_SILVER_BET_BES_ULT_2026",
           "dimensions": {
             "chassis-dimensionColor": "silver",
             "processor-cpuCoreCount-gpuCoreCount": "10-10",
@@ -1914,6 +2425,7 @@
         },
         {
           "btrOrFdPartNumber": "MDVD4TA/A",
+          "aosContainerPartNumber": "RO_MBA_M5_15_INCH_STARLIGHT_BET_BES_ULT_2026",
           "dimensions": {
             "chassis-dimensionColor": "starlight",
             "processor-cpuCoreCount-gpuCoreCount": "10-10",
@@ -1922,6 +2434,7 @@
         },
         {
           "btrOrFdPartNumber": "MDVH4TA/A",
+          "aosContainerPartNumber": "RO_MBA_M5_15_INCH_MIDNIGHT_BET_BES_ULT_2026",
           "dimensions": {
             "chassis-dimensionColor": "midnight",
             "processor-cpuCoreCount-gpuCoreCount": "10-10",
@@ -1930,12 +2443,45 @@
         },
         {
           "btrOrFdPartNumber": "MDVQ4TA/A",
+          "aosContainerPartNumber": "RO_MBA_M5_15_INCH_SKY_BLUE_BET_BES_ULT_2026",
           "dimensions": {
             "chassis-dimensionColor": "skyblue",
             "processor-cpuCoreCount-gpuCoreCount": "10-10",
             "chassis-dimensionScreensize": "15inch"
           }
         }
+      ],
+      "macProductLinks": [
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/13-%E5%90%8B-%E5%8D%88%E5%A4%9C%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/13-%E5%90%8B-%E5%8D%88%E5%A4%9C%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/13-%E5%90%8B-%E5%8D%88%E5%A4%9C%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/13-%E5%90%8B-%E5%8D%88%E5%A4%9C%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-8-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/13-%E5%90%8B-%E5%A4%A9%E8%97%8D%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/13-%E5%90%8B-%E5%A4%A9%E8%97%8D%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/13-%E5%90%8B-%E5%A4%A9%E8%97%8D%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/13-%E5%90%8B-%E5%A4%A9%E8%97%8D%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-8-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/13-%E5%90%8B-%E6%98%9F%E5%85%89%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/13-%E5%90%8B-%E6%98%9F%E5%85%89%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/13-%E5%90%8B-%E6%98%9F%E5%85%89%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/13-%E5%90%8B-%E6%98%9F%E5%85%89%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-8-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/13-%E5%90%8B-silver-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/13-%E5%90%8B-silver-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/13-%E5%90%8B-silver-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-8-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/15-%E5%90%8B-%E5%8D%88%E5%A4%9C%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/15-%E5%90%8B-%E5%8D%88%E5%A4%9C%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/15-%E5%90%8B-%E5%8D%88%E5%A4%9C%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/15-%E5%90%8B-%E5%8D%88%E5%A4%9C%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/15-%E5%90%8B-%E5%A4%A9%E8%97%8D%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/15-%E5%90%8B-%E5%A4%A9%E8%97%8D%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/15-%E5%90%8B-%E5%A4%A9%E8%97%8D%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/15-%E5%90%8B-%E5%A4%A9%E8%97%8D%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/15-%E5%90%8B-%E6%98%9F%E5%85%89%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/15-%E5%90%8B-%E6%98%9F%E5%85%89%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/15-%E5%90%8B-%E6%98%9F%E5%85%89%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/15-%E5%90%8B-%E6%98%9F%E5%85%89%E8%89%B2-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/15-%E5%90%8B-silver-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/15-%E5%90%8B-silver-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-512gb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-air/15-%E5%90%8B-silver-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE"
       ],
       "mainDisplayValues": {
         "chassis-dimensionColor": {
@@ -1973,11 +2519,126 @@
   },
   {
     "category": "mac",
+    "family": "macbook-neo",
+    "data": {
+      "products": [
+        {
+          "btrOrFdPartNumber": "MHFA4TA/A",
+          "aosContainerPartNumber": "MBN_2026_ROC_SL_G",
+          "dimensions": {
+            "chassis-dimensionColor": "silver",
+            "storage-dimensionCapacity": "256gb",
+            "processor-cpuCoreCount-gpuCoreCount": "6-5"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MHFC4TA/A",
+          "aosContainerPartNumber": "MBN_2026_ROC_SL_B",
+          "dimensions": {
+            "chassis-dimensionColor": "silver",
+            "storage-dimensionCapacity": "512gb",
+            "processor-cpuCoreCount-gpuCoreCount": "6-5"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MHFD4TA/A",
+          "aosContainerPartNumber": "MBN_2026_ROC_CT_G",
+          "dimensions": {
+            "chassis-dimensionColor": "citrus",
+            "storage-dimensionCapacity": "256gb",
+            "processor-cpuCoreCount-gpuCoreCount": "6-5"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MHFE4TA/A",
+          "aosContainerPartNumber": "MBN_2026_ROC_CT_B",
+          "dimensions": {
+            "chassis-dimensionColor": "citrus",
+            "storage-dimensionCapacity": "512gb",
+            "processor-cpuCoreCount-gpuCoreCount": "6-5"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MHFF4TA/A",
+          "aosContainerPartNumber": "MBN_2026_ROC_IN_G",
+          "dimensions": {
+            "chassis-dimensionColor": "indigo",
+            "storage-dimensionCapacity": "256gb",
+            "processor-cpuCoreCount-gpuCoreCount": "6-5"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MHFG4TA/A",
+          "aosContainerPartNumber": "MBN_2026_ROC_IN_B",
+          "dimensions": {
+            "chassis-dimensionColor": "indigo",
+            "storage-dimensionCapacity": "512gb",
+            "processor-cpuCoreCount-gpuCoreCount": "6-5"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MHFH4TA/A",
+          "aosContainerPartNumber": "MBN_2026_ROC_BL_G",
+          "dimensions": {
+            "chassis-dimensionColor": "blush",
+            "storage-dimensionCapacity": "256gb",
+            "processor-cpuCoreCount-gpuCoreCount": "6-5"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MHFJ4TA/A",
+          "aosContainerPartNumber": "MBN_2026_ROC_BL_B",
+          "dimensions": {
+            "chassis-dimensionColor": "blush",
+            "storage-dimensionCapacity": "512gb",
+            "processor-cpuCoreCount-gpuCoreCount": "6-5"
+          }
+        }
+      ],
+      "macProductLinks": [
+        "https://www.apple.com/tw/shop/buy-mac/macbook-neo/%E8%83%AD%E7%B2%89%E8%89%B2-256gb",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-neo/%E8%83%AD%E7%B2%89%E8%89%B2-512gb",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-neo/%E9%9D%92%E6%A9%98%E9%BB%83%E8%89%B2-256gb",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-neo/%E9%9D%92%E6%A9%98%E9%BB%83%E8%89%B2-512gb",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-neo/%E9%9D%9B%E9%9D%92%E8%89%B2-256gb",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-neo/%E9%9D%9B%E9%9D%92%E8%89%B2-512gb",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-neo/silver-256gb",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-neo/silver-512gb"
+      ],
+      "mainDisplayValues": {
+        "chassis-dimensionColor": {
+          "blush": {
+            "header": "胭粉色"
+          },
+          "citrus": {
+            "header": "青橘黃色"
+          },
+          "indigo": {
+            "header": "靛青色"
+          },
+          "silver": {
+            "header": "銀色"
+          }
+        },
+        "storage-dimensionCapacity": {
+          "256gb": {
+            "header": "256GB\n巧控鍵盤"
+          },
+          "512gb": {
+            "header": "512GB\n含 Touch&nbsp;ID 的巧控鍵盤"
+          }
+        }
+      }
+    }
+  },
+  {
+    "category": "mac",
     "family": "macbook-pro",
     "data": {
       "products": [
         {
           "btrOrFdPartNumber": "MDE14TA/A",
+          "aosContainerPartNumber": "MBP_2024_ROC_14_SPACE_BLACK_EGB",
           "dimensions": {
             "chassis-dimensionColor": "spaceblack",
             "processor-dimensionChip": "m5",
@@ -1988,6 +2649,7 @@
         },
         {
           "btrOrFdPartNumber": "MDE54TA/A",
+          "aosContainerPartNumber": "MBP_2024_ROC_14_SILVER_EGB",
           "dimensions": {
             "chassis-dimensionColor": "silver",
             "processor-dimensionChip": "m5",
@@ -1998,6 +2660,7 @@
         },
         {
           "btrOrFdPartNumber": "MEQJ4TA/A",
+          "aosContainerPartNumber": "MBP_2024_ROC_14_SPACE_BLACK_EGB",
           "dimensions": {
             "chassis-dimensionColor": "spaceblack",
             "processor-dimensionChip": "m5",
@@ -2008,6 +2671,7 @@
         },
         {
           "btrOrFdPartNumber": "MGDN4TA/A",
+          "aosContainerPartNumber": "RO_MBP_M5PRO_M5MAX_14INCH_SILVER_BT_BS_UT_2026",
           "dimensions": {
             "chassis-dimensionColor": "silver",
             "processor-dimensionChip": "m5pro",
@@ -2018,6 +2682,7 @@
         },
         {
           "btrOrFdPartNumber": "MGDQ4TA/A",
+          "aosContainerPartNumber": "RO_MBP_M5PRO_M5MAX_14INCH_SILVER_BT_BS_UT_2026",
           "dimensions": {
             "chassis-dimensionColor": "silver",
             "processor-dimensionChip": "m5max",
@@ -2028,6 +2693,7 @@
         },
         {
           "btrOrFdPartNumber": "MGDR4TA/A",
+          "aosContainerPartNumber": "RO_MBP_M5PRO_M5MAX_14INCH_SPACEBLACK_BT_BS_UT_2026",
           "dimensions": {
             "chassis-dimensionColor": "spaceblack",
             "processor-dimensionChip": "m5pro",
@@ -2038,6 +2704,7 @@
         },
         {
           "btrOrFdPartNumber": "MGDU4TA/A",
+          "aosContainerPartNumber": "RO_MBP_M5PRO_M5MAX_14INCH_SPACEBLACK_BT_BS_UT_2026",
           "dimensions": {
             "chassis-dimensionColor": "spaceblack",
             "processor-dimensionChip": "m5max",
@@ -2048,6 +2715,7 @@
         },
         {
           "btrOrFdPartNumber": "MGE44TA/A",
+          "aosContainerPartNumber": "RO_MBP_M5PRO_M5MAX_16INCH_SILVER_BT_UT_SP_2026",
           "dimensions": {
             "chassis-dimensionColor": "silver",
             "processor-dimensionChip": "m5pro",
@@ -2058,6 +2726,7 @@
         },
         {
           "btrOrFdPartNumber": "MGE74TA/A",
+          "aosContainerPartNumber": "RO_MBP_M5PRO_M5MAX_16INCH_SILVER_BT_UT_SP_2026",
           "dimensions": {
             "chassis-dimensionColor": "silver",
             "processor-dimensionChip": "m5max",
@@ -2068,6 +2737,7 @@
         },
         {
           "btrOrFdPartNumber": "MGE94TA/A",
+          "aosContainerPartNumber": "RO_MBP_M5PRO_M5MAX_16INCH_SILVER_BT_UT_SP_2026",
           "dimensions": {
             "chassis-dimensionColor": "silver",
             "processor-dimensionChip": "m5max",
@@ -2078,6 +2748,7 @@
         },
         {
           "btrOrFdPartNumber": "MGEA4TA/A",
+          "aosContainerPartNumber": "RO_MBP_M5PRO_M5MAX_16INCH_SPACEBLACK_BT_UT_SP_2026",
           "dimensions": {
             "chassis-dimensionColor": "spaceblack",
             "processor-dimensionChip": "m5pro",
@@ -2088,6 +2759,7 @@
         },
         {
           "btrOrFdPartNumber": "MGED4TA/A",
+          "aosContainerPartNumber": "RO_MBP_M5PRO_M5MAX_16INCH_SPACEBLACK_BT_UT_SP_2026",
           "dimensions": {
             "chassis-dimensionColor": "spaceblack",
             "processor-dimensionChip": "m5max",
@@ -2098,6 +2770,7 @@
         },
         {
           "btrOrFdPartNumber": "MGEE4TA/A",
+          "aosContainerPartNumber": "RO_MBP_M5PRO_M5MAX_16INCH_SPACEBLACK_BT_UT_SP_2026",
           "dimensions": {
             "chassis-dimensionColor": "spaceblack",
             "processor-dimensionChip": "m5max",
@@ -2106,6 +2779,32 @@
             "chassis-dimensionScreensize": "16inch"
           }
         }
+      ],
+      "macProductLinks": [
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/14-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/14-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/14-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-32gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/14-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-max-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-32-%E6%A0%B8%E5%BF%83-gpu-36gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/14-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-15-%E6%A0%B8%E5%BF%83-cpu-16-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/14-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-15-%E6%A0%B8%E5%BF%83-cpu-16-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/14-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-20-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/14-%E5%90%8B-space-black-%E5%A5%88%E7%B1%B3%E7%B4%8B%E7%90%86%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/14-%E5%90%8B-space-black-%E5%A5%88%E7%B1%B3%E7%B4%8B%E7%90%86%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-20-%E6%A0%B8%E5%BF%83-gpu-48gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/14-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-16gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/14-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/14-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-%E6%99%B6%E7%89%87-10-%E6%A0%B8%E5%BF%83-cpu-10-%E6%A0%B8%E5%BF%83-gpu-32gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/14-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-max-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-32-%E6%A0%B8%E5%BF%83-gpu-36gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/14-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-15-%E6%A0%B8%E5%BF%83-cpu-16-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/14-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-15-%E6%A0%B8%E5%BF%83-cpu-16-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/14-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-20-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/16-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-max-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-32-%E6%A0%B8%E5%BF%83-gpu-36gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/16-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-max-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-40-%E6%A0%B8%E5%BF%83-gpu-48gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/16-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-20-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/16-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-20-%E6%A0%B8%E5%BF%83-gpu-48gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/16-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-max-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-32-%E6%A0%B8%E5%BF%83-gpu-36gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/16-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-max-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-40-%E6%A0%B8%E5%BF%83-gpu-48gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/16-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-20-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro/16-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-20-%E6%A0%B8%E5%BF%83-gpu-48gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE"
       ],
       "mainDisplayValues": {
         "chassis-dimensionColor": {
@@ -2162,267 +2861,6 @@
   },
   {
     "category": "mac",
-    "family": "macbook-neo",
-    "data": {
-      "products": [
-        {
-          "btrOrFdPartNumber": "MHFA4TA/A",
-          "dimensions": {
-            "chassis-dimensionColor": "silver",
-            "storage-dimensionCapacity": "256gb",
-            "processor-cpuCoreCount-gpuCoreCount": "6-5"
-          }
-        },
-        {
-          "btrOrFdPartNumber": "MHFC4TA/A",
-          "dimensions": {
-            "chassis-dimensionColor": "silver",
-            "storage-dimensionCapacity": "512gb",
-            "processor-cpuCoreCount-gpuCoreCount": "6-5"
-          }
-        },
-        {
-          "btrOrFdPartNumber": "MHFD4TA/A",
-          "dimensions": {
-            "chassis-dimensionColor": "citrus",
-            "storage-dimensionCapacity": "256gb",
-            "processor-cpuCoreCount-gpuCoreCount": "6-5"
-          }
-        },
-        {
-          "btrOrFdPartNumber": "MHFE4TA/A",
-          "dimensions": {
-            "chassis-dimensionColor": "citrus",
-            "storage-dimensionCapacity": "512gb",
-            "processor-cpuCoreCount-gpuCoreCount": "6-5"
-          }
-        },
-        {
-          "btrOrFdPartNumber": "MHFF4TA/A",
-          "dimensions": {
-            "chassis-dimensionColor": "indigo",
-            "storage-dimensionCapacity": "256gb",
-            "processor-cpuCoreCount-gpuCoreCount": "6-5"
-          }
-        },
-        {
-          "btrOrFdPartNumber": "MHFG4TA/A",
-          "dimensions": {
-            "chassis-dimensionColor": "indigo",
-            "storage-dimensionCapacity": "512gb",
-            "processor-cpuCoreCount-gpuCoreCount": "6-5"
-          }
-        },
-        {
-          "btrOrFdPartNumber": "MHFH4TA/A",
-          "dimensions": {
-            "chassis-dimensionColor": "blush",
-            "storage-dimensionCapacity": "256gb",
-            "processor-cpuCoreCount-gpuCoreCount": "6-5"
-          }
-        },
-        {
-          "btrOrFdPartNumber": "MHFJ4TA/A",
-          "dimensions": {
-            "chassis-dimensionColor": "blush",
-            "storage-dimensionCapacity": "512gb",
-            "processor-cpuCoreCount-gpuCoreCount": "6-5"
-          }
-        }
-      ],
-      "mainDisplayValues": {
-        "chassis-dimensionColor": {
-          "blush": {
-            "header": "胭粉色"
-          },
-          "citrus": {
-            "header": "青橘黃色"
-          },
-          "indigo": {
-            "header": "靛青色"
-          },
-          "silver": {
-            "header": "銀色"
-          }
-        },
-        "storage-dimensionCapacity": {
-          "256gb": {
-            "header": "256GB\n巧控鍵盤"
-          },
-          "512gb": {
-            "header": "512GB\n含 Touch&nbsp;ID 的巧控鍵盤"
-          }
-        }
-      }
-    }
-  },
-  {
-    "category": "mac",
-    "family": "imac",
-    "data": {
-      "products": [
-        {
-          "btrOrFdPartNumber": "MWUC3TA/A",
-          "dimensions": {
-            "chassis-dimensionColor": "silver",
-            "processor-cpuCoreCount-gpuCoreCount": "8-8"
-          }
-        },
-        {
-          "btrOrFdPartNumber": "MWUE3TA/A",
-          "dimensions": {
-            "chassis-dimensionColor": "green",
-            "processor-cpuCoreCount-gpuCoreCount": "8-8"
-          }
-        },
-        {
-          "btrOrFdPartNumber": "MWUF3TA/A",
-          "dimensions": {
-            "chassis-dimensionColor": "blue",
-            "processor-cpuCoreCount-gpuCoreCount": "8-8"
-          }
-        },
-        {
-          "btrOrFdPartNumber": "MWUG3TA/A",
-          "dimensions": {
-            "chassis-dimensionColor": "pink",
-            "processor-cpuCoreCount-gpuCoreCount": "8-8"
-          }
-        },
-        {
-          "btrOrFdPartNumber": "MWUU3TA/A",
-          "dimensions": {
-            "chassis-dimensionColor": "silver",
-            "processor-cpuCoreCount-gpuCoreCount": "10-10"
-          }
-        },
-        {
-          "btrOrFdPartNumber": "MWUY3TA/A",
-          "dimensions": {
-            "chassis-dimensionColor": "green",
-            "processor-cpuCoreCount-gpuCoreCount": "10-10"
-          }
-        },
-        {
-          "btrOrFdPartNumber": "MWV13TA/A",
-          "dimensions": {
-            "chassis-dimensionColor": "blue",
-            "processor-cpuCoreCount-gpuCoreCount": "10-10"
-          }
-        },
-        {
-          "btrOrFdPartNumber": "MWV43TA/A",
-          "dimensions": {
-            "chassis-dimensionColor": "pink",
-            "processor-cpuCoreCount-gpuCoreCount": "10-10"
-          }
-        }
-      ],
-      "mainDisplayValues": {
-        "chassis-dimensionColor": {
-          "blue": {
-            "header": "藍色"
-          },
-          "green": {
-            "header": "綠色"
-          },
-          "pink": {
-            "header": "粉紅色"
-          },
-          "silver": {
-            "header": "銀色"
-          }
-        },
-        "processor-cpuCoreCount-gpuCoreCount": {
-          "10-10": {
-            "header": "M4 晶片具備四個 Thunderbolt&nbsp;埠<div class=\"form-label-small\">10&nbsp;核心&nbsp;CPU、10&nbsp;核心&nbsp;GPU、16&nbsp;核心神經網路引擎</div>"
-          },
-          "8-8": {
-            "header": "M4 晶片具備兩個 Thunderbolt&nbsp;埠<div class=\"form-label-small\">8&nbsp;核心&nbsp;CPU、8&nbsp;核心&nbsp;GPU、 16核心神經網路引擎</div>"
-          }
-        }
-      }
-    }
-  },
-  {
-    "category": "mac",
-    "family": "mac-mini",
-    "data": {
-      "products": [
-        {
-          "btrOrFdPartNumber": "MHQK4TA/A",
-          "dimensions": {
-            "processor-dimensionChip": "m6",
-            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m6-12-12"
-          }
-        },
-        {
-          "btrOrFdPartNumber": "MHQN4TA/A",
-          "dimensions": {
-            "processor-dimensionChip": "m5pro",
-            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5pro-15-16"
-          }
-        }
-      ],
-      "mainDisplayValues": {
-        "processor-dimensionChip": {
-          "m5pro": {
-            "header": "M5&nbsp;Pro 晶片 <div class=\"form-label-small\">提供更強悍的的效能和更高的記憶體選項，可駕馭繁重的工作流程。</div>"
-          },
-          "m6": {
-            "header": "M6 晶片 <div class=\"form-label-small\">疾速飛快，效能表現躍升新境界，助你輕鬆搞定日常的個人、專業和創意任務。</div>"
-          }
-        },
-        "processor-dimensionChip-cpuCoreCount-gpuCoreCount": {
-          "m5pro-15-16": {
-            "header": "<span class=\"rf-dsupgrade-block\">15&nbsp;核心&nbsp;CPU、</span><br />\n<span class=\"rf-dsupgrade-block\">16&nbsp;核心&nbsp;GPU</span>"
-          }
-        }
-      }
-    }
-  },
-  {
-    "category": "mac",
-    "family": "mac-studio",
-    "data": {
-      "products": [
-        {
-          "btrOrFdPartNumber": "MHL64TA/A",
-          "dimensions": {
-            "processor-dimensionChip": "m5max",
-            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5max-18-32"
-          }
-        },
-        {
-          "btrOrFdPartNumber": "MHL74TA/A",
-          "dimensions": {
-            "processor-dimensionChip": "m5ultra",
-            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5ultra-30-64"
-          }
-        }
-      ],
-      "mainDisplayValues": {
-        "processor-dimensionChip": {
-          "m5max": {
-            "header": "M5&nbsp;Max&nbsp;晶片 <div class=\"form-label-small\">絕佳的速度和實力，能輕鬆駕馭創意計畫案與專業工作流程。</div>"
-          },
-          "m5ultra": {
-            "header": "M5&nbsp;Ultra&nbsp;晶片 <div class=\"form-label-small\">我們最強大的晶片，超強效能前所未見，專為頂尖需求的專業工作流程而生。</div>"
-          }
-        },
-        "processor-dimensionChip-cpuCoreCount-gpuCoreCount": {
-          "m5max-18-32": {
-            "header": "<span class=\"rf-dsupgrade-block\">18&nbsp;核心&nbsp;CPU、</span><span class=\"rf-dsupgrade-block\">32&nbsp;核心&nbsp;GPU</span>"
-          },
-          "m5ultra-30-64": {
-            "header": "<span class=\"rf-dsupgrade-block\">30&nbsp;核心&nbsp;CPU、</span><span class=\"rf-dsupgrade-block\">64&nbsp;核心&nbsp;GPU</span>"
-          }
-        }
-      }
-    }
-  },
-  {
-    "category": "mac",
     "family": "studio-display",
     "data": {
       "products": [
@@ -2462,6 +2900,14 @@
           "dimensionFinish": "matte",
           "dimensionStandType": "vesa"
         }
+      ],
+      "macProductLinks": [
+        "/tw/shop/buy-mac/studio-display/%E5%A5%88%E7%B1%B3%E7%B4%8B%E7%90%86%E7%8E%BB%E7%92%83-%E5%8F%AF%E8%AA%BF%E6%95%B4%E6%96%9C%E5%BA%A6%E7%9A%84%E6%94%AF%E6%9E%B6",
+        "/tw/shop/buy-mac/studio-display/%E5%A5%88%E7%B1%B3%E7%B4%8B%E7%90%86%E7%8E%BB%E7%92%83-%E5%8F%AF%E8%AA%BF%E6%95%B4%E6%96%9C%E5%BA%A6%E8%88%87%E9%AB%98%E5%BA%A6%E7%9A%84%E6%94%AF%E6%9E%B6",
+        "/tw/shop/buy-mac/studio-display/%E5%A5%88%E7%B1%B3%E7%B4%8B%E7%90%86%E7%8E%BB%E7%92%83-vesa-%E5%90%8A%E6%9E%B6%E9%80%A3%E6%8E%A5%E5%99%A8",
+        "/tw/shop/buy-mac/studio-display/%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-%E5%8F%AF%E8%AA%BF%E6%95%B4%E6%96%9C%E5%BA%A6%E7%9A%84%E6%94%AF%E6%9E%B6",
+        "/tw/shop/buy-mac/studio-display/%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-%E5%8F%AF%E8%AA%BF%E6%95%B4%E6%96%9C%E5%BA%A6%E8%88%87%E9%AB%98%E5%BA%A6%E7%9A%84%E6%94%AF%E6%9E%B6",
+        "/tw/shop/buy-mac/studio-display/%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-vesa-%E5%90%8A%E6%9E%B6%E9%80%A3%E6%8E%A5%E5%99%A8"
       ],
       "displayValues": {
         "dimensionFinish": {
@@ -2516,6 +2962,12 @@
           "dimensionFinish": "matte"
         }
       ],
+      "macProductLinks": [
+        "/tw/shop/buy-mac/studio-display-xdr/%E5%A5%88%E7%B1%B3%E7%B4%8B%E7%90%86%E7%8E%BB%E7%92%83-%E5%8F%AF%E8%AA%BF%E6%95%B4%E6%96%9C%E5%BA%A6%E8%88%87%E9%AB%98%E5%BA%A6%E7%9A%84%E6%94%AF%E6%9E%B6",
+        "/tw/shop/buy-mac/studio-display-xdr/%E5%A5%88%E7%B1%B3%E7%B4%8B%E7%90%86%E7%8E%BB%E7%92%83-vesa-%E5%90%8A%E6%9E%B6%E9%80%A3%E6%8E%A5%E5%99%A8",
+        "/tw/shop/buy-mac/studio-display-xdr/%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-%E5%8F%AF%E8%AA%BF%E6%95%B4%E6%96%9C%E5%BA%A6%E8%88%87%E9%AB%98%E5%BA%A6%E7%9A%84%E6%94%AF%E6%9E%B6",
+        "/tw/shop/buy-mac/studio-display-xdr/%E6%A8%99%E6%BA%96%E7%8E%BB%E7%92%83-vesa-%E5%90%8A%E6%9E%B6%E9%80%A3%E6%8E%A5%E5%99%A8"
+      ],
       "displayValues": {
         "dimensionStandType": {
           "tiltheightadjuststand": {
@@ -2542,16 +2994,7 @@
     "data": {
       "products": [
         {
-          "part": "MEW04TA/A",
-          "dimensions": {
-            "watch_cases-dimensionCaseSize": "42mm",
-            "watch_cases-dimensionCaseMaterial": "aluminum",
-            "watch_cases-dimensionColor": "jet_black",
-            "watch_cases-dimensionConnection": "gps"
-          }
-        },
-        {
-          "part": "MEW14TA/A",
+          "part": "MJFN4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "42mm",
             "watch_cases-dimensionCaseMaterial": "aluminum",
@@ -2560,34 +3003,34 @@
           }
         },
         {
-          "part": "MEW24TA/A",
+          "part": "MJFP4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "42mm",
             "watch_cases-dimensionCaseMaterial": "aluminum",
-            "watch_cases-dimensionColor": "rosegold",
+            "watch_cases-dimensionColor": "black",
             "watch_cases-dimensionConnection": "gps"
           }
         },
         {
-          "part": "MEW34TA/A",
+          "part": "MJFQ4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "42mm",
             "watch_cases-dimensionCaseMaterial": "aluminum",
-            "watch_cases-dimensionColor": "silver",
+            "watch_cases-dimensionColor": "lightgold",
             "watch_cases-dimensionConnection": "gps"
           }
         },
         {
-          "part": "MEW84TA/A",
+          "part": "MJFR4TA/A",
           "dimensions": {
-            "watch_cases-dimensionCaseSize": "46mm",
+            "watch_cases-dimensionCaseSize": "42mm",
             "watch_cases-dimensionCaseMaterial": "aluminum",
-            "watch_cases-dimensionColor": "jet_black",
+            "watch_cases-dimensionColor": "darkbronze",
             "watch_cases-dimensionConnection": "gps"
           }
         },
         {
-          "part": "MEW94TA/A",
+          "part": "MJFT4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "46mm",
             "watch_cases-dimensionCaseMaterial": "aluminum",
@@ -2596,34 +3039,34 @@
           }
         },
         {
-          "part": "MEWA4TA/A",
+          "part": "MJFU4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "46mm",
             "watch_cases-dimensionCaseMaterial": "aluminum",
-            "watch_cases-dimensionColor": "rosegold",
+            "watch_cases-dimensionColor": "black",
             "watch_cases-dimensionConnection": "gps"
           }
         },
         {
-          "part": "MEWC4TA/A",
+          "part": "MJFV4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "46mm",
             "watch_cases-dimensionCaseMaterial": "aluminum",
-            "watch_cases-dimensionColor": "silver",
+            "watch_cases-dimensionColor": "lightgold",
             "watch_cases-dimensionConnection": "gps"
           }
         },
         {
-          "part": "MF994TA/A",
+          "part": "MJFW4TA/A",
           "dimensions": {
-            "watch_cases-dimensionCaseSize": "42mm",
+            "watch_cases-dimensionCaseSize": "46mm",
             "watch_cases-dimensionCaseMaterial": "aluminum",
-            "watch_cases-dimensionColor": "jet_black",
-            "watch_cases-dimensionConnection": "gpscell"
+            "watch_cases-dimensionColor": "darkbronze",
+            "watch_cases-dimensionConnection": "gps"
           }
         },
         {
-          "part": "MF9C4TA/A",
+          "part": "MJJD4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "42mm",
             "watch_cases-dimensionCaseMaterial": "aluminum",
@@ -2632,25 +3075,70 @@
           }
         },
         {
-          "part": "MF9E4TA/A",
+          "part": "MJJE4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "42mm",
             "watch_cases-dimensionCaseMaterial": "aluminum",
-            "watch_cases-dimensionColor": "rosegold",
+            "watch_cases-dimensionColor": "black",
             "watch_cases-dimensionConnection": "gpscell"
           }
         },
         {
-          "part": "MF9F4TA/A",
+          "part": "MJJF4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "42mm",
             "watch_cases-dimensionCaseMaterial": "aluminum",
-            "watch_cases-dimensionColor": "silver",
+            "watch_cases-dimensionColor": "lightgold",
             "watch_cases-dimensionConnection": "gpscell"
           }
         },
         {
-          "part": "MF9H4TA/A",
+          "part": "MJJG4TA/A",
+          "dimensions": {
+            "watch_cases-dimensionCaseSize": "42mm",
+            "watch_cases-dimensionCaseMaterial": "aluminum",
+            "watch_cases-dimensionColor": "darkbronze",
+            "watch_cases-dimensionConnection": "gpscell"
+          }
+        },
+        {
+          "part": "MJJH4TA/A",
+          "dimensions": {
+            "watch_cases-dimensionCaseSize": "46mm",
+            "watch_cases-dimensionCaseMaterial": "aluminum",
+            "watch_cases-dimensionColor": "space_gray",
+            "watch_cases-dimensionConnection": "gpscell"
+          }
+        },
+        {
+          "part": "MJJJ4TA/A",
+          "dimensions": {
+            "watch_cases-dimensionCaseSize": "46mm",
+            "watch_cases-dimensionCaseMaterial": "aluminum",
+            "watch_cases-dimensionColor": "black",
+            "watch_cases-dimensionConnection": "gpscell"
+          }
+        },
+        {
+          "part": "MJJK4TA/A",
+          "dimensions": {
+            "watch_cases-dimensionCaseSize": "46mm",
+            "watch_cases-dimensionCaseMaterial": "aluminum",
+            "watch_cases-dimensionColor": "lightgold",
+            "watch_cases-dimensionConnection": "gpscell"
+          }
+        },
+        {
+          "part": "MJJL4TA/A",
+          "dimensions": {
+            "watch_cases-dimensionCaseSize": "46mm",
+            "watch_cases-dimensionCaseMaterial": "aluminum",
+            "watch_cases-dimensionColor": "darkbronze",
+            "watch_cases-dimensionConnection": "gpscell"
+          }
+        },
+        {
+          "part": "MJJM4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "42mm",
             "watch_cases-dimensionCaseMaterial": "titanium",
@@ -2659,61 +3147,16 @@
           }
         },
         {
-          "part": "MF9K4TA/A",
+          "part": "MJJN4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "42mm",
             "watch_cases-dimensionCaseMaterial": "titanium",
-            "watch_cases-dimensionColor": "slate",
+            "watch_cases-dimensionColor": "radiantgold",
             "watch_cases-dimensionConnection": "gpscell"
           }
         },
         {
-          "part": "MF9M4TA/A",
-          "dimensions": {
-            "watch_cases-dimensionCaseSize": "42mm",
-            "watch_cases-dimensionCaseMaterial": "titanium",
-            "watch_cases-dimensionColor": "gold",
-            "watch_cases-dimensionConnection": "gpscell"
-          }
-        },
-        {
-          "part": "MFAA4TA/A",
-          "dimensions": {
-            "watch_cases-dimensionCaseSize": "46mm",
-            "watch_cases-dimensionCaseMaterial": "aluminum",
-            "watch_cases-dimensionColor": "jet_black",
-            "watch_cases-dimensionConnection": "gpscell"
-          }
-        },
-        {
-          "part": "MFAE4TA/A",
-          "dimensions": {
-            "watch_cases-dimensionCaseSize": "46mm",
-            "watch_cases-dimensionCaseMaterial": "aluminum",
-            "watch_cases-dimensionColor": "space_gray",
-            "watch_cases-dimensionConnection": "gpscell"
-          }
-        },
-        {
-          "part": "MFAF4TA/A",
-          "dimensions": {
-            "watch_cases-dimensionCaseSize": "46mm",
-            "watch_cases-dimensionCaseMaterial": "aluminum",
-            "watch_cases-dimensionColor": "rosegold",
-            "watch_cases-dimensionConnection": "gpscell"
-          }
-        },
-        {
-          "part": "MFAJ4TA/A",
-          "dimensions": {
-            "watch_cases-dimensionCaseSize": "46mm",
-            "watch_cases-dimensionCaseMaterial": "aluminum",
-            "watch_cases-dimensionColor": "silver",
-            "watch_cases-dimensionConnection": "gpscell"
-          }
-        },
-        {
-          "part": "MFAY4TA/A",
+          "part": "MJJP4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "46mm",
             "watch_cases-dimensionCaseMaterial": "titanium",
@@ -2722,22 +3165,147 @@
           }
         },
         {
-          "part": "MFC14TA/A",
+          "part": "MJJQ4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "46mm",
             "watch_cases-dimensionCaseMaterial": "titanium",
-            "watch_cases-dimensionColor": "slate",
+            "watch_cases-dimensionColor": "radiantgold",
             "watch_cases-dimensionConnection": "gpscell"
           }
         },
         {
-          "part": "MFC34TA/A",
+          "part": "MJJT4TA/A",
           "dimensions": {
-            "watch_cases-dimensionCaseSize": "46mm",
-            "watch_cases-dimensionCaseMaterial": "titanium",
-            "watch_cases-dimensionColor": "gold",
+            "watch_cases-dimensionCaseSize": "42mm",
+            "watch_cases-dimensionCaseMaterial": "ceramic",
+            "watch_cases-dimensionColor": "pearlwhite",
             "watch_cases-dimensionConnection": "gpscell"
           }
+        },
+        {
+          "part": "MJJU4TA/A",
+          "dimensions": {
+            "watch_cases-dimensionCaseSize": "42mm",
+            "watch_cases-dimensionCaseMaterial": "ceramic",
+            "watch_cases-dimensionColor": "nightblue",
+            "watch_cases-dimensionConnection": "gpscell"
+          }
+        },
+        {
+          "part": "MJJV4TA/A",
+          "dimensions": {
+            "watch_cases-dimensionCaseSize": "46mm",
+            "watch_cases-dimensionCaseMaterial": "ceramic",
+            "watch_cases-dimensionColor": "pearlwhite",
+            "watch_cases-dimensionConnection": "gpscell"
+          }
+        },
+        {
+          "part": "MJJW4TA/A",
+          "dimensions": {
+            "watch_cases-dimensionCaseSize": "46mm",
+            "watch_cases-dimensionCaseMaterial": "ceramic",
+            "watch_cases-dimensionColor": "nightblue",
+            "watch_cases-dimensionConnection": "gpscell"
+          }
+        }
+      ],
+      "watchProductSelectionDataNoJS": [
+        {
+          "text": "Apple Watch Series 12 (GPS + 行動網路)；42 公釐黑色鋁金屬錶殼；粉筆靜白色 Nike 運動型錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/42mm-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-black-%E9%8B%81%E9%87%91%E5%B1%AC-%E7%B2%89%E7%AD%86%E9%9D%9C%E7%99%BD%E8%89%B2-nike-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS + 行動網路)；42 公釐夜藍色精密陶瓷錶殼；駝色磁性鏈紋錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/42mm-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%A4%9C%E8%97%8D%E8%89%B2-%E7%B2%BE%E5%AF%86%E9%99%B6%E7%93%B7-%E9%A7%9D%E8%89%B2-%E7%A3%81%E6%80%A7%E9%8F%88%E7%B4%8B%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS + 行動網路)；46 公釐太空灰色鋁金屬錶殼；海軍藍色編織單圈錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/46%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-space-gray-%E9%8B%81%E9%87%91%E5%B1%AC-%E6%B5%B7%E8%BB%8D%E8%97%8D%E8%89%B2-%E7%B7%A8%E7%B9%94%E5%96%AE%E5%9C%88%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS)；46 公釐淺金色鋁金屬錶殼；路面灰色 Nike 運動型錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/46%E5%85%AC%E9%87%90-gps-%E6%B7%BA%E9%87%91%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E8%B7%AF%E9%9D%A2%E7%81%B0%E8%89%B2-nike-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS)；42 公釐黑色鋁金屬錶殼；燦金色錶鏈帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/42mm-gps-black-%E9%8B%81%E9%87%91%E5%B1%AC-%E7%87%A6%E9%87%91%E8%89%B2-%E9%8C%B6%E9%8F%88%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS + 行動網路)；42 公釐燦金色鈦金屬錶殼；淺土棕格紋運動型錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/42mm-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E7%87%A6%E9%87%91%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-%E6%B7%BA%E5%9C%9F%E6%A3%95%E6%A0%BC%E7%B4%8B-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS + 行動網路)；42 公釐淺金色鋁金屬錶殼；燦金色米蘭式錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/42mm-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E6%B7%BA%E9%87%91%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E7%87%A6%E9%87%91%E8%89%B2-%E7%B1%B3%E8%98%AD%E5%BC%8F%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS + 行動網路)；46 公釐淺金色鋁金屬錶殼；黑色編織單圈錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/46%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E6%B7%BA%E9%87%91%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-black-%E7%B7%A8%E7%B9%94%E5%96%AE%E5%9C%88%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS)；42 公釐太空灰色鋁金屬錶殼；火花綠色 Nike 運動型錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/42mm-gps-space-gray-%E9%8B%81%E9%87%91%E5%B1%AC-%E7%81%AB%E8%8A%B1%E7%B6%A0%E8%89%B2-nike-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS + 行動網路)；46 公釐原色鈦金屬錶殼；淺土棕格紋運動型錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/46%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-%E6%B7%BA%E5%9C%9F%E6%A3%95%E6%A0%BC%E7%B4%8B-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS + 行動網路)；42 公釐原色鈦金屬錶殼；火花綠色 Nike 運動型錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/42mm-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-%E7%81%AB%E8%8A%B1%E7%B6%A0%E8%89%B2-nike-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS + 行動網路)；46 公釐黑色鋁金屬錶殼；石灰岩色運動型錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/46%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-black-%E9%8B%81%E9%87%91%E5%B1%AC-%E7%9F%B3%E7%81%B0%E5%B2%A9%E8%89%B2-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS)；46 公釐太空灰色鋁金屬錶殼；橄欖色運動型錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/46%E5%85%AC%E9%87%90-gps-space-gray-%E9%8B%81%E9%87%91%E5%B1%AC-%E6%A9%84%E6%AC%96%E8%89%B2-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS + 行動網路)；46 公釐珍珠白色精密陶瓷錶殼；洋紅色運動型錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/46%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E7%8F%8D%E7%8F%A0%E7%99%BD%E8%89%B2-%E7%B2%BE%E5%AF%86%E9%99%B6%E7%93%B7-%E6%B4%8B%E7%B4%85%E8%89%B2-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS)；42 公釐淺金色鋁金屬錶殼；After Dark 黑色 Nike 運動型錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/42mm-gps-%E6%B7%BA%E9%87%91%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-after-dark-%E9%BB%91%E8%89%B2-nike-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS)；46 公釐黑色鋁金屬錶殼；深古銅色米蘭式錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/46%E5%85%AC%E9%87%90-gps-black-%E9%8B%81%E9%87%91%E5%B1%AC-%E6%B7%B1%E5%8F%A4%E9%8A%85%E8%89%B2-%E7%B1%B3%E8%98%AD%E5%BC%8F%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS + 行動網路)；42 公釐珍珠白色精密陶瓷錶殼；洋紅色編織單圈錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/42mm-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E7%8F%8D%E7%8F%A0%E7%99%BD%E8%89%B2-%E7%B2%BE%E5%AF%86%E9%99%B6%E7%93%B7-%E6%B4%8B%E7%B4%85%E8%89%B2-%E7%B7%A8%E7%B9%94%E5%96%AE%E5%9C%88%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS + 行動網路)；46 公釐深古銅色鋁金屬錶殼；洋紅色編織單圈錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/46%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E6%B7%B1%E5%8F%A4%E9%8A%85%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E6%B4%8B%E7%B4%85%E8%89%B2-%E7%B7%A8%E7%B9%94%E5%96%AE%E5%9C%88%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS + 行動網路)；46 公釐夜藍色精密陶瓷錶殼；淺土棕格紋運動型錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/46%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%A4%9C%E8%97%8D%E8%89%B2-%E7%B2%BE%E5%AF%86%E9%99%B6%E7%93%B7-%E6%B7%BA%E5%9C%9F%E6%A3%95%E6%A0%BC%E7%B4%8B-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS + 行動網路)；46 公釐燦金色鈦金屬錶殼；路面灰色 Nike 運動型錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/46%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E7%87%A6%E9%87%91%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-%E8%B7%AF%E9%9D%A2%E7%81%B0%E8%89%B2-nike-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS + 行動網路)；42 公釐太空灰色鋁金屬錶殼；勃根地紅色運動型錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/42mm-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-space-gray-%E9%8B%81%E9%87%91%E5%B1%AC-%E5%8B%83%E6%A0%B9%E5%9C%B0%E7%B4%85%E8%89%B2-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS)；42 公釐深古銅色鋁金屬錶殼；原色錶鏈帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/42mm-gps-%E6%B7%B1%E5%8F%A4%E9%8A%85%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E5%8E%9F%E8%89%B2-%E9%8C%B6%E9%8F%88%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS + 行動網路)；42 公釐深古銅色鋁金屬錶殼；洋紅色運動型錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/42mm-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E6%B7%B1%E5%8F%A4%E9%8A%85%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E6%B4%8B%E7%B4%85%E8%89%B2-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Series 12 (GPS)；46 公釐深古銅色鋁金屬錶殼；深古銅色米蘭式錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch/46%E5%85%AC%E9%87%90-gps-%E6%B7%B1%E5%8F%A4%E9%8A%85%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E6%B7%B1%E5%8F%A4%E9%8A%85%E8%89%B2-%E7%B1%B3%E8%98%AD%E5%BC%8F%E9%8C%B6%E7%92%B0"
         }
       ],
       "displayValues": {
@@ -2751,30 +3319,36 @@
         },
         "watch_cases-dimensionCaseMaterial": {
           "aluminum": {
-            "header": "\n<div>鋁金屬</div>\n<span class=\"form-label-small\">可選擇 GPS 或 GPS + 行動網路</span>"
+            "header": "<span class=\"badge badge-no-scrim badge-tiny\">全新外觀</span>\n<div>鋁金屬</div>\n<span class=\"form-label-small\">可選擇 GPS 或 GPS + 行動網路</span>"
+          },
+          "ceramic": {
+            "header": "<span class=\"badge badge-no-scrim badge-tiny\">全新</span>\n<div>精密陶瓷</div>\n<span class=\"form-label-small\">具備 GPS + 行動網路</span>"
           },
           "titanium": {
-            "header": "鈦金屬<div class=\"form-label-small\">具備 GPS + 行動網路</div>"
+            "header": "<span class=\"badge badge-no-scrim badge-tiny\">全新外觀</span>\n<div>鈦金屬</div>\n<span class=\"form-label-small\">具備 GPS + 行動網路</span>"
           }
         },
         "watch_cases-dimensionColor": {
-          "gold": {
-            "text": "金色"
+          "black": {
+            "text": "黑色"
           },
-          "jet_black": {
-            "text": "曜石黑色"
+          "darkbronze": {
+            "text": "深古銅色"
+          },
+          "lightgold": {
+            "text": "淺金色"
           },
           "natural": {
             "text": "原色"
           },
-          "rosegold": {
-            "text": "玫瑰金色"
+          "nightblue": {
+            "text": "夜藍色"
           },
-          "silver": {
-            "text": "銀色"
+          "pearlwhite": {
+            "text": "珍珠白色"
           },
-          "slate": {
-            "text": "石瓦色"
+          "radiantgold": {
+            "text": "燦金色"
           },
           "space_gray": {
             "text": "太空灰色"
@@ -2785,7 +3359,7 @@
             "header": "GPS<div class=\"form-label-small\">可藉由你的 iPhone 在附近範圍內撥接電話和發簡訊。</div>"
           },
           "gpscell": {
-            "header": "GPS + 行動網路<div class=\"form-label-small\">只需 Apple&nbsp;Watch 就能打電話和發簡訊。「Apple&nbsp;Watch 親子設定」功能須使用 GPS&nbsp;+&nbsp;行動網路錶<span class=\"nowrap\">款<as-footnote data-id=\"d147341b8b9c64e2c751b340cce2f9d4\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>②</sup></as-footnote>。</span></div>"
+            "header": "GPS + 行動網路<div class=\"form-label-small\">只需 Apple Watch 就能打電話和傳簡訊。「Apple Watch 親子設定」須搭配 GPS + 行動網路錶款使用<as-footnote data-id=\"d147341b8b9c64e2c751b340cce2f9d4\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>※</sup></as-footnote>。</div>"
           }
         }
       }
@@ -2869,6 +3443,104 @@
           }
         }
       ],
+      "watchProductSelectionDataNoJS": [
+        {
+          "text": "Apple Watch SE 3 (GPS + 行動網路)；44 公釐星光色鋁金屬錶殼；火花綠色 Nike 運動型錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/44%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E6%98%9F%E5%85%89%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E7%81%AB%E8%8A%B1%E7%B6%A0%E8%89%B2-nike-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E7%92%B0-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS + 行動網路)；44 公釐星光色鋁金屬錶殼；石蓮淡綠色運動型錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/44%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E6%98%9F%E5%85%89%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E7%9F%B3%E8%93%AE%E6%B7%A1%E7%B6%A0%E8%89%B2-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E5%B8%B6-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS + 行動網路)；44 公釐星光色鋁金屬錶殼；野花藍色編織單圈錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/44%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E6%98%9F%E5%85%89%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E9%87%8E%E8%8A%B1%E8%97%8D%E8%89%B2-%E7%B7%A8%E7%B9%94%E5%96%AE%E5%9C%88%E9%8C%B6%E7%92%B0-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS)；40 公釐星光色鋁金屬錶殼；火花綠色 Nike 運動型錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/40%E5%85%AC%E9%87%90-gps-%E6%98%9F%E5%85%89%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E7%81%AB%E8%8A%B1%E7%B6%A0%E8%89%B2-nike-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E5%B8%B6-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS)；40 公釐星光色鋁金屬錶殼；橄欖色編織單圈錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/40%E5%85%AC%E9%87%90-gps-%E6%98%9F%E5%85%89%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E6%A9%84%E6%AC%96%E8%89%B2-%E7%B7%A8%E7%B9%94%E5%96%AE%E5%9C%88%E9%8C%B6%E7%92%B0-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS)；40 公釐星光色鋁金屬錶殼；After Dark 黑色 Nike 運動型錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/40%E5%85%AC%E9%87%90-gps-%E6%98%9F%E5%85%89%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-after-dark-%E9%BB%91%E8%89%B2-nike-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E5%B8%B6-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS + 行動網路)；44 公釐午夜色鋁金屬錶殼；黑色單圈錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/44%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8D%88%E5%A4%9C%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-black-%E5%96%AE%E5%9C%88%E9%8C%B6%E7%92%B0-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS + 行動網路)；44 公釐午夜色鋁金屬錶殼；勃根地紅色磁性鏈紋錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/44%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8D%88%E5%A4%9C%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E5%8B%83%E6%A0%B9%E5%9C%B0%E7%B4%85%E8%89%B2-%E7%A3%81%E6%80%A7%E9%8F%88%E7%B4%8B%E9%8C%B6%E5%B8%B6-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS + 行動網路)；44 公釐午夜色鋁金屬錶殼；燦金色錶鏈帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/44%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8D%88%E5%A4%9C%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E7%87%A6%E9%87%91%E8%89%B2-%E9%8C%B6%E9%8F%88%E5%B8%B6-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS + 行動網路)；40 公釐星光色鋁金屬錶殼；After Dark 黑色 Nike 運動型錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/40%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E6%98%9F%E5%85%89%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-after-dark-%E9%BB%91%E8%89%B2-nike-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E7%92%B0-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS + 行動網路)；40 公釐星光色鋁金屬錶殼；水手布藍色運動型錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/40%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E6%98%9F%E5%85%89%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E6%B0%B4%E6%89%8B%E5%B8%83%E8%97%8D%E8%89%B2-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E7%92%B0-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS + 行動網路)；40 公釐星光色鋁金屬錶殼；洋紅色運動型錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/40%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E6%98%9F%E5%85%89%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E6%B4%8B%E7%B4%85%E8%89%B2-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E7%92%B0-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS)；44 公釐午夜色鋁金屬錶殼；燦金色米蘭式錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/44%E5%85%AC%E9%87%90-gps-%E5%8D%88%E5%A4%9C%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E7%87%A6%E9%87%91%E8%89%B2-%E7%B1%B3%E8%98%AD%E5%BC%8F%E9%8C%B6%E7%92%B0-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS)；44 公釐午夜色鋁金屬錶殼；原色錶鏈帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/44%E5%85%AC%E9%87%90-gps-%E5%8D%88%E5%A4%9C%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E5%8E%9F%E8%89%B2-%E9%8C%B6%E9%8F%88%E5%B8%B6-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS)；44 公釐午夜色鋁金屬錶殼；洋紅色編織單圈錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/44%E5%85%AC%E9%87%90-gps-%E5%8D%88%E5%A4%9C%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E6%B4%8B%E7%B4%85%E8%89%B2-%E7%B7%A8%E7%B9%94%E5%96%AE%E5%9C%88%E9%8C%B6%E7%92%B0-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS)；44 公釐星光色鋁金屬錶殼；午夜色磁性鏈紋錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/44%E5%85%AC%E9%87%90-gps-%E6%98%9F%E5%85%89%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E5%8D%88%E5%A4%9C%E8%89%B2-%E7%A3%81%E6%80%A7%E9%8F%88%E7%B4%8B%E9%8C%B6%E5%B8%B6-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS)；44 公釐星光色鋁金屬錶殼；黑色編織單圈錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/44%E5%85%AC%E9%87%90-gps-%E6%98%9F%E5%85%89%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-black-%E7%B7%A8%E7%B9%94%E5%96%AE%E5%9C%88%E9%8C%B6%E7%92%B0-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS)；44 公釐星光色鋁金屬錶殼；燦金色米蘭式錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/44%E5%85%AC%E9%87%90-gps-%E6%98%9F%E5%85%89%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E7%87%A6%E9%87%91%E8%89%B2-%E7%B1%B3%E8%98%AD%E5%BC%8F%E9%8C%B6%E7%92%B0-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS)；40 公釐午夜色鋁金屬錶殼；After Dark 黑色 Nike 運動型錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/40%E5%85%AC%E9%87%90-gps-%E5%8D%88%E5%A4%9C%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-after-dark-%E9%BB%91%E8%89%B2-nike-%E9%81%8B%E5%8B%95%E5%9E%8B%E9%8C%B6%E7%92%B0-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS)；40 公釐午夜色鋁金屬錶殼；午夜色磁性鏈紋錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/40%E5%85%AC%E9%87%90-gps-%E5%8D%88%E5%A4%9C%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E5%8D%88%E5%A4%9C%E8%89%B2-%E7%A3%81%E6%80%A7%E9%8F%88%E7%B4%8B%E9%8C%B6%E5%B8%B6-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS)；40 公釐午夜色鋁金屬錶殼；駝色時尚環扣錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/40%E5%85%AC%E9%87%90-gps-%E5%8D%88%E5%A4%9C%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E9%A7%9D%E8%89%B2-%E6%99%82%E5%B0%9A%E7%92%B0%E6%89%A3%E9%8C%B6%E5%B8%B6-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS + 行動網路)；40 公釐午夜色鋁金屬錶殼；燦金色錶鏈帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/40%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8D%88%E5%A4%9C%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E7%87%A6%E9%87%91%E8%89%B2-%E9%8C%B6%E9%8F%88%E5%B8%B6-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS + 行動網路)；40 公釐午夜色鋁金屬錶殼；橄欖色單圈錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/40%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8D%88%E5%A4%9C%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E6%A9%84%E6%AC%96%E8%89%B2-%E5%96%AE%E5%9C%88%E9%8C%B6%E7%92%B0-se"
+        },
+        {
+          "text": "Apple Watch SE 3 (GPS + 行動網路)；40 公釐午夜色鋁金屬錶殼；鼠尾草綠色時尚環扣錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-se/40%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8D%88%E5%A4%9C%E8%89%B2-%E9%8B%81%E9%87%91%E5%B1%AC-%E9%BC%A0%E5%B0%BE%E8%8D%89%E7%B6%A0%E8%89%B2-%E6%99%82%E5%B0%9A%E7%92%B0%E6%89%A3%E9%8C%B6%E5%B8%B6-se"
+        }
+      ],
       "displayValues": {
         "watch_cases-dimensionCaseSize": {
           "40mm": {
@@ -2891,7 +3563,7 @@
             "header": "GPS<div class=\"form-label-small\">可藉由你的 iPhone 在附近範圍內撥接電話和發簡訊。</div>"
           },
           "gpscell": {
-            "header": "GPS + 行動網路<div class=\"form-label-small\">只需 Apple&nbsp;Watch 就能打電話和發簡訊。「Apple&nbsp;Watch 親子設定」功能須使用 GPS&nbsp;+&nbsp;行動網路錶<span class=\"nowrap\">款<as-footnote data-id=\"d147341b8b9c64e2c751b340cce2f9d4\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>②</sup></as-footnote>。</span></div>"
+            "header": "GPS + 行動網路<div class=\"form-label-small\">只需 Apple Watch 就能打電話和傳簡訊。「Apple Watch 親子設定」須搭配 GPS + 行動網路錶款使用<as-footnote data-id=\"d147341b8b9c64e2c751b340cce2f9d4\" data-assigned=\"true\"><sup data-autom=\"footnote-sub\" class=\"as-footnote\"><span class=\"visuallyhidden\">&nbsp;註腳&nbsp;</span>②</sup></as-footnote>。</div>"
           }
         }
       }
@@ -2903,18 +3575,100 @@
     "data": {
       "products": [
         {
-          "part": "MF1V4TA/A",
+          "part": "MJCR4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "49mm",
             "watch_cases-dimensionColor": "natural"
           }
         },
         {
-          "part": "MF254TA/A",
+          "part": "MJCT4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "49mm",
             "watch_cases-dimensionColor": "black"
           }
+        }
+      ],
+      "watchProductSelectionDataNoJS": [
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；半透明昆布色海洋錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-%E5%8D%8A%E9%80%8F%E6%98%8E%E6%98%86%E5%B8%83%E8%89%B2-%E6%B5%B7%E6%B4%8B%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；勃根地紅色越野錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-%E5%8B%83%E6%A0%B9%E5%9C%B0%E7%B4%85%E8%89%B2-%E8%B6%8A%E9%87%8E%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；半透明灰色海洋錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-%E5%8D%8A%E9%80%8F%E6%98%8E%E7%81%B0%E8%89%B2-%E6%B5%B7%E6%B4%8B%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；原色鈦金屬米蘭式錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC%E7%B1%B3%E8%98%AD%E5%BC%8F%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；半透明黑色海洋錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-%E5%8D%8A%E9%80%8F%E6%98%8E%E9%BB%91%E8%89%B2-%E6%B5%B7%E6%B4%8B%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；深土棕色越野錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-%E6%B7%B1%E5%9C%9F%E6%A3%95%E8%89%B2-%E8%B6%8A%E9%87%8E%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；沙漠色高山錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-%E6%B2%99%E6%BC%A0%E8%89%B2-%E9%AB%98%E5%B1%B1%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；沙色越野錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-%E6%B2%99%E8%89%B2-%E8%B6%8A%E9%87%8E%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；深橄欖色高山錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-%E6%B7%B1%E6%A9%84%E6%AC%96%E8%89%B2-%E9%AB%98%E5%B1%B1%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；勃根地紅色高山錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-%E5%8B%83%E6%A0%B9%E5%9C%B0%E7%B4%85%E8%89%B2-%E9%AB%98%E5%B1%B1%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐黑色鈦金屬錶殼；沙漠色高山錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-black-%E9%88%A6%E9%87%91%E5%B1%AC-%E6%B2%99%E6%BC%A0%E8%89%B2-%E9%AB%98%E5%B1%B1%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐黑色鈦金屬錶殼；深土棕色越野錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-black-%E9%88%A6%E9%87%91%E5%B1%AC-%E6%B7%B1%E5%9C%9F%E6%A3%95%E8%89%B2-%E8%B6%8A%E9%87%8E%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐黑色鈦金屬錶殼；半透明灰色海洋錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-black-%E9%88%A6%E9%87%91%E5%B1%AC-%E5%8D%8A%E9%80%8F%E6%98%8E%E7%81%B0%E8%89%B2-%E6%B5%B7%E6%B4%8B%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐黑色鈦金屬錶殼；勃根地紅色高山錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-black-%E9%88%A6%E9%87%91%E5%B1%AC-%E5%8B%83%E6%A0%B9%E5%9C%B0%E7%B4%85%E8%89%B2-%E9%AB%98%E5%B1%B1%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐黑色鈦金屬錶殼；黑色鈦金屬米蘭式錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-black-%E9%88%A6%E9%87%91%E5%B1%AC-black-%E9%88%A6%E9%87%91%E5%B1%AC%E7%B1%B3%E8%98%AD%E5%BC%8F%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐黑色鈦金屬錶殼；半透明昆布色海洋錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-black-%E9%88%A6%E9%87%91%E5%B1%AC-%E5%8D%8A%E9%80%8F%E6%98%8E%E6%98%86%E5%B8%83%E8%89%B2-%E6%B5%B7%E6%B4%8B%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐黑色鈦金屬錶殼；沙色越野錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-black-%E9%88%A6%E9%87%91%E5%B1%AC-%E6%B2%99%E8%89%B2-%E8%B6%8A%E9%87%8E%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐黑色鈦金屬錶殼；深橄欖色高山錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-black-%E9%88%A6%E9%87%91%E5%B1%AC-%E6%B7%B1%E6%A9%84%E6%AC%96%E8%89%B2-%E9%AB%98%E5%B1%B1%E9%8C%B6%E7%92%B0"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐黑色鈦金屬錶殼；半透明黑色海洋錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-black-%E9%88%A6%E9%87%91%E5%B1%AC-%E5%8D%8A%E9%80%8F%E6%98%8E%E9%BB%91%E8%89%B2-%E6%B5%B7%E6%B4%8B%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Ultra 4 (GPS + 行動網路)；49 公釐黑色鈦金屬錶殼；勃根地紅色越野錶環",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-black-%E9%88%A6%E9%87%91%E5%B1%AC-%E5%8B%83%E6%A0%B9%E5%9C%B0%E7%B4%85%E8%89%B2-%E8%B6%8A%E9%87%8E%E9%8C%B6%E7%92%B0"
         }
       ],
       "displayValues": {
@@ -2935,18 +3689,86 @@
     "data": {
       "products": [
         {
-          "part": "MF9P4TA/A",
+          "part": "MJJX4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "42mm",
+            "watch_cases-dimensionCaseMaterial": "titanium",
+            "watch_cases-dimensionColor": "radiantgold"
+          }
+        },
+        {
+          "part": "MJJY4TA/A",
+          "dimensions": {
+            "watch_cases-dimensionCaseSize": "42mm",
+            "watch_cases-dimensionCaseMaterial": "titanium",
             "watch_cases-dimensionColor": "silver"
           }
         },
         {
-          "part": "MFC64TA/A",
+          "part": "MJK04TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "46mm",
+            "watch_cases-dimensionCaseMaterial": "titanium",
+            "watch_cases-dimensionColor": "radiantgold"
+          }
+        },
+        {
+          "part": "MJK14TA/A",
+          "dimensions": {
+            "watch_cases-dimensionCaseSize": "46mm",
+            "watch_cases-dimensionCaseMaterial": "titanium",
             "watch_cases-dimensionColor": "silver"
           }
+        }
+      ],
+      "watchProductSelectionDataNoJS": [
+        {
+          "text": "Apple Watch Hermès Series 12 (GPS + 行動網路)；46 公釐銀色鈦金屬錶殼；Noir 黑色 Kilim Single Tour 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes/46%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-silver-%E9%88%A6%E9%87%91%E5%B1%AC-noir-kilim-single-tour-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Series 12 (GPS + 行動網路)；46 公釐銀色鈦金屬錶殼；Bleu de Malte 馬爾他藍色 Kilim Single Tour 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes/46%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-silver-%E9%88%A6%E9%87%91%E5%B1%AC-bleu-de-malte-%E9%A6%AC%E7%88%BE%E4%BB%96%E8%97%8D%E8%89%B2-kilim-single-tour-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Series 12 (GPS + 行動網路)；46 公釐銀色鈦金屬錶殼；Bleu Nuit/Gris Titane 午夜藍色配鈦灰色 Rocabar Club 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes/46%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-silver-%E9%88%A6%E9%87%91%E5%B1%AC-bleu-nuit-gris-titane-%E5%8D%88%E5%A4%9C%E8%97%8D%E8%89%B2%E9%85%8D%E9%88%A6%E7%81%B0%E8%89%B2-rocabar-club-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Series 12 (GPS + 行動網路)；46 公釐銀色鈦金屬錶殼；Orange 經典橘色 Kilim Single Tour 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes/46%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-silver-%E9%88%A6%E9%87%91%E5%B1%AC-orange-%E7%B6%93%E5%85%B8%E6%A9%98%E8%89%B2-kilim-single-tour-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Series 12 (GPS + 行動網路)；46 公釐銀色鈦金屬錶殼；Bleu Nuit/Orange 午夜藍色配經典橘色 Rocabar Club 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes/46%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-silver-%E9%88%A6%E9%87%91%E5%B1%AC-bleu-nuit-orange-%E5%8D%88%E5%A4%9C%E8%97%8D%E8%89%B2%E9%85%8D%E7%B6%93%E5%85%B8%E6%A9%98%E8%89%B2-rocabar-club-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Series 12 (GPS + 行動網路)；42 公釐銀色鈦金屬錶殼；Orange 經典橘色 Kilim Single Tour 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes/42mm-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-silver-%E9%88%A6%E9%87%91%E5%B1%AC-orange-%E7%B6%93%E5%85%B8%E6%A9%98%E8%89%B2-kilim-single-tour-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Series 12 (GPS + 行動網路)；42 公釐銀色鈦金屬錶殼；Satiné 緞灰色 Grand H Fin 錶鏈帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes/42mm-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-silver-%E9%88%A6%E9%87%91%E5%B1%AC-satin%C3%A9-%E7%B7%9E%E7%81%B0%E8%89%B2-grand-h-fin-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Series 12 (GPS + 行動網路)；42 公釐銀色鈦金屬錶殼；Bleu Nuit/Bleu Brighton 午夜藍色配布萊頓藍色 Rocabar Club 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes/42mm-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-silver-%E9%88%A6%E9%87%91%E5%B1%AC-bleu-nuit-bleu-brighton-%E5%8D%88%E5%A4%9C%E8%97%8D%E8%89%B2%E9%85%8D%E5%B8%83%E8%90%8A%E9%A0%93%E8%97%8D%E8%89%B2-rocabar-club-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Series 12 (GPS + 行動網路)；42 公釐銀色鈦金屬錶殼；Bleu Nuit/Orange 午夜藍色配經典橘色 Rocabar Club 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes/42mm-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-silver-%E9%88%A6%E9%87%91%E5%B1%AC-bleu-nuit-orange-%E5%8D%88%E5%A4%9C%E8%97%8D%E8%89%B2%E9%85%8D%E7%B6%93%E5%85%B8%E6%A9%98%E8%89%B2-rocabar-club-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Series 12 (GPS + 行動網路)；42 公釐銀色鈦金屬錶殼；Cuivre 銅紅色 Kilim Single Tour 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes/42mm-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-silver-%E9%88%A6%E9%87%91%E5%B1%AC-cuivre-%E9%8A%85%E7%B4%85%E8%89%B2-kilim-single-tour-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Series 12 (GPS + 行動網路)；46 公釐燦金色鈦金屬錶殼；Noir 黑色 Satin Clou de Selle 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes/46%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E7%87%A6%E9%87%91%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-noir-satin-clou-de-selle-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Series 12 (GPS + 行動網路)；42 公釐燦金色鈦金屬錶殼；Noir 黑色 Satin Clou de Selle 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes/42mm-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E7%87%A6%E9%87%91%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-noir-satin-clou-de-selle-%E9%8C%B6%E5%B8%B6"
         }
       ],
       "displayValues": {
@@ -2959,6 +3781,9 @@
           }
         },
         "watch_cases-dimensionColor": {
+          "radiantgold": {
+            "text": "燦金色"
+          },
           "silver": {
             "text": "銀色"
           }
@@ -2972,11 +3797,49 @@
     "data": {
       "products": [
         {
-          "part": "MF2A4TA/A",
+          "part": "MJCY4TA/A",
           "dimensions": {
             "watch_cases-dimensionCaseSize": "49mm",
             "watch_cases-dimensionColor": "natural"
           }
+        }
+      ],
+      "watchProductSelectionDataNoJS": [
+        {
+          "text": "Apple Watch Hermès Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；Argile 黏土色 En Mer 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-argile-%E9%BB%8F%E5%9C%9F%E8%89%B2-en-mer-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；Noir 黑色 Scub’H Diving 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-noir-scub%E2%80%99h-diving-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；Gris Titane 灰色 Grand H Titane 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-gris-titane-%E9%88%A6%E7%81%B0%E8%89%B2-grand-h-titane-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；Bleu De Malte 馬爾他藍色 Scub’H Diving 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-bleu-de-malte-%E9%A6%AC%E7%88%BE%E4%BB%96%E8%97%8D%E8%89%B2-scub%E2%80%99h-diving-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；Gris Titane 鈦灰色 Scub’H Diving 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-gris-titane-%E9%88%A6%E7%81%B0%E8%89%B2-scub%E2%80%99h-diving-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；Bleu Nuit 午夜藍色 En Mer 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-bleu-nuit-%E5%8D%88%E5%A4%9C%E8%97%8D%E8%89%B2-en-mer-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；Orange 經典橘色 En Mer 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-orange-%E7%B6%93%E5%85%B8%E6%A9%98%E8%89%B2-en-mer-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；Bordeaux 酒紅色 En Mer 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-bordeaux-%E9%85%92%E7%B4%85%E8%89%B2-en-mer-%E9%8C%B6%E5%B8%B6"
+        },
+        {
+          "text": "Apple Watch Hermès Ultra 4 (GPS + 行動網路)；49 公釐原色鈦金屬錶殼；Vert Vertigo 炫綠色 Scub’H Diving 錶帶",
+          "url": "https://www.apple.com/tw/shop/buy-watch/apple-watch-hermes-ultra/49%E5%85%AC%E9%87%90-%E8%A1%8C%E5%8B%95%E7%B6%B2%E8%B7%AF-%E5%8E%9F%E8%89%B2-%E9%88%A6%E9%87%91%E5%B1%AC-vert-vertigo-%E7%82%AB%E7%B6%A0%E8%89%B2-scub%E2%80%99h-diving-%E9%8C%B6%E5%B8%B6"
         }
       ],
       "displayValues": {

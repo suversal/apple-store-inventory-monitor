@@ -76,7 +76,7 @@ const PAGE_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
 pub async fn fetch_products(
     http: &reqwest::Client,
     region: &Region,
-    family: &Family,
+    family: &Family<'_>,
 ) -> Result<Vec<Product>, CatalogError> {
     if family.slug.trim().is_empty() {
         return Err(CatalogError::Fetch(ApiError::Transport(
@@ -96,6 +96,75 @@ pub async fn fetch_products(
     Ok(products)
 }
 
+/// 从所选地区的品类入口发现购买页，不依赖预先写死的代际名称。
+pub async fn discover_families(
+    http: &reqwest::Client,
+    region: &Region,
+    category: Category,
+) -> Result<Vec<String>, CatalogError> {
+    let url = format!("{}/shop/{}", region.base_url, category.buy_path());
+    let page =
+        crate::apple::with_retry(MAX_RETRIES, || fetch_page_once(http, &url, region)).await?;
+    parse_family_links(&page, region, category)
+}
+
+/// 只接受本地区同一品类的购买链接，将具体 SKU 链接归并到机型页。
+pub fn parse_family_links(
+    page: &[u8],
+    region: &Region,
+    category: Category,
+) -> Result<Vec<String>, CatalogError> {
+    let index = reqwest::Url::parse(&format!("{}/shop/{}", region.base_url, category.buy_path()))
+        .map_err(|e| CatalogError::PageSchema {
+        detail: e.to_string(),
+    })?;
+    let prefix = format!("{}/", index.path());
+    let html = String::from_utf8_lossy(page);
+    let document = dom_query::Document::from(html.as_ref());
+    let mut slugs = std::collections::BTreeSet::new();
+    for link in document.select("a[href]").iter() {
+        let Some(href) = link.attr("href") else {
+            continue;
+        };
+        let Ok(url) = index.join(&href) else { continue };
+        if url.origin() != index.origin() || !url.username().is_empty() || url.password().is_some()
+        {
+            continue;
+        }
+        let Some(slug) = url.path().strip_prefix(&prefix) else {
+            continue;
+        };
+        // Watch Ultra 的入口可能直接指向某个表壳或 SKU；只取机型段。
+        let slug = slug.split('/').next().unwrap_or_default();
+        let is_product_family = match category {
+            Category::Iphone => slug.starts_with("iphone"),
+            Category::Ipad => slug.starts_with("ipad"),
+            Category::Watch => slug.starts_with("apple-watch"),
+            Category::Mac => {
+                slug.starts_with("mac") || slug == "imac" || slug.starts_with("studio-display")
+            }
+        };
+        if is_product_family
+            && !slug.is_empty()
+            && slug.len() <= 80
+            && slug
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        {
+            slugs.insert(slug.to_string());
+        }
+    }
+    if slugs.is_empty() {
+        return Err(CatalogError::PageSchema {
+            detail: format!(
+                "{} 品类入口没有发现机型购买页，保留现有目录",
+                category.title()
+            ),
+        });
+    }
+    Ok(slugs.into_iter().collect())
+}
+
 /// 从一段购买页 HTML 里解析出商品列表。
 ///
 /// `category` 与 `slug` 说明这页 HTML 是从哪来的。数据里不带这两样东西 ——
@@ -108,7 +177,21 @@ pub fn parse_buy_page(
     slug: &str,
 ) -> Result<Vec<Product>, CatalogError> {
     let raw = extract_product_selection_data(page)?;
-    parse_product_selection(raw, category, slug)
+    let mut data: ProductSelection =
+        serde_json::from_slice(raw).map_err(|e| CatalogError::PageSchema {
+            detail: format!("{SELECTION_KEY_STR} 结构与预期不符：{e}"),
+        })?;
+    if category == Category::Mac {
+        let html = String::from_utf8_lossy(page);
+        let document = dom_query::Document::from(html.as_ref());
+        data.mac_links = document
+            .select("a[href]")
+            .iter()
+            .filter_map(|link| link.attr("href").map(|s| s.to_string()))
+            .filter(|url| url.contains(&format!("/shop/buy-mac/{slug}/")))
+            .collect();
+    }
+    Ok(data.to_products(category, slug))
 }
 
 /// 取一个 HTML 页面，失败按 [`ApiError`] 的口径分类。
@@ -119,7 +202,7 @@ pub fn parse_buy_page(
 async fn fetch_page(
     http: &reqwest::Client,
     region: &Region,
-    family: &Family,
+    family: &Family<'_>,
 ) -> Result<Vec<u8>, ApiError> {
     let url = region.buy_page_url(family);
     crate::apple::with_retry(MAX_RETRIES, || fetch_page_once(http, &url, region)).await
@@ -350,6 +433,12 @@ pub(crate) struct ProductSelection {
     /// Mac 页把同一份文案挂在这个键下。
     #[serde(default)]
     main_display_values: Option<DisplayGroups>,
+    /// Watch 的完整机型名位于无脚本商品入口，不能用会跨代复用的页面 slug 猜。
+    #[serde(rename = "watchProductSelectionDataNoJS", default)]
+    watch_examples: serde_json::Value,
+    /// 当前页官方具体配置链接，保留在快照中供同一套解析器读取。
+    #[serde(rename = "macProductLinks", default)]
+    mac_links: Vec<String>,
 }
 
 /// 维度键 → 取值 → 展示条目。
@@ -362,6 +451,8 @@ type DisplayGroups = BTreeMap<String, serde_json::Value>;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RawProduct {
+    #[serde(default)]
+    aos_container_part_number: Option<String>,
     /// 平铺形状里的零件号。
     #[serde(default)]
     part_number: Option<String>,
@@ -422,6 +513,7 @@ fn dimension_rank(name: &str) -> u8 {
         "dimensionCaseSize" => 20,
         "dimensionCaseMaterial" => 30,
         "dimensionChip" => 40,
+        "dimensionMemory" => 55,
         "dimensionCapacity" => 60,
         "dimensionConnection" => 70,
         "dimensionFinish" => 80,
@@ -513,6 +605,9 @@ impl ProductSelection {
 
         let mut products = Vec::with_capacity(raw.len());
         let mut seen = HashSet::with_capacity(raw.len());
+        let watch_model = (category == Category::Watch)
+            .then(|| self.watch_model_name())
+            .flatten();
 
         for item in raw {
             let Some(part_number) = item.part_number() else {
@@ -531,15 +626,38 @@ impl ProductSelection {
             // 展示名优先按 familyType 拼：同一页里的 Pro 与 Pro Max 只有它能分开。
             // Mac 与 Apple Watch 的数据里没有这个字段，退回购买页 slug。
             let decoded_family = family_display_name(family_type);
-            let display_family = decoded_family
+            let display_family = watch_model
                 .clone()
+                .or_else(|| decoded_family.clone())
                 .unwrap_or_else(|| slug_display_name(slug));
 
             let mut labels: Vec<String> = Vec::new();
             let mut capacity = String::new();
             let mut color = String::new();
 
-            for dim in &item.dimensions() {
+            let mac_hints = if category == Category::Mac {
+                self.mac_dimension_hints(item, slug)
+            } else {
+                BTreeMap::new()
+            };
+            let mut dimensions = item.dimensions();
+            for (key, value) in &mac_hints {
+                if !dimensions.iter().any(|d| d.name == *key) {
+                    dimensions.push(Dimension::new(key, value));
+                }
+            }
+            dimensions.sort_by_key(|d| (dimension_rank(d.name), d.key));
+            if category == Category::Watch {
+                for name in ["dimensionCaseMaterial", "dimensionConnection"] {
+                    if !dimensions.iter().any(|d| d.name == name)
+                        && let Some(value) = self.watch_fixed_dimension(name)
+                    {
+                        dimensions.push(Dimension::new(name, value));
+                    }
+                }
+                dimensions.sort_by_key(|d| (dimension_rank(d.name), d.key));
+            }
+            for dim in &dimensions {
                 // familyType 拼出来的名字里已经带着屏幕尺寸（iPhone 17 Pro Max、
                 // iPad Pro 11），再拼一遍就成了「iPad Pro 11 11 英寸机型」。
                 // 退回 slug 的那些品类没这个问题，尺寸必须从维度里补。
@@ -551,23 +669,37 @@ impl ProductSelection {
                     // 容量用原始取值规范化，不取本地化文案：后者是
                     // 「512GB 存储容量」这种整句，拼进展示名太长。
                     capacity = normalize_capacity(dim.value);
-                    capacity.clone()
+                    if category == Category::Mac {
+                        format!("{capacity} 存储")
+                    } else {
+                        capacity.clone()
+                    }
                 } else {
-                    let Some(text) = self.display_name(dim.key, dim.value).or_else(|| {
-                        // 取不到本地化文案时，只有取值本身还认得出来才拿它顶替。
-                        // 颜色是 `cosmicorange` 这种词，留着比留空强 —— 留空会让
-                        // 同机型同容量的几个颜色在界面上长得一模一样。
-                        //
-                        // 带数字的取值就不行了：`m5-10-10`、`6-5` 是芯片与核心数
-                        // 的机器标识，摆进展示名只会让人更糊涂。这条路径不是假设
-                        // 出来的 —— Apple 只给「可升级」的那几档配了文案，基础
-                        // 配置那一档在 displayValues 里压根没有条目。
-                        //
-                        // 整个略去之后万一因此重名，下面的 disambiguate_titles
-                        // 会补上零件号，不会出现两个一字不差的选项。
-                        (!dim.value.contains(|c: char| c.is_ascii_digit()))
-                            .then(|| dim.value.to_string())
-                    }) else {
+                    let Some(text) = (category == Category::Mac)
+                        .then(|| mac_dimension_label(dim.name, dim.value))
+                        .flatten()
+                        .or_else(|| self.display_name(dim.key, dim.value))
+                        .or_else(|| {
+                            (category == Category::Watch)
+                                .then(|| watch_dimension_fallback(dim.name, dim.value))
+                                .flatten()
+                        })
+                        .or_else(|| {
+                            // 取不到本地化文案时，只有取值本身还认得出来才拿它顶替。
+                            // 颜色是 `cosmicorange` 这种词，留着比留空强 —— 留空会让
+                            // 同机型同容量的几个颜色在界面上长得一模一样。
+                            //
+                            // 带数字的取值就不行了：`m5-10-10`、`6-5` 是芯片与核心数
+                            // 的机器标识，摆进展示名只会让人更糊涂。这条路径不是假设
+                            // 出来的 —— Apple 只给「可升级」的那几档配了文案，基础
+                            // 配置那一档在 displayValues 里压根没有条目。
+                            //
+                            // 整个略去之后万一因此重名，下面的 disambiguate_titles
+                            // 会补上零件号，不会出现两个一字不差的选项。
+                            (!dim.value.contains(|c: char| c.is_ascii_digit()))
+                                .then(|| dim.value.to_string())
+                        })
+                    else {
                         continue;
                     };
                     if dim.name == "dimensionColor" {
@@ -605,6 +737,131 @@ impl ProductSelection {
         products
     }
 
+    fn mac_dimension_hints(&self, item: &RawProduct, slug: &str) -> BTreeMap<&'static str, String> {
+        let mut hints = BTreeMap::new();
+        let candidates: Vec<_> = self
+            .mac_links
+            .iter()
+            .filter_map(|url| {
+                let tail = url
+                    .split(&format!("/shop/buy-mac/{slug}/"))
+                    .nth(1)?
+                    .trim()
+                    .split(['?', '#', '/'])
+                    .next()?;
+                let fields = mac_link_fields(tail);
+                let dims = item.dimensions();
+                let matches = dims.iter().all(|d| match d.name {
+                    "dimensionScreensize" => fields
+                        .get("dimensionScreensize")
+                        .is_some_and(|v| v == d.value),
+                    "dimensionChip" => fields.get("dimensionChip").is_some_and(|v| v == d.value),
+                    "dimensionCapacity" => fields
+                        .get("dimensionCapacity")
+                        .is_some_and(|v| v == d.value),
+                    "dimensionColor" => {
+                        let normalize = |s: &str| s.replace(['-', '_'], "").replace("grey", "gray");
+                        normalize(tail).contains(&normalize(d.value))
+                    }
+                    "dimensionFinish" => match d.value {
+                        "nano_texture" | "matte" => tail.contains("nano-texture"),
+                        "standard" | "glossy" => {
+                            tail.contains("standard") || !tail.contains("nano-texture")
+                        }
+                        _ => false,
+                    },
+                    name if name.contains("cpuCoreCount-gpuCoreCount") => {
+                        let numbers: Vec<_> = d.value.split('-').collect();
+                        numbers.len() >= 2
+                            && fields
+                                .get("cpu")
+                                .is_some_and(|v| v == numbers[numbers.len() - 2])
+                            && fields
+                                .get("gpu")
+                                .is_some_and(|v| v == numbers[numbers.len() - 1])
+                    }
+                    _ => true,
+                });
+                matches.then_some(fields)
+            })
+            .collect();
+        for key in [
+            "dimensionChip",
+            "dimensionScreensize",
+            "dimensionMemory",
+            "dimensionCapacity",
+        ] {
+            if let Some(first) = candidates.first().and_then(|c| c.get(key))
+                && candidates.iter().all(|c| c.get(key) == Some(first))
+            {
+                hints.insert(key, first.clone());
+            }
+        }
+        // 型号容器明确写出的单一芯片也可用；包含多个芯片时绝不选其中一个。
+        if !hints.contains_key("dimensionChip") {
+            let chips: HashSet<_> = item
+                .aos_container_part_number
+                .as_deref()
+                .unwrap_or_default()
+                .split('_')
+                .filter_map(|token| normalize_chip(token).map(|_| token.to_ascii_lowercase()))
+                .collect();
+            if chips.len() == 1 {
+                hints.insert("dimensionChip", chips.into_iter().next().unwrap());
+            }
+        }
+        hints
+    }
+
+    /// 只接受这页所有商品示例一致的机型名；混合代数或缺少代数时不猜。
+    fn watch_model_name(&self) -> Option<String> {
+        let examples = self.watch_examples.as_array()?;
+        let mut model: Option<String> = None;
+        for example in examples {
+            let text = plain_text(example.get("text")?.as_str()?);
+            let name = text.split(['(', '（']).next()?.split(" GPS").next()?.trim();
+            if !name.starts_with("Apple Watch ") || !name.ends_with(|c: char| c.is_ascii_digit()) {
+                return None;
+            }
+            if model.as_deref().is_some_and(|previous| previous != name) {
+                return None;
+            }
+            model = Some(name.to_string());
+        }
+        model
+    }
+
+    /// Ultra 等页面省略了固定维度，只有全部官方示例 URL 一致时才补回。
+    fn watch_fixed_dimension(&self, name: &str) -> Option<&'static str> {
+        let examples = self.watch_examples.as_array()?;
+        let candidates: &[(&str, &str)] = match name {
+            "dimensionCaseMaterial" => &[
+                ("-titanium-", "titanium"),
+                ("-aluminium-", "aluminum"),
+                ("-aluminum-", "aluminum"),
+                ("-ceramic-", "ceramic"),
+            ],
+            "dimensionConnection" => &[("-cellular-", "gpscell"), ("-gps-", "gps")],
+            _ => return None,
+        };
+        if examples.is_empty() {
+            return None;
+        }
+        candidates.iter().find_map(|(segment, value)| {
+            examples
+                .iter()
+                .all(|example| {
+                    example
+                        .get("url")
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|url| {
+                            url.rsplit('/').next().unwrap_or_default().contains(segment)
+                        })
+                })
+                .then_some(*value)
+        })
+    }
+
     /// 查某个维度取值的本地化展示名。
     fn display_name(&self, dimension: &str, value: &str) -> Option<String> {
         let groups = [
@@ -630,6 +887,104 @@ impl ProductSelection {
             }
         }
         None
+    }
+}
+
+fn normalize_chip(raw: &str) -> Option<String> {
+    let value = raw.to_ascii_lowercase();
+    let mut chars = value.chars();
+    let series = chars.next()?;
+    if series != 'm' && series != 'a' {
+        return None;
+    }
+    let digits: String = chars.clone().take_while(char::is_ascii_digit).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    let suffix = &value[1 + digits.len()..];
+    let suffix = match suffix {
+        "" => "",
+        "pro" => " Pro",
+        "max" => " Max",
+        "ultra" => " Ultra",
+        _ => return None,
+    };
+    Some(format!("{}{digits}{suffix}", series.to_ascii_uppercase()))
+}
+
+fn mac_link_fields(tail: &str) -> BTreeMap<&'static str, String> {
+    let tokens: Vec<_> = tail.split('-').collect();
+    let mut fields = BTreeMap::new();
+    for (i, token) in tokens.iter().enumerate() {
+        let next = tokens.get(i + 1).copied().unwrap_or_default();
+        if normalize_chip(token).is_some() {
+            let suffix = if matches!(next, "pro" | "max" | "ultra") {
+                next
+            } else {
+                ""
+            };
+            fields.insert("dimensionChip", format!("{token}{suffix}"));
+        }
+        if token.chars().all(|c| c.is_ascii_digit()) && !token.is_empty() && next == "inch" {
+            fields.insert("dimensionScreensize", format!("{token}inch"));
+        }
+        if (token.ends_with("gb") || token.ends_with("tb")) && matches!(next, "memory" | "storage")
+        {
+            fields.insert(
+                if next == "memory" {
+                    "dimensionMemory"
+                } else {
+                    "dimensionCapacity"
+                },
+                token.to_string(),
+            );
+        }
+        if next == "core"
+            && let Some(kind @ ("cpu" | "gpu")) = tokens.get(i + 2).copied()
+        {
+            fields.insert(if kind == "cpu" { "cpu" } else { "gpu" }, token.to_string());
+        }
+    }
+    fields
+}
+
+fn mac_dimension_label(name: &str, value: &str) -> Option<String> {
+    match name {
+        "dimensionChip" => normalize_chip(value),
+        "dimensionMemory" => Some(format!("{} 内存", normalize_capacity(value))),
+        "dimensionScreensize" => value
+            .strip_suffix("inch")
+            .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit() || c == '.'))
+            .map(|size| format!("{size} 英寸")),
+        name if name.contains("cpuCoreCount-gpuCoreCount") => {
+            let values: Vec<_> = value.split('-').collect();
+            if values.len() < 2 {
+                return None;
+            }
+            let (cpu, gpu) = (values[values.len() - 2], values[values.len() - 1]);
+            (cpu.chars().all(|c| c.is_ascii_digit()) && gpu.chars().all(|c| c.is_ascii_digit()))
+                .then(|| format!("{cpu} 核 CPU / {gpu} 核 GPU"))
+        }
+        _ => None,
+    }
+}
+
+/// 已知 Watch 规格的展示回退；保留 49mm 等真实尺寸，不猜缺失规格。
+fn watch_dimension_fallback(name: &str, value: &str) -> Option<String> {
+    if name == "dimensionCaseSize"
+        && let Some(size) = value.strip_suffix("mm")
+        && !size.is_empty()
+        && size.chars().all(|c| c.is_ascii_digit())
+    {
+        return Some(format!("{size} 毫米"));
+    }
+    match (name, value) {
+        ("dimensionCaseMaterial", "aluminum" | "aluminium") => Some("铝金属".into()),
+        ("dimensionCaseMaterial", "titanium") => Some("钛金属".into()),
+        ("dimensionCaseMaterial", "ceramic") => Some("陶瓷".into()),
+        ("dimensionConnection", "gpscell") => Some("GPS + 蜂窝网络".into()),
+        ("dimensionConnection", "gps") => Some("GPS".into()),
+        _ => None,
     }
 }
 
@@ -912,6 +1267,7 @@ const FAMILY_WORDS: &[(&str, &str)] = &[
     ("plus", "Plus"),
     ("mini", "mini"),
     ("air", "Air"),
+    ("duo", "Duo"),
     ("se", "SE"),
     ("e", "e"),
 ];
@@ -930,9 +1286,7 @@ pub fn family_display_name(family_type: &str) -> Option<String> {
         return None;
     }
     let lower = trimmed.to_lowercase();
-    // iPad 的标识后面还缀着芯片和年份（`ipadpro11_m5_2025`）。那两段既不稳定
-    // 也没人关心，第一个下划线之后一律丢掉。iPhone 的标识里没有下划线，
-    // 这一刀切不到它。
+    // 先解析机型主体；iPad 后缀中的明确芯片随后补回，年份不当作规格。
     let head = lower.split('_').next().unwrap_or_default();
 
     let (prefix, display) = FAMILY_PREFIXES
@@ -994,6 +1348,20 @@ pub fn family_display_name(family_type: &str) -> Option<String> {
         tokens.push(token);
     }
 
+    if *prefix == "ipad" {
+        if tokens
+            .last()
+            .is_some_and(|t| t.chars().all(|c| c.is_ascii_digit()))
+            && tokens.iter().any(|t| t == "Pro" || t == "Air")
+        {
+            tokens.push("英寸".into());
+        }
+        for token in lower.split('_').skip(1) {
+            if let Some(chip) = normalize_chip(token) {
+                tokens.push(format!("({chip})"));
+            }
+        }
+    }
     Some(tokens.join(" "))
 }
 
@@ -1007,6 +1375,7 @@ const SLUG_WORDS: &[(&str, &str)] = &[
     ("apple", "Apple"),
     ("watch", "Watch"),
     ("air", "Air"),
+    ("duo", "Duo"),
     ("pro", "Pro"),
     ("max", "Max"),
     // Apple 自己就写小写的 mini（Mac mini、iPad mini）。
@@ -1087,11 +1456,11 @@ mod tests {
             ("iphone16plus", "iPhone 16 Plus"),
             ("iphone13mini", "iPhone 13 mini"),
             ("iphonese3", "iPhone SE 3"),
-            // iPad 的标识后面缀着芯片和年份，那两段一律丢掉。
-            ("ipadpro11_m5_2025", "iPad Pro 11"),
-            ("ipadair13_m3_2025", "iPad Air 13"),
+            // iPad 芯片保留，尺寸带单位，年份不混入规格。
+            ("ipadpro11_m5_2025", "iPad Pro 11 英寸 (M5)"),
+            ("ipadair13_m3_2025", "iPad Air 13 英寸 (M3)"),
             ("ipadmini7", "iPad mini 7"),
-            ("ipad_a16_2025", "iPad"),
+            ("ipad_a16_2025", "iPad (A16)"),
         ] {
             assert_eq!(
                 family_display_name(raw).as_deref(),

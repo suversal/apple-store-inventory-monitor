@@ -218,8 +218,15 @@ struct UpdateInfo {
 /// 抢购当口挂着的程序，自作主张地下载、替换、重启，正好会赶上最不该被打断的时刻。
 #[tauri::command]
 async fn check_for_update(app: AppHandle) -> Result<Option<UpdateInfo>, String> {
-    let updater = app.updater().map_err(|e| e.to_string())?;
-    match updater.check().await {
+    let updater = app
+        .updater_builder()
+        .timeout(Duration::from_secs(300))
+        .build()
+        .map_err(|e| e.to_string())?;
+    match tokio::time::timeout(Duration::from_secs(20), updater.check())
+        .await
+        .map_err(|_| "检查更新超时，请稍后重试".to_string())?
+    {
         Ok(Some(update)) => Ok(Some(UpdateInfo {
             version: update.version.clone(),
             current_version: update.current_version.clone(),
@@ -235,26 +242,63 @@ async fn check_for_update(app: AppHandle) -> Result<Option<UpdateInfo>, String> 
 /// 下载并安装更新。安装完成后需要重启应用才生效。
 #[tauri::command]
 async fn install_update(app: AppHandle) -> Result<(), String> {
-    let updater = app.updater().map_err(|e| e.to_string())?;
-    let update = updater
-        .check()
+    let updater = app
+        .updater_builder()
+        .timeout(Duration::from_secs(300))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let update = tokio::time::timeout(Duration::from_secs(20), updater.check())
         .await
+        .map_err(|_| "检查更新超时，请稍后重试".to_string())?
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "已经是最新版本".to_string())?;
 
     let handle = app.clone();
-    update
-        .download_and_install(
-            move |downloaded, total| {
-                // 进度只发给界面，不做任何决策。
-                let _ = handle.emit(
+    let finished = app.clone();
+    let mut downloaded = 0_u64;
+    let mut last_emit = std::time::Instant::now() - Duration::from_secs(1);
+    let _ = app.emit(
+        "watcher://update-progress",
+        serde_json::json!({
+            "phase": "downloading", "downloaded": 0, "total": null
+        }),
+    );
+    let bytes = update
+        .download(
+            move |chunk, total| {
+                // 插件回调给的是本次数据块大小，界面需要累计字节数。
+                downloaded = downloaded.saturating_add(chunk as u64);
+                if last_emit.elapsed() >= Duration::from_millis(100) || total == Some(downloaded) {
+                    let _ = handle.emit(
+                        "watcher://update-progress",
+                        serde_json::json!({
+                            "phase": "downloading", "downloaded": downloaded, "total": total
+                        }),
+                    );
+                    last_emit = std::time::Instant::now();
+                }
+            },
+            move || {
+                let _ = finished.emit(
                     "watcher://update-progress",
-                    serde_json::json!({ "downloaded": downloaded, "total": total }),
+                    serde_json::json!({
+                        "phase": "verifying", "downloaded": 0, "total": null
+                    }),
                 );
             },
-            || {},
         )
         .await
+        .map_err(|e| e.to_string())?;
+    // download 完成签名验证后才允许安装，校验失败绝不进入此分支。
+    let _ = app.emit(
+        "watcher://update-progress",
+        serde_json::json!({
+            "phase": "installing", "downloaded": 0, "total": null
+        }),
+    );
+    tauri::async_runtime::spawn_blocking(move || update.install(bytes))
+        .await
+        .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
 
     Ok(())
@@ -263,15 +307,19 @@ async fn install_update(app: AppHandle) -> Result<(), String> {
 /// 手动试一次提醒，让用户在真正抢购之前确认铃声和推送都通。
 #[tauri::command]
 async fn test_notify(app: AppHandle) -> Result<(), String> {
+    let settings = app.state::<AppState>().settings_snapshot();
+    if !settings.sound_enabled && settings.bark_url.trim().is_empty() {
+        return Err("请先开启提示音或配置 Bark，再测试提醒".into());
+    }
     dispatch_notification(
         &app,
-        Notification::new("提醒测试", "如果你看到并听到了这条，说明提醒是通的"),
+        Notification::new("提醒测试", "请确认已开启的提示音或 Bark 推送是否收到"),
     )
     .await
     .map_err(|e| e.to_string())
 }
 
-/// 发出一条提醒：系统通知 + 提示音 + Bark，按用户设置取舍。
+/// 按用户设置发送提示音和 Bark 提醒。
 async fn dispatch_notification(
     app: &AppHandle,
     notification: Notification,
@@ -280,10 +328,6 @@ async fn dispatch_notification(
         Some(state) => state.settings_snapshot(),
         None => return Ok(()),
     };
-
-    // 系统通知总是发。它是最轻量也最可靠的一条，没有理由让用户关掉它之后
-    // 就完全收不到东西。
-    emit_system_notification(app, &notification);
 
     let mut channels = Multi::new();
     if settings.sound_enabled {
@@ -302,20 +346,6 @@ async fn dispatch_notification(
         return Ok(());
     }
     channels.notify(&notification).await
-}
-
-fn emit_system_notification(app: &AppHandle, n: &Notification) {
-    use tauri_plugin_notification::NotificationExt;
-    // 通知发不出去（用户在系统里关了权限）不该影响其他渠道，也不该让流程中断。
-    if let Err(err) = app
-        .notification()
-        .builder()
-        .title(&n.title)
-        .body(&n.body)
-        .show()
-    {
-        let _ = app.emit(NOTICE_CHANNEL, format!("系统通知发送失败：{err}"));
-    }
 }
 
 /// 消费引擎事件：转发给前端，并在有货时发提醒。
@@ -358,7 +388,7 @@ async fn pump_events(app: AppHandle, mut events: tokio::sync::mpsc::Receiver<Eve
                 // 提醒没发出去是遗憾，但绝不能让监控本身停下来。
                 let _ = app.emit(NOTICE_CHANNEL, format!("发送提醒时出错：{err}"));
             } else {
-                let mut actions = vec!["系统通知"];
+                let mut actions = Vec::new();
                 if settings.sound_enabled {
                     actions.push("提示音");
                 }
@@ -367,6 +397,9 @@ async fn pump_events(app: AppHandle, mut events: tokio::sync::mpsc::Receiver<Eve
                 }
                 if bag_opened {
                     actions.push("已打开购物袋");
+                }
+                if actions.is_empty() {
+                    continue;
                 }
                 let _ = app.emit(
                     NOTICE_CHANNEL,
@@ -499,7 +532,6 @@ fn load_settings(notices: &mut Vec<String>) -> (Settings, Option<SettingsStore>)
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let mut notices = Vec::new();

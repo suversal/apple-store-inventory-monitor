@@ -603,7 +603,7 @@ mod tests {
     async fn 真实chromium会话连续检查四家门店两轮() {
         let region = region_by_locale("zh_CN").expect("应当有中国大陆地区配置");
         let fetcher = AppleChromiumFetcher::new();
-        let part = vec!["MG084CH/A".to_string()];
+        let part = vec!["MG6X4CH/A".to_string()];
         let stores = ["R390", "R401", "R581", "R683"];
 
         for round in 1..=2 {
@@ -637,7 +637,7 @@ mod tests {
     async fn 真实apple_watch配置型号首轮可以查询() {
         let region = region_by_locale("zh_CN").expect("应当有中国大陆地区配置");
         let fetcher = AppleChromiumFetcher::new();
-        let part = vec!["MFA04CH/B".to_string()];
+        let part = vec!["MEP24CH/B".to_string()];
 
         let result = tokio::time::timeout(
             Duration::from_secs(35),
@@ -652,5 +652,64 @@ mod tests {
             .get(&part[0])
             .expect("响应应包含请求的 Apple Watch 零件号");
         assert!(!status.availability.is_unknown());
+    }
+    #[tokio::test]
+    #[ignore = "现场只读诊断，需要本机 Chromium 与 Apple 官网网络"]
+    async fn diagnose_missing_store_response() {
+        let region = region_by_locale("zh_CN").unwrap();
+        let mut session = ChromiumSession::start().await.unwrap();
+        for (store, part) in [
+            ("R581", "MFA04CH/B"),
+            ("R683", "MG8X4CH/A"),
+            ("R581", "MG6W4CH/A"),
+            ("R683", "MJYH4CH/A"),
+        ] {
+            let payload = session
+                .fetch(region, store, &[part.to_string()])
+                .await
+                .unwrap();
+            println!("store={store} part={part} http={}", payload.status);
+            if let Ok(value) = serde_json::from_str::<Value>(&payload.body) {
+                let stores = value
+                    .pointer("/body/content/pickupMessage/stores")
+                    .or_else(|| value.pointer("/body/stores"));
+                let ids: Vec<_> = stores
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|store| store.get("storeNumber").and_then(Value::as_str))
+                    .collect();
+                println!(
+                    "returned_stores={ids:?} parsed={:?}",
+                    parse_pickup_message(payload.body.as_bytes(), store)
+                );
+            } else {
+                println!("non_json_body bytes={}", payload.body.len());
+            }
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+    }
+    #[tokio::test]
+    #[ignore = "用户现场批量隔离对照，只读库存，需要网络"]
+    async fn diagnose_old_products_without_new_iphone() {
+        let region = region_by_locale("zh_CN").unwrap();
+        let mut session = ChromiumSession::start().await.unwrap();
+        let batches: &[(&str, &[&str])] = &[
+            ("watch_only", &["MF9T4CH/B"]),
+            ("iphone17pro_only", &["MG0G4CH/A"]),
+            ("old_only", &["MF9T4CH/B", "MG0G4CH/A"]),
+            ("old_and_new", &["MF9T4CH/B", "MG0G4CH/A", "MJTJ4CH/A"]),
+            ("old_and_control", &["MF9T4CH/B", "MG0G4CH/A", "MG6W4CH/A"]),
+        ];
+        for (name, parts) in batches {
+            let parts: Vec<_> = parts.iter().map(|p| p.to_string()).collect();
+            let payload = session.fetch(region, "R359", &parts).await.unwrap();
+            println!(
+                "case={name} requested={parts:?} status={} parsed={:?}",
+                payload.status,
+                parse_pickup_message(payload.body.as_bytes(), "R359")
+            );
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
     }
 }

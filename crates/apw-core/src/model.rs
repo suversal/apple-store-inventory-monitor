@@ -192,10 +192,10 @@ impl Category {
 /// 才能拼出地址。把两者绑在一个类型里，就不存在「拿 Mac 的 slug 去拼 iPhone
 /// 的路径」这种拼错的可能。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Family {
+pub struct Family<'a> {
     pub category: Category,
     /// 购买页 slug，如 `iphone-17`、`macbook-air`。
-    pub slug: &'static str,
+    pub slug: &'a str,
 }
 
 /// 一个 Apple 在线商店的地区站点。
@@ -211,7 +211,7 @@ pub struct Region {
     /// 上游按 `www.apple.com/{shortCode}` 统一拼接，对中国大陆是错的。
     pub base_url: &'static str,
     /// 需要抓取的购买页，用于在线刷新商品目录。
-    pub families: &'static [Family],
+    pub families: &'static [Family<'static>],
 }
 
 impl Region {
@@ -228,7 +228,7 @@ impl Region {
     }
 
     /// 某个购买页的地址，用于在线刷新商品目录。
-    pub fn buy_page_url(&self, family: &Family) -> String {
+    pub fn buy_page_url(&self, family: &Family<'_>) -> String {
         format!(
             "{}/shop/{}/{}",
             self.base_url,
@@ -238,7 +238,10 @@ impl Region {
     }
 
     /// 该地区某个品类下的全部购买页。
-    pub fn families_in(&self, category: Category) -> impl Iterator<Item = &'static Family> {
+    pub fn families_in(
+        &self,
+        category: Category,
+    ) -> impl Iterator<Item = &'static Family<'static>> {
         self.families.iter().filter(move |f| f.category == category)
     }
 
@@ -254,23 +257,16 @@ impl Region {
     }
 }
 
-/// 当前在售的购买页。
-///
-/// 新机型发布后只需在这里追加一行，商品目录会自动从 Apple 官网抓取，
-/// 不必像上游那样每代都手工从开发者工具里复制 `productSelectionData`。
-///
-/// 七个地区共用同一张表：实测这些 slug 在每个站点都存在（见
-/// `tests/live.rs` 里的契约测试）。某个地区少了其中一页也不至于出事 ——
-/// [`crate::catalog::Catalog::refresh_products`] 会保住其余页的结果，
-/// 只把失败的那几页报出来。
-const DEFAULT_FAMILIES: &[Family] = &[
+/// 离线兜底购买页。在线刷新先从所选地区的品类入口发现当前机型，
+/// 入口抓取失败时才使用这张表和已有快照；新品无需预先登记在这里。
+const DEFAULT_FAMILIES: &[Family<'static>] = &[
     Family {
         category: Category::Iphone,
         slug: "iphone-17",
     },
     Family {
         category: Category::Iphone,
-        slug: "iphone-17-pro",
+        slug: "iphone-18-pro",
     },
     Family {
         category: Category::Iphone,

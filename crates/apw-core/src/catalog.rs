@@ -58,7 +58,7 @@ pub enum CatalogError {
     /// `fetched` 是成功抓到并**已经写进缓存**的型号数：为 0 表示这次刷新毫无
     /// 产出，缓存保持原样。返回错误的同时缓存已被更新，是刻意的 —— iPhone Air
     /// 抓不到不该导致连 iPhone 17 都选不了。
-    #[error("地区 {locale} 有 {} 个机型刷新失败（已抓到 {fetched} 个型号）：{}",
+    #[error("地区 {locale} 有 {} 项目录刷新失败（已抓到 {fetched} 个型号）：{}",
             .failures.len(), .failures.join("；"))]
     RefreshFailed {
         locale: String,
@@ -117,6 +117,8 @@ pub struct Catalog {
     /// 消失 —— 而返回给用户的只是一句「部分刷新失败」，他不会想到自己盯了
     /// 半天的那台机器已经不在列表里了。按页存之后，失败的那页原样保留旧数据。
     online_products: RwLock<HashMap<(String, PageId), Page>>,
+    /// 已完整读取的官网当前机型列表；用于排除离线快照中的历史购买页。
+    current_families: RwLock<HashMap<(String, Category), HashSet<String>>>,
 }
 
 /// 一个购买页的身份：品类 + slug。
@@ -166,6 +168,7 @@ impl Catalog {
             offline_products,
             offline_stores: load_stores(EMBEDDED_STORES).map_err(|e| e.to_string()),
             online_products: RwLock::new(HashMap::new()),
+            current_families: RwLock::new(HashMap::new()),
         }
     }
 
@@ -213,7 +216,14 @@ impl Catalog {
 
         let mut merged: Vec<Product> = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
+        let current = read_lock(&self.current_families);
         for page in sources {
+            if current
+                .get(&(locale.to_string(), page.id.category))
+                .is_some_and(|slugs| !slugs.contains(&page.id.slug))
+            {
+                continue;
+            }
             for product in &page.products {
                 if seen.insert(product.part_number.clone()) {
                     merged.push(product.clone());
@@ -283,9 +293,9 @@ impl Catalog {
 
     /// 从 Apple 官网购买页抓最新型号，覆盖该地区的内存副本。返回抓到的型号数。
     ///
-    /// `category` 为 `None` 时抓该地区的全部购买页（二十页，很慢），给了品类
-    /// 就只抓那个品类的几页。界面上的刷新按钮传的是当前选中的品类：用户想看
-    /// 新出的 Mac，没有理由让他等着 iPhone、iPad、Watch 一起抓完。
+    /// 先从所选地区的品类入口发现当前机型，再逐页更新商品。
+    /// `category` 为 `None` 时刷新全部品类；界面只传当前品类。
+    /// 入口发现失败时回退到已有购买页，同时报告失败，避免冒充完整更新。
     ///
     /// **逐页抓、逐页安装。** 某一页失败时，其余页的新数据照常生效，失败那页
     /// 继续用原来的数据（在线的旧副本或内嵌快照），同时返回
@@ -300,7 +310,7 @@ impl Catalog {
         category: Option<Category>,
         http: &reqwest::Client,
     ) -> Result<usize, CatalogError> {
-        let families: Vec<&'static Family> = match category {
+        let families: Vec<&'static Family<'static>> = match category {
             Some(c) => region.families_in(c).collect(),
             None => region.families.iter().collect(),
         };
@@ -314,15 +324,57 @@ impl Catalog {
         let mut fetched: HashSet<String> = HashSet::new();
         let mut failures: Vec<String> = Vec::new();
 
-        for family in families {
-            match crate::apple_catalog::fetch_products(http, region, family).await {
-                Ok(items) => {
-                    // 不同购买页之间可能返回同一零件号（Pro 与 Pro Max 共页），
-                    // 所以计数按去重后的算，别给用户报一个虚高的数字。
-                    fetched.extend(items.iter().map(|p| p.part_number.clone()));
-                    self.install_page(region.locale, family, items);
+        let categories: Vec<Category> = Category::ALL
+            .iter()
+            .copied()
+            .filter(|c| families.iter().any(|f| f.category == *c))
+            .collect();
+        for category in categories {
+            let failures_before = failures.len();
+            let (slugs, discovered) =
+                match crate::apple_catalog::discover_families(http, region, category).await {
+                    Ok(slugs) => (slugs, true),
+                    Err(err) => {
+                        failures.push(format!(
+                            "{} 机型发现失败，改用已有购买页：{err}",
+                            category.title()
+                        ));
+                        let mut fallback: Vec<String> = families
+                            .iter()
+                            .filter(|f| f.category == category)
+                            .map(|f| f.slug.to_string())
+                            .collect();
+                        if let Ok(pages) = self.offline_pages(region.locale) {
+                            fallback.extend(
+                                pages
+                                    .iter()
+                                    .filter(|p| p.id.category == category)
+                                    .map(|p| p.id.slug.clone()),
+                            );
+                        }
+                        fallback.extend(
+                            self.online_pages(region.locale)
+                                .keys()
+                                .filter(|id| id.category == category)
+                                .map(|id| id.slug.clone()),
+                        );
+                        fallback.sort();
+                        fallback.dedup();
+                        (fallback, false)
+                    }
+                };
+            for slug in &slugs {
+                let family = Family { category, slug };
+                match crate::apple_catalog::fetch_products(http, region, &family).await {
+                    Ok(items) => {
+                        fetched.extend(items.iter().map(|p| p.part_number.clone()));
+                        self.install_page(region.locale, &family, items);
+                    }
+                    Err(err) => failures.push(format!("{slug}：{err}")),
                 }
-                Err(err) => failures.push(format!("{}：{err}", family.slug)),
+            }
+            if discovered && failures.len() == failures_before {
+                self.set_current_families(region.locale, category, &slugs);
             }
         }
 
@@ -341,7 +393,7 @@ impl Catalog {
     /// 空列表直接忽略：把一页清空会让用户已选的监控项在界面上消失，而这通常
     /// 只意味着这一次抓取没拿到东西 —— 那种时候旧数据（哪怕是内嵌兜底）仍然
     /// 比空列表有用。
-    fn install_page(&self, locale: &str, family: &Family, mut products: Vec<Product>) {
+    fn install_page(&self, locale: &str, family: &Family<'_>, mut products: Vec<Product>) {
         if products.is_empty() {
             return;
         }
@@ -352,6 +404,17 @@ impl Catalog {
         };
         write_lock(&self.online_products)
             .insert((locale.to_string(), id.clone()), Page { id, products });
+    }
+
+    fn set_current_families(&self, locale: &str, category: Category, slugs: &[String]) {
+        if slugs.is_empty() {
+            return;
+        }
+        let active: HashSet<String> = slugs.iter().cloned().collect();
+        write_lock(&self.current_families).insert((locale.to_string(), category), active.clone());
+        write_lock(&self.online_products).retain(|(l, id), _| {
+            l != locale || id.category != category || active.contains(&id.slug)
+        });
     }
 
     /// 某地区已经刷新过的那些页，按页身份索引。
@@ -580,15 +643,15 @@ mod tests {
     use super::*;
     use crate::model::REGIONS;
 
-    const IPHONE_17: Family = Family {
+    const IPHONE_17: Family<'static> = Family {
         category: Category::Iphone,
         slug: "iphone-17",
     };
-    const IPHONE_17_PRO: Family = Family {
+    const IPHONE_18_PRO: Family<'static> = Family {
         category: Category::Iphone,
-        slug: "iphone-17-pro",
+        slug: "iphone-18-pro",
     };
-    const MACBOOK_AIR: Family = Family {
+    const MACBOOK_AIR: Family<'static> = Family {
         category: Category::Mac,
         slug: "macbook-air",
     };
@@ -634,11 +697,8 @@ mod tests {
     }
 
     #[test]
-    fn 内嵌快照的页集合与地区表完全一致() {
-        // 断言的是**集合相等**，不是「每个 family 都能找到」：后者放得过松，
-        // 快照里混进一页早已下架的旧机型、或者同一页写了两遍，都照样能过 ——
-        // 而那两种情况分别意味着用户会看到永远不会有货的型号，和莫名重复的
-        // 下拉项。
+    fn 内嵌快照覆盖兜底购买页且没有重复页() {
+        // 各地区可有额外新品快照，不要求七个站点在同一天上线同一批产品。
         let catalog = Catalog::new();
         for region in REGIONS {
             let pages = catalog
@@ -660,9 +720,9 @@ mod tests {
             expected.sort_unstable();
             actual.dedup();
             assert_eq!(actual.len(), before, "{} 的快照里有重复的页", region.locale);
-            assert_eq!(
-                actual, expected,
-                "{} 的快照页集合与地区表对不上",
+            assert!(
+                expected.iter().all(|page| actual.contains(page)),
+                "{} 的快照缺少兜底购买页",
                 region.locale
             );
         }
@@ -779,7 +839,7 @@ mod tests {
 
         let mut fresh = product(&shared, "刷新之后的展示名");
         fresh.category = Category::Iphone;
-        catalog.install_page("zh_CN", &IPHONE_17_PRO, vec![fresh]);
+        catalog.install_page("zh_CN", &IPHONE_18_PRO, vec![fresh]);
 
         assert_eq!(
             catalog
@@ -879,5 +939,32 @@ mod tests {
                 assert!(a.title <= b.title, "同容量下应当按展示名排");
             }
         }
+    }
+    #[test]
+    fn 完整读取当前机型后旧页面不会从离线快照回流() {
+        let catalog = Catalog::new();
+        let before = catalog.products("zh_CN").unwrap();
+        let old = before
+            .iter()
+            .find(|p| p.category == Category::Iphone)
+            .unwrap()
+            .part_number
+            .clone();
+        let only_current = Family {
+            category: Category::Iphone,
+            slug: "iphone-current-test",
+        };
+        catalog.install_page(
+            "zh_CN",
+            &only_current,
+            vec![product("CURRENT/A", "iPhone Current")],
+        );
+        catalog.set_current_families("zh_CN", Category::Iphone, &[only_current.slug.to_string()]);
+        let after = catalog.products("zh_CN").unwrap();
+        assert!(after.iter().any(|p| p.part_number == "CURRENT/A"));
+        assert!(!after.iter().any(|p| p.part_number == old));
+        assert!(after.iter().any(|p| p.category == Category::Mac));
+        catalog.set_current_families("zh_CN", Category::Iphone, &[]);
+        assert_eq!(after, catalog.products("zh_CN").unwrap());
     }
 }

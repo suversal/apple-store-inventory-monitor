@@ -21,7 +21,6 @@ apw-core = { path = "../crates/apw-core" }
 # tray-icon：系统托盘。这类工具会被长时间挂着盯库存，
 # 能收进托盘后台跑，比占着一个 Dock 图标和窗口合理得多。
 tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-notification = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-opener = "2"
 reqwest.workspace = true

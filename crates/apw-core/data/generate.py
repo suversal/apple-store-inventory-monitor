@@ -18,6 +18,7 @@ data 的结构与购买页里那个 productSelectionData 对象一致，Rust 侧
 整页留着会让二进制大出一个数量级，而那些字段一个也用不上。
 """
 
+from html.parser import HTMLParser
 import gzip
 import json
 import re
@@ -46,7 +47,10 @@ REGIONS = {
 # 与 crates/apw-core/src/model.rs 的 DEFAULT_FAMILIES 保持一致。
 FAMILIES = [
     ("iphone", "iphone-17"),
-    ("iphone", "iphone-17-pro"),
+    ("iphone", "iphone-18-pro"),
+    ("iphone", "iphone-duo"),
+    ("iphone", "iphone-17e"),
+    ("iphone", "iphone-16"),
     ("iphone", "iphone-air"),
     ("ipad", "ipad-pro"),
     ("ipad", "ipad-air"),
@@ -159,7 +163,22 @@ def extract(page: bytes):
                 depth -= 1
                 if depth == 0:
                     try:
-                        return json.loads(search[pos : i + 1])
+                        data = json.loads(search[pos : i + 1])
+                        class MacLinks(HTMLParser):
+                            def __init__(self):
+                                super().__init__()
+                                self.urls = set()
+                            def handle_starttag(self, tag, attrs):
+                                if tag == "a":
+                                    for key, value in attrs:
+                                        if key == "href" and value and "/shop/buy-mac/" in value:
+                                            if len(value.split("/shop/buy-mac/", 1)[1].strip("/").split("/")) > 1:
+                                                self.urls.add(value.strip())
+                        links = MacLinks()
+                        links.feed(page.decode("utf-8", errors="replace"))
+                        if links.urls:
+                            data["macProductLinks"] = sorted(links.urls)
+                        return data
                     except ValueError:
                         break
         continue
@@ -192,6 +211,8 @@ def trim(data: dict):
 
         if raw.get("familyType"):
             item["familyType"] = raw["familyType"]
+        if raw.get("aosContainerPartNumber"):
+            item["aosContainerPartNumber"] = raw["aosContainerPartNumber"]
 
         if isinstance(dimensions, dict):
             if dims:
@@ -214,6 +235,15 @@ def trim(data: dict):
     kept_products.sort(key=lambda item: item.get("partNumber") or item.get("btrOrFdPartNumber") or item.get("part") or "")
 
     out = {"products": kept_products}
+    if isinstance(data.get("macProductLinks"), list):
+        out["macProductLinks"] = data["macProductLinks"]
+    # 代数以及 Ultra 的固定规格位于无脚本商品入口，不能在裁剪时丢掉。
+    examples = data.get("watchProductSelectionDataNoJS")
+    if isinstance(examples, list):
+        out["watchProductSelectionDataNoJS"] = [
+            {key: entry[key] for key in ("text", "url") if isinstance(entry.get(key), str)}
+            for entry in examples if isinstance(entry, dict)
+        ]
 
     # 展示文案只留被引用到的那些取值，而且每条只留一个字段：Apple 在
     # value / header / text 三个字段名之间摇摆，Rust 侧按这个顺序挨个试。

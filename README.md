@@ -1,19 +1,25 @@
 # 果到雷达（Apple Store Inventory Monitor）
 
 [![CI](https://github.com/suversal/apple-store-inventory-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/suversal/apple-store-inventory-monitor/actions/workflows/ci.yml)
-[![源码版本: v1.0.0](https://img.shields.io/badge/source-v1.0.0-blue)](package.json)
+[![源码版本: v1.0.1](https://img.shields.io/badge/source-v1.0.1-blue)](package.json)
 [下载与发布记录](https://github.com/suversal/apple-store-inventory-monitor/releases)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 
-果到雷达是一款 Apple 直营店到店取货库存监控工具。选好地区、门店和具体型号后，它会定时检查库存；检测到有货时，可以播放提示音、发送系统通知、推送 Bark，并打开 Apple 购物袋页面。
+果到雷达是一款 Apple 直营店取货库存监控工具。选好地区、门店和具体型号后，它会定时检查库存；检测到有货时，可以播放提示音、推送 Bark，并打开 Apple 购物袋页面。
 
-支持 macOS、Windows 和 Linux，使用 Rust、Tauri 2 和 React 编写。果到雷达的正式版本从 **1.0.0** 开始，本 README 对应 `1.0.0` 源码。英文应用名为 **Apple Store Inventory Monitor**，仓库名为 `apple-store-inventory-monitor`。
+支持 macOS、Windows 和 Linux，使用 Rust、Tauri 2 和 React 编写。果到雷达的正式版本从 **1.0.0** 开始，本 README 对应 `1.0.1` 源码。英文应用名为 **Apple Store Inventory Monitor**，仓库名为 `apple-store-inventory-monitor`。
 
 基于 [ENCHIGO/apple-pickup-watcher v0.3.2](https://github.com/ENCHIGO/apple-pickup-watcher/tree/v0.3.2) 继续开发，按 GPL-3.0-or-later 发布。来源与修改记录见 [NOTICE](NOTICE)。
 
 > 本项目不是 Apple 官方软件，与 Apple Inc. 没有关系，也没有获得 Apple 授权。它只负责查询和提醒，不能预留库存，也不会替你下单。
 
 [快速开始](#快速开始) · [下载安装](#安装) · [使用方法](#使用方法) · [常见问题](#常见问题) · [从源码运行](#从源码运行) · [反馈问题](#反馈问题)
+
+## 界面预览
+
+![果到雷达：Apple 直营店取货库存监控，展示不同库存状态及提醒设置](docs/screenshots/monitor.png)
+
+截图中的 Bark 密钥已遮挡；库存仅代表拍摄时结果。截图来自更新前的本地版本，日志中的旧提醒记录不代表当前版本提供系统通知。当前提醒方式为提示音、Bark 和自动打开购物袋。
 
 ## 快速开始
 
@@ -23,7 +29,7 @@
 2. 确认电脑已安装 Google Chrome 或 Microsoft Edge。Linux 也可以使用 PATH 中的 Chromium。软件不会读取你平时使用的浏览器资料。
 3. 打开果到雷达。macOS 和 Windows 可能会拦截未签名的应用，处理方法见[安装](#安装)。
 4. 选择地区和品类，再勾选门店与型号，点击「添加监控」。
-5. 先点一次「测试提醒」，确认系统通知、声音或 Bark 能正常收到。
+5. 先点一次「测试提醒」，确认提示音或 Bark 能正常收到。
 6. 点击「开始监控」。看到「未知」时先看活动日志，不要把它当成无货。
 
 Apple 可能限流或调整接口，库存也可能在提醒后立即变化。最终能否取货，以 Apple 官网下单时的结果为准。
@@ -42,7 +48,7 @@ Apple 可能限流或调整接口，库存也可能在提醒后立即变化。�
 
 ## 安装
 
-打开 [GitHub Releases](https://github.com/suversal/apple-store-inventory-monitor/releases)，选择 `v1.0.0` 或后续正式版本，在 **Assets** 中下载对应系统的安装包。若还没有 `v1.0.0` 安装包，请等待正式发布，或按[从源码运行](#从源码运行)自行构建；源码版本号不代表安装包已经发布。
+打开 [最新正式版本](https://github.com/suversal/apple-store-inventory-monitor/releases/latest)，在 **Assets** 中下载对应系统的安装包。每个版本的变化见 [更新记录](CHANGELOG.md)。
 
 普通用户只需要下表中的安装包，不需要下载 `.sig`、`latest.json`、`.app.tar.gz` 或 GitHub 自动提供的 Source code 压缩包。
 
@@ -58,8 +64,7 @@ Apple 可能限流或调整接口，库存也可能在提醒后立即变化。�
 ### macOS
 
 1. 打开 `.dmg`，把 `Apple Store Inventory Monitor.app` 拖进「应用程序」。
-2. 第一次打开时，根据系统提示授予通知权限；否则有货时可能看不到系统通知。
-3. 安装包暂未经过 Apple 公证。如果系统提示无法验证开发者，先到「系统设置 → 隐私与安全性」确认被拦截的是本应用，再选择「仍要打开」。
+2. 安装包暂未经过 Apple 公证。如果系统提示无法验证开发者，先到「系统设置 → 隐私与安全性」确认被拦截的是本应用，再选择「仍要打开」。
 
 如果系统仍提示应用已损坏，并且你确认安装包来自本仓库的 Release，可以执行：
 
@@ -82,7 +87,7 @@ Release 提供 x64 的 `.deb` 和 `.AppImage`。安装包在 Ubuntu 24.04 上构
 **Debian / Ubuntu：**
 
 ```bash
-sudo apt install "./Apple.Store.Inventory.Monitor_1.0.0_amd64.deb"
+sudo apt install "./Apple.Store.Inventory.Monitor_1.0.1_amd64.deb"
 ```
 
 `apt` 会同时安装包声明的依赖。音频播放和托盘还需要 ALSA 与 AppIndicator 运行库。
@@ -90,14 +95,14 @@ sudo apt install "./Apple.Store.Inventory.Monitor_1.0.0_amd64.deb"
 **AppImage：**
 
 ```bash
-chmod +x "./Apple.Store.Inventory.Monitor_1.0.0_amd64.AppImage"
-"./Apple.Store.Inventory.Monitor_1.0.0_amd64.AppImage"
+chmod +x "./Apple.Store.Inventory.Monitor_1.0.1_amd64.AppImage"
+"./Apple.Store.Inventory.Monitor_1.0.1_amd64.AppImage"
 ```
 
 AppImage 需要 FUSE 2。Ubuntu 24.04 可以用 `sudo apt install libfuse2t64` 安装；也可以不安装 FUSE，直接解包运行：
 
 ```bash
-"./Apple.Store.Inventory.Monitor_1.0.0_amd64.AppImage" --appimage-extract-and-run
+"./Apple.Store.Inventory.Monitor_1.0.1_amd64.AppImage" --appimage-extract-and-run
 ```
 
 Linux 还需要自行安装 Chrome、Edge 或 Chromium。使用 Chromium 时，请确认终端可以运行 `chromium` 或 `chromium-browser`。
@@ -108,8 +113,9 @@ Linux 还需要自行安装 Chrome、Edge 或 Chromium。使用 Chromium 时，�
 - 内置中国大陆、中国香港、中国台湾、日本、新加坡、澳大利亚和马来西亚的 Apple Store 列表。
 - 门店和型号都可以多选，添加时会自动生成全部组合。
 - 同一门店的多个型号合并查询，减少不必要的请求。
+- iPhone 型号选择和监控列表按代际优先显示新款；型号名称保留可确认的容量、颜色和规格。
 - 区分有货、无货、不支持取货、暂未开售、即将发售和暂不可购买，分别使用独立配色；查询失败保留为未确认状态。
-- 支持系统通知、提示音和 Bark 推送。
+- 支持提示音和 Bark 推送。
 - 有货时可以自动打开对应地区的 Apple 购物袋页面。
 - 窗口关闭后可继续在系统托盘运行。
 - 型号目录可以从 Apple 官网刷新；网络失败时仍可使用内嵌目录。
@@ -128,7 +134,7 @@ Linux 还需要自行安装 Chrome、Edge 或 Chromium。使用 Chromium 时，�
 
 门店和型号会按组合添加。例如，选择 2 家门店和 3 个型号，会生成 6 条监控。已存在的组合会被跳过。
 
-切换地区时，当前还没有添加的门店和型号选择会被清空；已经在监控列表里的项目不会被删除。找不到刚发布的型号时，点击「添加监控」旁边的刷新按钮，从 Apple 官网更新当前品类的型号列表。刷新失败不会清空内置列表。
+切换地区时，当前还没有添加的门店和型号选择会被清空；已经在监控列表里的项目不会被删除。找不到刚发布的型号时，点击「添加监控」旁边的刷新按钮，先从所选地区的 Apple 官网发现当前品类的机型，再更新各机型的商品列表，新机无需等待程序逐代登记。部分页面失败时仍会保留其他页面的更新结果，并在日志中说明失败项；完整刷新成功后，可选目录以官网当前机型为准，不再混入已撤下的历史商品页；读取失败不会被当作商品已删除。机型进入列表不代表已开放预购或门店取货。刷新不会替换已保存监控的 SKU；如果旧型号已下架或 Apple 暂未提供取货数据，列表会显示「暂无数据」，请核对官网后重新选择需要的型号。
 
 ### 查看结果
 
@@ -144,7 +150,7 @@ Linux 还需要自行安装 Chrome、Edge 或 Chromium。使用 Chromium 时，�
 第一条商品有货不会停止本轮查询。监控引擎会继续处理剩余门店和型号；持续有货时，
 每一轮都会再次执行已启用的提醒动作。
 
-如果启用了「自动打开购物袋」，持续有货也会每轮再次打开页面。只想收到通知、不想反复出现浏览器标签页时，请关闭这个选项。
+如果启用了「自动打开购物袋」，持续有货也会每轮再次打开页面。只想听到提示音或收到 Bark、不想反复出现浏览器标签页时，请关闭这个选项。
 
 监控期间可以关闭主窗口，应用会留在系统托盘继续运行。电脑睡眠或彻底退出应用后，查询会停止。重新打开应用会恢复已保存的监控列表，但需要再次点击「开始监控」。
 
@@ -158,12 +164,11 @@ Linux 还需要自行安装 Chrome、Edge 或 Chromium。使用 Chromium 时，�
 
 ### 提醒方式
 
-- 系统通知：由桌面系统显示。
 - 提示音：在应用内开关。
 - Bark：填写完整 Bark 地址后启用，留空即关闭。
 - 自动打开购物袋：检测到有货后调用系统默认浏览器，打开对应地区的 Apple 购物袋。不会自动添加监控商品、预留库存或下单。
 
-「测试提醒」会发送系统通知，并按当前设置测试提示音和 Bark；不会查询库存或打开购物袋。
+「测试提醒」按当前设置测试提示音和 Bark，不会查询库存或打开购物袋。请先开启提示音或配置 Bark；实际是否收到，需要在电脑或手机上确认。
 
 #### Bark 怎么配置
 
@@ -178,7 +183,7 @@ Bark 地址相当于推送凭证，不要截图发到公开 issue，也不要提
 
 ### 应用更新
 
-应用启动后会静默检查 GitHub Releases。发现新版本时，界面会显示版本号和「下载并安装」按钮；更新不会在后台自动安装。安装完成后需要重启应用，再点击「开始监控」。如果检查更新失败，可以到 [Releases](https://github.com/suversal/apple-store-inventory-monitor/releases) 手动下载安装。
+应用启动后会静默检查 GitHub Releases。发现新版本时，界面会显示版本号和「下载并安装」按钮；更新不会在后台自动安装。更新时会显示累计下载量，以及验证、安装阶段；安装完成后需要重启应用，再点击「开始监控」。失败时会显示原因并提供重试或完整安装包入口。签名验证失败会停止安装，不会跳过验证；遇到签名密钥不匹配时请下载完整安装包替换旧版。
 
 macOS 和 Windows 安装包目前没有操作系统层面的开发者签名，但自动更新包使用本项目独立的 Tauri 更新密钥签名。这两件事不是一回事：前者关系到 Gatekeeper 或 SmartScreen 提示，后者用于阻止应用安装被篡改的更新包。
 
@@ -223,7 +228,7 @@ macOS 和 Windows 安装包目前没有操作系统层面的开发者签名，�
 
 ## 常见问题
 
-### 找不到 v1.0.0 安装包
+### 找不到安装包
 
 先确认打开的是本仓库的 [Releases](https://github.com/suversal/apple-store-inventory-monitor/releases)，再展开对应版本的 Assets。只有源码标签或 Actions 构建记录，不代表安装包已经公开；草稿 Release 对普通访问者不可见。请等待正式发布，或按[从源码运行](#从源码运行)自行构建。
 
@@ -246,9 +251,9 @@ macOS 和 Windows 安装包目前没有操作系统层面的开发者签名，�
 
 库存查询依赖 Apple 商品页完成的浏览器校验。Tauri 自带的 WebView 和普通 HTTP 请求在当前流程下无法稳定取得库存 JSON，因此应用使用独立 Chromium 会话。
 
-### 测试提醒没有系统通知
+### 测试提醒没有声音或 Bark 推送
 
-先检查系统是否允许 `Apple Store Inventory Monitor` 发送通知，再确认勿扰模式或专注模式没有隐藏通知。提示音、系统通知和 Bark 是三个独立渠道，其中一个失败不会阻止另外两个，也不会影响库存判断。
+提示音请检查应用内开关、系统音量和音频输出设备。Bark 请检查完整推送地址及 iPhone 上的 Bark 通知设置，并查看活动日志中的失败原因。两条提醒渠道独立，提醒失败不会改变库存判断。
 
 ### 关闭窗口后应用没有退出
 
@@ -262,13 +267,13 @@ macOS 和 Windows 安装包目前没有操作系统层面的开发者签名，�
 
 下面只比较本项目与直接上游 `ENCHIGO/apple-pickup-watcher v0.3.2` 的差异。Rust、Tauri、三态库存、四个产品品类、系统托盘和应用内更新等能力已经由上游完成，不算作本项目新增。
 
-| 项目 | 直接上游 v0.3.2 | 果到雷达 v1.0.0 |
+| 项目 | 直接上游 v0.3.2 | 果到雷达 v1.0.1 |
 | --- | --- | --- |
 | Apple 查询会话 | 普通 HTTP 客户端先访问商品页获取 Cookie，再查询库存 | 启动独立的临时 Chromium 会话，在 Apple 页面环境中完成校验和库存请求；遇到 `403` 或 `541` 时销毁会话，下次查询时重建 |
 | 批量添加监控 | 每次选择一家门店和一个型号 | 门店、型号都可以多选，一次生成全部组合；重复组合会自动跳过 |
-| 持续有货提醒 | 只在状态从非有货变成有货时提醒一次 | 每轮确认有货都会重新执行提醒，适合库存短暂出现、第一次提醒被系统隐藏等情况 |
+| 持续有货提醒 | 只在状态从非有货变成有货时提醒一次 | 每轮确认有货都会重新执行提醒，适合库存短暂出现、第一次错过提醒等情况 |
 | 运行过程反馈 | 主要记录状态变化，长时间无变化时不容易判断是否仍在查询 | 每轮显示覆盖的门店和监控项、逐项结果、耗时与预计等待时间；日志最多保留 300 行 |
-| 操作反馈 | 有货时会执行提醒并尝试打开购物袋，但界面不显示具体执行结果 | 记录已执行的提醒动作，并显示通知、声音、Bark 或购物袋打开失败的错误；实际送达情况仍需在设备上确认 |
+| 操作反馈 | 有货时会执行提醒并尝试打开购物袋，但界面不显示具体执行结果 | 记录已执行的提醒动作，并显示提示音、Bark 或购物袋打开失败的错误；实际送达情况仍需在设备上确认 |
 
 这些调整用于改善库存查询、批量添加和长时间监控时的反馈。逐项修改记录见 [NOTICE](NOTICE)。
 
@@ -349,6 +354,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace
 pnpm build
+pnpm test
 ```
 
 离线测试不会请求 Apple。真实接口回归测试需要本机安装支持的 Chromium 浏览器，并会访问 Apple 官网：
@@ -397,7 +403,7 @@ pnpm tauri build --no-sign
 
 产物位于 `target/release/bundle/`。自动更新包需要仓库维护者配置 `TAURI_SIGNING_PRIVATE_KEY`；私钥设置了密码时还要配置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。没有私钥时不能生成可被现有客户端验证的更新签名。
 
-正式版本由 [Release 工作流](.github/workflows/release.yml) 构建，标签使用 `v1.0.0` 这样的格式。发版前应确认 `package.json`、工作区 `Cargo.toml`、`src-tauri/tauri.conf.json` 与标签的版本一致。
+正式版本由 [Release 工作流](.github/workflows/release.yml) 构建，标签使用 `v1.0.1` 这样的格式。发版前应确认 `package.json`、工作区 `Cargo.toml`、`src-tauri/tauri.conf.json` 与标签的版本一致。
 
 推送 `v*` 标签后，GitHub Actions 会生成 macOS、Windows 和 Linux 安装包，并先创建草稿 Release；确认四个平台全部成功后再公开发布，避免用户下载到缺少部分平台或 `latest.json` 尚未完整生成的版本。手动运行 `workflow_dispatch` 只生成 Actions 构建产物，不会创建公开 Release。
 
@@ -422,20 +428,23 @@ src/
   components/              界面组件
   lib/store.ts             前端状态与事件日志
   lib/types.ts             Rust/TypeScript 边界类型
+  lib/monitorLog.ts        业务状态、配色语义与逐轮日志
+  lib/productOrder.ts      新款优先排序
+  lib/updateStatus.ts      更新进度与失败原因
 ```
 
 库存是否可取货只由 Rust 核心判断。前端负责展示状态，不会根据日志文本或空响应自行推断「无货」。
 
 ## 最近一次真实验证
 
-2026-09-08 使用同一个临时 Chromium 会话，对上海以下四家门店连续查询两轮：
+2026-09-10 使用本次完整源码，通过同一个临时 Chromium 会话查询 iPhone 17 256GB 白色（`MG6X4CH/A`），对上海以下四家门店连续查询两轮：
 
 - R390 香港广场
 - R401 上海环贸 iapm
 - R581 五角场
 - R683 环球港
 
-8 次查询均返回明确库存状态。真实库存随时会变化，这项验证只说明当时的查询链路和多门店循环正常，不代表这些门店当前仍有货。
+8 次查询均返回明确库存状态；官网目录刷新同时识别出 6 个 iPhone 机型页、取得 73 个 SKU。首次新建会话曾被 Apple 风控拦截，间隔后重建会话的复测通过，说明仍需保留失败提示与重试。真实库存随时变化，这项验证只代表当次结果，不保证持续可用或这些门店当前仍有货。
 
 ## 来源与许可
 
