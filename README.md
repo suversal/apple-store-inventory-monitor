@@ -17,6 +17,8 @@
 
 ## 界面预览
 
+<img width="1674" height="1263" alt="image" src="https://github.com/user-attachments/assets/c4630cdc-04fa-4e16-837b-1f1dcfab3a10" />
+
 ![果到雷达：Apple 直营店取货库存监控，展示不同库存状态及提醒设置](docs/screenshots/monitor.png)
 
 截图中的 Bark 密钥已遮挡；库存仅代表拍摄时结果。截图来自更新前的本地版本，日志中的旧提醒记录不代表当前版本提供系统通知。当前提醒方式为提示音、Bark 和自动打开购物袋。
