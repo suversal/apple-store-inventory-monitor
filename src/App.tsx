@@ -140,10 +140,10 @@ export default function App() {
   const [storeNumbers, setStoreNumbers] = useState<string[]>([]);
   const [partNumbers, setPartNumbers] = useState<string[]>([]);
   const [isAdding, setIsAdding] = useState(false);
-  const [barkDraft, setBarkDraft] = useState("");
+  const [barkDraft, setBarkDraft] = useState<string | null>(null);
   const [intervalDraft, setIntervalDraft] = useState<number | null>(null);
 
-  const barkValue = barkDraft || ui.settings.barkUrl;
+  const barkValue = barkDraft ?? ui.settings.barkUrl;
   const intervalValue = intervalDraft ?? ui.settings.intervalSeconds;
   const latestCheckedMs = Math.max(0, ...ui.rows.map((row) => row.lastCheckedMs ?? 0));
   const secondsUntilNextCheck = latestCheckedMs
@@ -623,8 +623,8 @@ export default function App() {
                     value={barkValue}
                     onChange={(event) => setBarkDraft(event.target.value)}
                     onBlur={() => {
-                      setBarkDraft("");
-                      void saveSettings({ ...ui.settings, barkUrl: barkValue.trim() });
+                      setBarkDraft(null);
+                      void saveSettings({ barkUrl: barkValue.trim() });
                     }}
                   />
                 </div>
@@ -636,7 +636,7 @@ export default function App() {
                       id="sound"
                       aria-label="提示音"
                       checked={ui.settings.soundEnabled}
-                      onCheckedChange={(value) => void saveSettings({ ...ui.settings, soundEnabled: value })}
+                      onCheckedChange={(value) => void saveSettings({ soundEnabled: value })}
                     />
                   </div>
                   <div className="setting-row">
@@ -645,7 +645,7 @@ export default function App() {
                       id="openbag"
                       aria-label="有货时自动打开购物袋"
                       checked={ui.settings.openBagOnHit}
-                      onCheckedChange={(value) => void saveSettings({ ...ui.settings, openBagOnHit: value })}
+                      onCheckedChange={(value) => void saveSettings({ openBagOnHit: value })}
                     />
                   </div>
                 </div>
