@@ -45,25 +45,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: macOS (Apple Silicon)
-            runner: macos-latest
-
-          # macos-15-intel 是 GitHub 当前提供的 Intel runner。
-          # 上一代标签 macos-13 已于 2025-12-04 退役，写它会让作业在初始化阶段直接
-          # 失败 —— 这个坑本仓库踩过一次，整条发布流水线因此空转。
-          # 换标签前先去 actions/runner-images 的 README 确认它还在列表里。
-          - label: macOS (Intel)
-            runner: macos-15-intel
-
           - label: Windows (x64)
             runner: windows-latest
-
-          # 固定 24.04 而不是写 ubuntu-latest：Linux 产物的 glibc 下限由构建机决定，
-          # 用浮动标签会在 GitHub 把 ubuntu-latest 挪到 26.04 的那天悄悄抬高门槛，
-          # 老发行版上的用户只会看到「GLIBC_2.xx not found」。
-          # 24.04 对应 glibc 2.39，这一点写进了下面的 Release 说明。
-          - label: Linux (x64)
-            runner: ubuntu-24.04
 
     defaults:
       run:
