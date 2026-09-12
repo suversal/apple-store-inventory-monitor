@@ -17,6 +17,8 @@
 
 ## 界面预览
 
+<img width="1173" height="979" alt="iShot_2026-09-12_21 57 44" src="https://github.com/user-attachments/assets/f4775f75-ab0b-4a52-9127-5f4443d7ab6f" />
+
 <img width="1674" height="1263" alt="image" src="https://github.com/user-attachments/assets/c4630cdc-04fa-4e16-837b-1f1dcfab3a10" />
 
 ![果到雷达：Apple 直营店取货库存监控，展示不同库存状态及提醒设置](docs/screenshots/monitor.png)
