@@ -159,8 +159,10 @@ jobs:
       #   "Signature not found for the updater JSON. Skipping upload..."
       # 然后跳过，不会让作业失败。
       #
-      # 注意 --no-sign 同时也会跳过 macOS/Windows 的证书签名 —— 本项目本来就没有
-      # 证书签名，所以没有额外损失。
+      # 注意 --no-sign 同时也会跳过 macOS 应用包的 ad-hoc 签名。Apple Silicon 上从
+      # 浏览器下载的应用若没有完整 bundle 签名，会被 Gatekeeper 误报为“已损坏”。
+      # 因此 macOS 作业不允许降级：缺少更新签名密钥时直接失败；Windows/Linux 才能
+      # 继续产出只能手动安装、不能应用内更新的未签名包。
       #
       # --no-sign 是 `tauri build` 的参数，已在 tauri-cli v2.11.4（pnpm-lock.yaml 当前
       # 锁定的版本）上确认存在。如果哪天把 @tauri-apps/cli 降级到更老的版本，
@@ -179,6 +181,9 @@ jobs:
           if [ -n "${SIGNING_KEY:-}" ]; then
             echo "sign=true" >> "$GITHUB_OUTPUT"
             echo "已配置签名密钥，将产出带签名的更新包与 latest.json。"
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            echo "::error::macOS 发布既需要更新签名密钥，也必须保留应用包的 ad-hoc 签名；禁止使用 --no-sign 降级。"
+            exit 1
           else
             echo "sign=false" >> "$GITHUB_OUTPUT"
             echo "::warning::未配置 TAURI_SIGNING_PRIVATE_KEY，本次产出未签名安装包，且不会生成 latest.json，应用内自动更新在这个版本上不可用。补配仓库 Secret 后重跑本流水线即可。"
@@ -245,14 +250,17 @@ jobs:
 
             ### macOS：首次打开被拦下
 
-            安装包没有经过 Apple 公证，Gatekeeper 会提示「已损坏，无法打开」。
-            这不是文件真的坏了。把应用拖进「应用程序」后执行一次：
+            应用包使用完整的 ad-hoc 签名，但没有 Developer ID 证书且尚未经过 Apple 公证。
+            如果 Gatekeeper 拦截，请在 Finder 中按住 Control 点击应用并选择「打开」，
+            或到「系统设置 → 隐私与安全性」确认被拦截的是本应用，再选择「仍要打开」。
+
+            若确认文件来自本仓库 Release 后仍需移除下载隔离标记，可执行：
 
             ```sh
             xattr -cr "/Applications/Apple Store Inventory Monitor.app"
             ```
 
-            之后就能正常启动，这条命令只需要执行一次。
+            这条命令只移除该应用的下载隔离标记，不会关闭系统的全局安全功能。
 
             ### Linux：运行库要求
 
@@ -274,3 +282,42 @@ jobs:
             本项目直接基于 [ENCHIGO/apple-pickup-watcher](https://github.com/ENCHIGO/apple-pickup-watcher)
             继续开发；该项目是 [hteen/apple-store-helper](https://github.com/hteen/apple-store-helper)
             的 GPL-3.0 重写版本。详见仓库内的 `LICENSE` 与 `NOTICE`。
+
+      # tauri-action 会在这一步之前把产物上传到草稿 Release，但草稿不会对用户可见。
+      # 如果更新归档或 DMG 内的应用签名无效，这里让作业失败，发布者就不能把这批
+      # 资产误当成可用版本公开。不能用 spctl 验证：ad-hoc 签名没有 Developer ID，
+      # Gatekeeper 仍可能要求用户手动允许；这里检查的是 bundle 结构与资源封印是否完整。
+      - name: 验证 macOS 更新包与 DMG 签名
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+
+          verify_app() {
+            local app_path="$1"
+            codesign --verify --deep --strict --verbose=4 "$app_path"
+            local signature_info
+            signature_info="$(codesign -d --verbose=4 "$app_path" 2>&1)"
+            echo "$signature_info"
+            grep -q "Identifier=com.suversal.apple-store-inventory-monitor" <<< "$signature_info"
+            grep -q "Signature=adhoc" <<< "$signature_info"
+          }
+
+          dmg_path="$(find target/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$dmg_path"
+          mount_path="$(mktemp -d)"
+          archive_path="$(find target/release/bundle/macos -maxdepth 1 -name '*.app.tar.gz' -print -quit)"
+          test -n "$archive_path"
+          archive_dir="$(mktemp -d)"
+          cleanup() {
+            hdiutil detach "$mount_path" >/dev/null 2>&1 || true
+            rmdir "$mount_path" >/dev/null 2>&1 || true
+            rm -rf "$archive_dir"
+          }
+          trap cleanup EXIT
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount_path" "$dmg_path" >/dev/null
+          verify_app "$mount_path/Apple Store Inventory Monitor.app"
+
+          tar -xzf "$archive_path" -C "$archive_dir"
+          archived_app="$(find "$archive_dir" -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$archived_app"
+          verify_app "$archived_app"
