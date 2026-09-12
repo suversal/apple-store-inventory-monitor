@@ -652,8 +652,11 @@ pub fn run() {
             // 并不处在 tokio 运行时上下文里，在这里 tokio::spawn 会 panic，
             // 而且因为发生在不可展开的回调中，进程会直接 abort。
             // 引擎任务交给 Tauri 自己的运行时去驱动。
-            let (watcher, events, engine) =
-                Watcher::new(AppleChromiumFetcher::new(), WatcherConfig::default());
+            let diagnostic_handle: AppHandle = app.handle().clone();
+            let fetcher = AppleChromiumFetcher::with_diagnostics(move |message| {
+                let _ = diagnostic_handle.emit(NOTICE_CHANNEL, message);
+            });
+            let (watcher, events, engine) = Watcher::new(fetcher, WatcherConfig::default());
             tauri::async_runtime::spawn(engine);
 
             {

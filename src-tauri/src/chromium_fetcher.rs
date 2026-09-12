@@ -8,6 +8,7 @@
 //! 这个实现不会读取用户现有 Chrome 的个人资料、Cookie 或浏览记录。临时目录随
 //! 会话销毁，浏览器进程也由应用持有并在退出时终止。
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
@@ -24,6 +25,9 @@ use tokio::sync::Mutex;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
 
 const CHROME_START_TIMEOUT: Duration = Duration::from_secs(12);
+const CHROME_VERSION_TIMEOUT: Duration = Duration::from_secs(5);
+const DEVTOOLS_HTTP_TIMEOUT: Duration = Duration::from_secs(10);
+const DEVTOOLS_SOCKET_TIMEOUT: Duration = Duration::from_secs(10);
 const SESSION_READY_TIMEOUT: Duration = Duration::from_secs(50);
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(25);
 const MIN_REQUEST_INTERVAL: Duration = Duration::from_secs(2);
@@ -32,6 +36,34 @@ const FALLBACK_CHROMIUM_MAJOR: u32 = 152;
 const MAX_EXCEPTION_SUMMARY_CHARS: usize = 160;
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+#[derive(Clone, Default)]
+struct Diagnostics {
+    sink: Option<Arc<dyn Fn(String) + Send + Sync>>,
+}
+
+impl Diagnostics {
+    fn new(sink: impl Fn(String) + Send + Sync + 'static) -> Self {
+        Self {
+            sink: Some(Arc::new(sink)),
+        }
+    }
+
+    fn emit(&self, stage: &str, detail: impl AsRef<str>) {
+        if let Some(sink) = &self.sink {
+            sink(format!("[诊断 {stage}] {}", detail.as_ref()));
+        }
+    }
+}
+
+impl std::fmt::Debug for Diagnostics {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Diagnostics")
+            .field("enabled", &self.sink.is_some())
+            .finish()
+    }
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,6 +81,7 @@ struct ChromiumSession {
     next_command_id: u64,
     locale: Option<&'static str>,
     last_inventory_request: Option<Instant>,
+    diagnostics: Diagnostics,
 }
 
 impl Drop for ChromiumSession {
@@ -59,18 +92,35 @@ impl Drop for ChromiumSession {
 }
 
 impl ChromiumSession {
+    #[cfg(test)]
     async fn start() -> Result<Self, ApiError> {
+        Self::start_with_diagnostics(Diagnostics::default()).await
+    }
+
+    async fn start_with_diagnostics(diagnostics: Diagnostics) -> Result<Self, ApiError> {
+        diagnostics.emit("D01", "开始查找 Google Chrome 或 Microsoft Edge");
         let chrome = find_chromium().ok_or_else(|| {
             ApiError::Transport(
                 "未找到 Google Chrome 或 Microsoft Edge；Apple 当前库存接口要求完整 Chromium 浏览器会话"
                     .into(),
             )
         })?;
-        let user_agent = chromium_user_agent(&chrome);
+        diagnostics.emit("D02", format!("已找到浏览器：{}", chrome.display()));
+        diagnostics.emit("D03", "正在读取浏览器版本（最长等待 5 秒）");
+        let major = chromium_major_version(&chrome).await;
+        diagnostics.emit(
+            "D04",
+            match major {
+                Some(major) => format!("浏览器主版本：{major}"),
+                None => format!("未能及时读取版本，将使用兼容版本 {FALLBACK_CHROMIUM_MAJOR}"),
+            },
+        );
+        let user_agent = chromium_user_agent(major);
         let profile = tempfile::Builder::new()
             .prefix("apple-store-inventory-monitor-chromium-")
             .tempdir()
             .map_err(|e| ApiError::Transport(format!("无法创建 Chromium 临时目录：{e}")))?;
+        diagnostics.emit("D05", "临时浏览器资料目录创建成功");
         let profile_arg = format!("--user-data-dir={}", profile.path().display());
         let user_agent_arg = format!("--user-agent={user_agent}");
         let mut child = Command::new(chrome)
@@ -94,6 +144,11 @@ impl ChromiumSession {
             .spawn()
             .map_err(|e| ApiError::Transport(format!("无法启动 Chromium：{e}")))?;
 
+        diagnostics.emit(
+            "D06",
+            format!("Chromium 进程已启动（PID {}），等待调试端口", child.id()),
+        );
+
         let port_file = profile.path().join("DevToolsActivePort");
         let deadline = Instant::now() + CHROME_START_TIMEOUT;
         let port = loop {
@@ -101,6 +156,7 @@ impl ChromiumSession {
                 && let Some(line) = contents.lines().next()
                 && let Ok(port) = line.parse::<u16>()
             {
+                diagnostics.emit("D07", format!("调试端口已就绪：127.0.0.1:{port}"));
                 break port;
             }
             if let Some(status) = child
@@ -119,20 +175,30 @@ impl ChromiumSession {
         };
 
         let targets_url = format!("http://127.0.0.1:{port}/json/list");
-        let targets: Vec<DebugTarget> = reqwest::get(&targets_url)
-            .await
-            .map_err(|e| ApiError::Transport(format!("无法连接 Chromium 调试端口：{e}")))?
-            .json()
-            .await
-            .map_err(|e| ApiError::Transport(format!("Chromium 目标列表无法解析：{e}")))?;
+        diagnostics.emit("D08", "正在读取 Chromium 页面目标（最长等待 10 秒）");
+        let targets: Vec<DebugTarget> = tokio::time::timeout(DEVTOOLS_HTTP_TIMEOUT, async {
+            reqwest::get(&targets_url)
+                .await
+                .map_err(|e| ApiError::Transport(format!("无法连接 Chromium 调试端口：{e}")))?
+                .json()
+                .await
+                .map_err(|e| ApiError::Transport(format!("Chromium 目标列表无法解析：{e}")))
+        })
+        .await
+        .map_err(|_| ApiError::Transport("读取 Chromium 页面目标超时（诊断阶段 D08）".into()))??;
         let socket_url = targets
             .into_iter()
             .find(|target| target.kind == "page")
             .and_then(|target| target.web_socket_debugger_url)
             .ok_or_else(|| ApiError::Transport("Chromium 没有可用页面目标".into()))?;
-        let (socket, _) = connect_async(&socket_url)
+        diagnostics.emit("D09", "正在连接 Chromium 调试 WebSocket（最长等待 10 秒）");
+        let (socket, _) = tokio::time::timeout(DEVTOOLS_SOCKET_TIMEOUT, connect_async(&socket_url))
             .await
+            .map_err(|_| {
+                ApiError::Transport("连接 Chromium 调试 WebSocket 超时（诊断阶段 D09）".into())
+            })?
             .map_err(|e| ApiError::Transport(format!("无法连接 Chromium 页面：{e}")))?;
+        diagnostics.emit("D10", "Chromium 调试 WebSocket 已连接");
 
         Ok(Self {
             child,
@@ -141,6 +207,7 @@ impl ChromiumSession {
             next_command_id: 1,
             locale: None,
             last_inventory_request: None,
+            diagnostics,
         })
     }
 
@@ -148,10 +215,13 @@ impl ChromiumSession {
         let id = self.next_command_id;
         self.next_command_id = self.next_command_id.wrapping_add(1).max(1);
         let request = json!({ "id": id, "method": method, "params": params });
-        self.socket
-            .send(Message::Text(request.to_string().into()))
-            .await
-            .map_err(|e| ApiError::Transport(format!("发送 Chromium 命令失败：{e}")))?;
+        tokio::time::timeout(
+            COMMAND_TIMEOUT,
+            self.socket.send(Message::Text(request.to_string().into())),
+        )
+        .await
+        .map_err(|_| ApiError::Transport(format!("发送 Chromium 命令 {method} 超时")))?
+        .map_err(|e| ApiError::Transport(format!("发送 Chromium 命令失败：{e}")))?;
 
         let wait = async {
             while let Some(message) = self.socket.next().await {
@@ -205,6 +275,10 @@ impl ChromiumSession {
 
     async fn ensure_region(&mut self, region: &'static Region) -> Result<(), ApiError> {
         if self.locale == Some(region.locale) {
+            self.diagnostics.emit(
+                "D11",
+                format!("复用已建立的 {} Apple 查询会话", region.locale),
+            );
             return Ok(());
         }
 
@@ -220,9 +294,14 @@ impl ChromiumSession {
             .first()
             .ok_or_else(|| ApiError::Transport("当前地区没有可用于建立会话的购买页".into()))?;
         let page_url = region.buy_page_url(family);
+        self.diagnostics.emit(
+            "D12",
+            format!("正在打开 Apple 购买页并建立 {} 查询会话", region.locale),
+        );
         self.command("Page.navigate", json!({ "url": page_url }))
             .await?;
         let deadline = Instant::now() + SESSION_READY_TIMEOUT;
+        let mut next_progress = Instant::now() + Duration::from_secs(5);
         loop {
             let state = self
                 .evaluate(
@@ -237,10 +316,27 @@ impl ChromiumSession {
                 && state.cookies.iter().any(|name| name == "as_atb")
             {
                 self.locale = Some(region.locale);
+                self.diagnostics
+                    .emit("D14", "Apple 页面握手成功，所需 Cookie 已就绪");
                 return Ok(());
             }
             if Instant::now() >= deadline {
                 return Err(ApiError::Blocked("Apple 页面未能完成 shld 风控握手".into()));
+            }
+            if Instant::now() >= next_progress {
+                let detail = state
+                    .as_str()
+                    .and_then(|raw| serde_json::from_str::<ReadyState>(raw).ok())
+                    .map(|state| {
+                        format!(
+                            "仍在等待 Apple 页面握手：readyState={}，已出现 Cookie={}（不记录值）",
+                            state.ready_state,
+                            state.cookies.join(",")
+                        )
+                    })
+                    .unwrap_or_else(|| "仍在等待 Apple 页面握手，页面状态暂不可读".into());
+                self.diagnostics.emit("D13", detail);
+                next_progress = Instant::now() + Duration::from_secs(5);
             }
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
@@ -264,6 +360,11 @@ impl ChromiumSession {
             }
         }
         self.last_inventory_request = Some(Instant::now());
+
+        self.diagnostics.emit(
+            "D15",
+            format!("开始请求门店 {store_number} 的 {} 个型号", parts.len()),
+        );
 
         let mut pairs = vec![
             ("fae".to_string(), "true".to_string()),
@@ -309,8 +410,17 @@ impl ChromiumSession {
             }})()"#
         );
         let value = self.evaluate(&expression, true).await?;
-        serde_json::from_value(value)
-            .map_err(|e| ApiError::Transport(format!("Chromium 库存结果无法解析：{e}")))
+        let payload: BrowserPayload = serde_json::from_value(value)
+            .map_err(|e| ApiError::Transport(format!("Chromium 库存结果无法解析：{e}")))?;
+        self.diagnostics.emit(
+            "D16",
+            format!(
+                "门店 {store_number} 返回 HTTP {}，响应 {} 字节",
+                payload.status,
+                payload.body.len()
+            ),
+        );
+        Ok(payload)
     }
 }
 
@@ -420,10 +530,35 @@ fn find_chromium() -> Option<PathBuf> {
     })
 }
 
-fn chromium_major_version(path: &Path) -> Option<u32> {
-    let output = Command::new(path).arg("--version").output().ok()?;
-    let text = String::from_utf8_lossy(&output.stdout);
-    parse_chromium_major(&text)
+async fn chromium_major_version(path: &Path) -> Option<u32> {
+    let mut child = Command::new(path)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .ok()?;
+    let deadline = Instant::now() + CHROME_VERSION_TIMEOUT;
+    loop {
+        match child.try_wait().ok()? {
+            Some(_) => {
+                let mut bytes = Vec::new();
+                if let Some(mut stdout) = child.stdout.take() {
+                    let _ = stdout.read_to_end(&mut bytes);
+                }
+                if let Some(mut stderr) = child.stderr.take() {
+                    let _ = stderr.read_to_end(&mut bytes);
+                }
+                return parse_chromium_major(&String::from_utf8_lossy(&bytes));
+            }
+            None if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            None => tokio::time::sleep(Duration::from_millis(100)).await,
+        }
+    }
 }
 
 fn parse_chromium_major(text: &str) -> Option<u32> {
@@ -435,8 +570,8 @@ fn parse_chromium_major(text: &str) -> Option<u32> {
     })
 }
 
-fn chromium_user_agent(path: &Path) -> String {
-    let major = chromium_major_version(path).unwrap_or(FALLBACK_CHROMIUM_MAJOR);
+fn chromium_user_agent(major: Option<u32>) -> String {
+    let major = major.unwrap_or(FALLBACK_CHROMIUM_MAJOR);
     format!(
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36"
@@ -447,12 +582,22 @@ AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36"
 #[derive(Debug, Clone)]
 pub struct AppleChromiumFetcher {
     session: Arc<Mutex<Option<ChromiumSession>>>,
+    diagnostics: Diagnostics,
 }
 
 impl AppleChromiumFetcher {
+    #[cfg(test)]
     pub fn new() -> Self {
         Self {
             session: Arc::new(Mutex::new(None)),
+            diagnostics: Diagnostics::default(),
+        }
+    }
+
+    pub fn with_diagnostics(sink: impl Fn(String) + Send + Sync + 'static) -> Self {
+        Self {
+            session: Arc::new(Mutex::new(None)),
+            diagnostics: Diagnostics::new(sink),
         }
     }
 
@@ -471,9 +616,22 @@ impl AppleChromiumFetcher {
 
         // 一把锁覆盖整个浏览器命令往返。监控引擎可以并发调多个门店，但同一个
         // DevTools 连接与 Apple 会话必须串行使用，避免请求突发再次触发 541。
+        self.diagnostics.emit(
+            "D00",
+            format!("门店 {store_number} 已进入查询队列，等待共享浏览器会话"),
+        );
         let mut guard = self.session.lock().await;
+        self.diagnostics
+            .emit("D00", format!("门店 {store_number} 已取得浏览器会话锁"));
         if guard.is_none() {
-            *guard = Some(ChromiumSession::start().await?);
+            match ChromiumSession::start_with_diagnostics(self.diagnostics.clone()).await {
+                Ok(session) => *guard = Some(session),
+                Err(error) => {
+                    self.diagnostics
+                        .emit("D99", format!("浏览器会话建立失败：{error}"));
+                    return Err(error);
+                }
+            }
         }
         let fetched = guard
             .as_mut()
@@ -483,6 +641,8 @@ impl AppleChromiumFetcher {
         let payload = match fetched {
             Ok(payload) => payload,
             Err(error) => {
+                self.diagnostics
+                    .emit("D99", format!("门店 {store_number} 查询中止：{error}"));
                 // CDP 断连、命令超时或页面执行失败后，不再缓存这个失效会话。
                 // 保留原错误交给引擎处理，后续查询才重建，不在失败请求内重试。
                 // Apple 的 HTTP 限流和库存数据仍走下面原有的分类逻辑。
@@ -570,10 +730,12 @@ mod tests {
             next_command_id: 1,
             locale: Some("zh_CN"),
             last_inventory_request: None,
+            diagnostics: Diagnostics::default(),
         };
         (
             AppleChromiumFetcher {
                 session: Arc::new(Mutex::new(Some(session))),
+                diagnostics: Diagnostics::default(),
             },
             peer,
         )
