@@ -24,6 +24,8 @@ use tokio::sync::Mutex;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
 
 const CHROME_START_TIMEOUT: Duration = Duration::from_secs(12);
+const DEVTOOLS_HTTP_TIMEOUT: Duration = Duration::from_secs(10);
+const DEVTOOLS_SOCKET_TIMEOUT: Duration = Duration::from_secs(10);
 const SESSION_READY_TIMEOUT: Duration = Duration::from_secs(50);
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(25);
 const MIN_REQUEST_INTERVAL: Duration = Duration::from_secs(2);
@@ -66,7 +68,11 @@ impl ChromiumSession {
                     .into(),
             )
         })?;
-        let user_agent = chromium_user_agent(&chrome);
+        // Windows 上直接执行 `chrome.exe --version` 可能不会退出。旧实现用
+        // `Command::output()` 同步等待，整个查询任务因此永久卡在会话启动阶段。
+        // 版本号只用于隐藏 HeadlessChrome 标记，不值得为它启动第二个浏览器进程；
+        // 使用随版本维护的兼容 UA，彻底移除这个无界等待点。
+        let user_agent = chromium_user_agent();
         let profile = tempfile::Builder::new()
             .prefix("apple-store-inventory-monitor-chromium-")
             .tempdir()
@@ -119,19 +125,24 @@ impl ChromiumSession {
         };
 
         let targets_url = format!("http://127.0.0.1:{port}/json/list");
-        let targets: Vec<DebugTarget> = reqwest::get(&targets_url)
-            .await
-            .map_err(|e| ApiError::Transport(format!("无法连接 Chromium 调试端口：{e}")))?
-            .json()
-            .await
-            .map_err(|e| ApiError::Transport(format!("Chromium 目标列表无法解析：{e}")))?;
+        let targets: Vec<DebugTarget> = tokio::time::timeout(DEVTOOLS_HTTP_TIMEOUT, async {
+            reqwest::get(&targets_url)
+                .await
+                .map_err(|e| ApiError::Transport(format!("无法连接 Chromium 调试端口：{e}")))?
+                .json()
+                .await
+                .map_err(|e| ApiError::Transport(format!("Chromium 目标列表无法解析：{e}")))
+        })
+        .await
+        .map_err(|_| ApiError::Transport("读取 Chromium 页面目标超时".into()))??;
         let socket_url = targets
             .into_iter()
             .find(|target| target.kind == "page")
             .and_then(|target| target.web_socket_debugger_url)
             .ok_or_else(|| ApiError::Transport("Chromium 没有可用页面目标".into()))?;
-        let (socket, _) = connect_async(&socket_url)
+        let (socket, _) = tokio::time::timeout(DEVTOOLS_SOCKET_TIMEOUT, connect_async(&socket_url))
             .await
+            .map_err(|_| ApiError::Transport("连接 Chromium 调试 WebSocket 超时".into()))?
             .map_err(|e| ApiError::Transport(format!("无法连接 Chromium 页面：{e}")))?;
 
         Ok(Self {
@@ -148,10 +159,13 @@ impl ChromiumSession {
         let id = self.next_command_id;
         self.next_command_id = self.next_command_id.wrapping_add(1).max(1);
         let request = json!({ "id": id, "method": method, "params": params });
-        self.socket
-            .send(Message::Text(request.to_string().into()))
-            .await
-            .map_err(|e| ApiError::Transport(format!("发送 Chromium 命令失败：{e}")))?;
+        tokio::time::timeout(
+            COMMAND_TIMEOUT,
+            self.socket.send(Message::Text(request.to_string().into())),
+        )
+        .await
+        .map_err(|_| ApiError::Transport(format!("发送 Chromium 命令 {method} 超时")))?
+        .map_err(|e| ApiError::Transport(format!("发送 Chromium 命令失败：{e}")))?;
 
         let wait = async {
             while let Some(message) = self.socket.next().await {
@@ -420,26 +434,10 @@ fn find_chromium() -> Option<PathBuf> {
     })
 }
 
-fn chromium_major_version(path: &Path) -> Option<u32> {
-    let output = Command::new(path).arg("--version").output().ok()?;
-    let text = String::from_utf8_lossy(&output.stdout);
-    parse_chromium_major(&text)
-}
-
-fn parse_chromium_major(text: &str) -> Option<u32> {
-    text.split_whitespace().find_map(|word| {
-        let first = word.split('.').next()?;
-        (word.contains('.'))
-            .then(|| first.parse::<u32>().ok())
-            .flatten()
-    })
-}
-
-fn chromium_user_agent(path: &Path) -> String {
-    let major = chromium_major_version(path).unwrap_or(FALLBACK_CHROMIUM_MAJOR);
+fn chromium_user_agent() -> String {
     format!(
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
-AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36"
+AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{FALLBACK_CHROMIUM_MAJOR}.0.0.0 Safari/537.36"
     )
 }
 
@@ -636,16 +634,10 @@ mod tests {
     }
 
     #[test]
-    fn 能从chromium版本输出提取主版本号() {
-        assert_eq!(
-            parse_chromium_major("Google Chrome 152.0.7777.0\n"),
-            Some(152)
-        );
-        assert_eq!(
-            parse_chromium_major("Microsoft Edge 151.0.0.0\n"),
-            Some(151)
-        );
-        assert_eq!(parse_chromium_major("not a version"), None);
+    fn 兼容ua不暴露headless标记() {
+        let user_agent = chromium_user_agent();
+        assert!(user_agent.contains(&format!("Chrome/{FALLBACK_CHROMIUM_MAJOR}.0.0.0")));
+        assert!(!user_agent.contains("HeadlessChrome"));
     }
 
     #[test]
