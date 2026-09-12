@@ -12,7 +12,7 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 use apw_core::catalog::Catalog;
-use apw_core::config::{MIN_INTERVAL_SECONDS, Settings, SettingsStore};
+use apw_core::config::{MIN_INTERVAL_SECONDS, OpenOnHit, Settings, SettingsStore};
 use apw_core::model::{Category, Product, REGIONS, Store, Target, region_by_locale};
 use apw_core::notify::{Bark, Multi, Notification, Notifier, Sound};
 use apw_core::watcher::{Event, TargetState, Watcher, WatcherConfig};
@@ -314,6 +314,23 @@ fn target_purchase_url(app: &AppHandle, target: &Target) -> Option<String> {
     target.purchase_url(product.as_ref())
 }
 
+/// 按用户选择返回这个监控目标对应的跳转地址。
+fn target_open_url(app: &AppHandle, target: &Target, destination: OpenOnHit) -> Option<String> {
+    match destination {
+        OpenOnHit::None => None,
+        OpenOnHit::Bag => region_by_locale(&target.locale).map(|region| region.bag_url()),
+        OpenOnHit::Product => target_purchase_url(app, target),
+    }
+}
+
+fn destination_title(destination: OpenOnHit) -> &'static str {
+    match destination {
+        OpenOnHit::None => "",
+        OpenOnHit::Bag => "购物袋",
+        OpenOnHit::Product => "商品页",
+    }
+}
+
 #[tauri::command]
 fn open_target_product(app: AppHandle, target: Target) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
@@ -327,29 +344,56 @@ fn open_target_product(app: AppHandle, target: Target) -> Result<(), String> {
 #[tauri::command]
 async fn test_notify(app: AppHandle) -> Result<(), String> {
     let settings = app.state::<AppState>().settings_snapshot();
-    if !settings.sound_enabled && settings.bark_url.trim().is_empty() && !settings.open_bag_on_hit {
-        return Err("请先开启提示音、商品页跳转或配置 Bark，再测试提醒".into());
+    if !settings.sound_enabled
+        && settings.bark_url.trim().is_empty()
+        && settings.open_on_hit == OpenOnHit::None
+    {
+        return Err("请先开启提示音、页面跳转或配置 Bark，再测试提醒".into());
     }
     let mut notification = Notification::new(
         "提醒测试（不代表有货）",
-        "请确认已开启的提醒是否收到；商品页面仍需自行结账",
+        "请确认已开启的提醒是否收到；Apple 页面仍需自行结账",
     );
-    if settings.open_bag_on_hit
+    if settings.open_on_hit == OpenOnHit::Product
         && settings.targets.is_empty()
         && !settings.sound_enabled
         && settings.bark_url.trim().is_empty()
     {
         return Err("请先添加监控目标，再测试商品页跳转".into());
     }
-    if let Some(target) = settings.targets.first() {
-        let url = target_purchase_url(&app, target).ok_or("无法识别目标地区")?;
-        notification = notification.with_url(url.clone());
-        if settings.open_bag_on_hit {
-            use tauri_plugin_opener::OpenerExt;
-            app.opener()
-                .open_url(url, None::<&str>)
-                .map_err(|e| e.to_string())?;
+
+    let jump_url = match settings.open_on_hit {
+        OpenOnHit::None => None,
+        OpenOnHit::Bag => {
+            let locale = settings
+                .targets
+                .first()
+                .map_or(settings.locale.as_str(), |target| target.locale.as_str());
+            region_by_locale(locale).map(|region| region.bag_url())
         }
+        OpenOnHit::Product => settings
+            .targets
+            .first()
+            .and_then(|target| target_purchase_url(&app, target)),
+    };
+
+    if settings.open_on_hit != OpenOnHit::None
+        && jump_url.is_none()
+        && !settings.sound_enabled
+        && settings.bark_url.trim().is_empty()
+    {
+        return Err(format!(
+            "无法生成{}跳转地址",
+            destination_title(settings.open_on_hit)
+        ));
+    }
+
+    if let Some(url) = jump_url {
+        notification = notification.with_url(url.clone());
+        use tauri_plugin_opener::OpenerExt;
+        app.opener()
+            .open_url(url, None::<&str>)
+            .map_err(|e| e.to_string())?;
     }
     dispatch_notification(&app, notification)
         .await
@@ -394,29 +438,43 @@ async fn pump_events(app: AppHandle, mut events: tokio::sync::mpsc::Receiver<Eve
 
         if let Event::InStock { state } = &event {
             let target = &state.target;
-            let notification = Notification::new(
-                "有货了",
-                format!("{} {}", target.store_title, target.product_name),
-            );
-            let notification = match target_purchase_url(&app, target) {
-                Some(url) => notification.with_url(url),
-                None => notification,
-            };
-
             let settings = app
                 .try_state::<AppState>()
                 .map(|s| s.settings_snapshot())
                 .unwrap_or_default();
+            let destination_url = target_open_url(&app, target, settings.open_on_hit);
+            let mut notification = Notification::new(
+                "有货了",
+                format!("{} {}", target.store_title, target.product_name),
+            );
+            if let Some(url) = &destination_url {
+                notification = notification.with_url(url.clone());
+            }
 
-            let mut product_opened = false;
-            if settings.open_bag_on_hit
-                && let Some(url) = target_purchase_url(&app, target)
-            {
+            let mut opened_destination = None;
+            if settings.open_on_hit != OpenOnHit::None {
                 use tauri_plugin_opener::OpenerExt;
-                match app.opener().open_url(url, None::<&str>) {
-                    Ok(()) => product_opened = true,
-                    Err(err) => {
-                        let _ = app.emit(NOTICE_CHANNEL, format!("自动打开商品页失败：{err}"));
+                match destination_url {
+                    Some(url) => match app.opener().open_url(url, None::<&str>) {
+                        Ok(()) => opened_destination = Some(settings.open_on_hit),
+                        Err(err) => {
+                            let _ = app.emit(
+                                NOTICE_CHANNEL,
+                                format!(
+                                    "自动打开{}失败：{err}",
+                                    destination_title(settings.open_on_hit)
+                                ),
+                            );
+                        }
+                    },
+                    None => {
+                        let _ = app.emit(
+                            NOTICE_CHANNEL,
+                            format!(
+                                "自动打开{}失败：无法生成跳转地址",
+                                destination_title(settings.open_on_hit)
+                            ),
+                        );
                     }
                 }
             }
@@ -432,8 +490,12 @@ async fn pump_events(app: AppHandle, mut events: tokio::sync::mpsc::Receiver<Eve
                 if !settings.bark_url.trim().is_empty() {
                     actions.push("Bark");
                 }
-                if product_opened {
-                    actions.push("已打开商品页");
+                if let Some(destination) = opened_destination {
+                    match destination {
+                        OpenOnHit::Bag => actions.push("已打开购物袋"),
+                        OpenOnHit::Product => actions.push("已打开商品页"),
+                        OpenOnHit::None => {}
+                    }
                 }
                 if actions.is_empty() {
                     continue;

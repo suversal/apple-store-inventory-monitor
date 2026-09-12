@@ -9,12 +9,27 @@
 //! `switch` 的穷尽性检查，Rust 这边加一个状态、前端漏处理就编译不过。这是刻意
 //! 设计的，不是巧合，所以必须钉住。
 
+use apw_core::config::OpenOnHit;
 use apw_core::model::{Availability, Category, Product, Store, Target, UnknownReason};
 use apw_core::watcher::{Event, TroubleAdvice};
 use serde_json::json;
 
 fn to_value<T: serde::Serialize>(v: &T) -> serde_json::Value {
     serde_json::to_value(v).expect("序列化失败")
+}
+
+#[test]
+fn 到货跳转方式的线上格式是稳定字符串() {
+    for (destination, want) in [
+        (OpenOnHit::None, "none"),
+        (OpenOnHit::Bag, "bag"),
+        (OpenOnHit::Product, "product"),
+    ] {
+        assert_eq!(to_value(&destination), json!(want));
+        let back: OpenOnHit =
+            serde_json::from_value(json!(want)).expect("前端传回来的跳转方式必须认得");
+        assert_eq!(back, destination);
+    }
 }
 
 #[test]

@@ -27,6 +27,47 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{REGIONS, Target, region_by_locale};
 
+/// 检测到有货时自动打开的 Apple 页面。
+///
+/// 反序列化同时接受旧版的布尔值：`true` 表示购物袋，`false` 表示不自动打开。
+/// 这样升级不会悄悄改变现有用户的跳转习惯。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OpenOnHit {
+    None,
+    #[default]
+    Bag,
+    Product,
+}
+
+impl<'de> Deserialize<'de> for OpenOnHit {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "snake_case")]
+        enum Current {
+            None,
+            Bag,
+            Product,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Wire {
+            Legacy(bool),
+            Current(Current),
+        }
+
+        Ok(match Wire::deserialize(deserializer)? {
+            Wire::Legacy(true) | Wire::Current(Current::Bag) => Self::Bag,
+            Wire::Legacy(false) | Wire::Current(Current::None) => Self::None,
+            Wire::Current(Current::Product) => Self::Product,
+        })
+    }
+}
+
 /// 默认查询间隔（秒）。
 ///
 /// 上游写死 500 毫秒一轮，即每个门店每秒两次请求。这个频率对一个公开的商品
@@ -141,8 +182,9 @@ pub struct Settings {
     pub bark_url: String,
     /// 有货时是否播放提示音。
     pub sound_enabled: bool,
-    /// 有货时是否自动打开商品配置页；保留原字段名以兼容已保存的设置。
-    pub open_bag_on_hit: bool,
+    /// 有货时自动打开的页面；旧字段 `openBagOnHit` 通过别名兼容。
+    #[serde(alias = "openBagOnHit")]
+    pub open_on_hit: OpenOnHit,
 }
 
 /// 内置地区表里的第一个 locale，作为兜底取值。
@@ -160,7 +202,7 @@ impl Default for Settings {
             interval_seconds: DEFAULT_INTERVAL_SECONDS,
             bark_url: String::new(),
             sound_enabled: true,
-            open_bag_on_hit: true,
+            open_on_hit: OpenOnHit::Bag,
         }
     }
 }
@@ -572,7 +614,11 @@ impl LegacySettings {
                 .unwrap_or(fallback.interval_seconds),
             bark_url: self.bark_url.unwrap_or(fallback.bark_url),
             sound_enabled: self.sound_enabled.unwrap_or(fallback.sound_enabled),
-            open_bag_on_hit: self.open_bag_on_hit.unwrap_or(fallback.open_bag_on_hit),
+            open_on_hit: match self.open_bag_on_hit {
+                Some(true) => OpenOnHit::Bag,
+                Some(false) => OpenOnHit::None,
+                None => fallback.open_on_hit,
+            },
         };
         settings.normalize();
         settings
@@ -603,7 +649,7 @@ mod tests {
         assert_eq!(before, s);
         assert_eq!(s.interval_seconds, DEFAULT_INTERVAL_SECONDS);
         assert!(s.sound_enabled);
-        assert!(s.open_bag_on_hit);
+        assert_eq!(s.open_on_hit, OpenOnHit::Bag);
         assert!(region_by_locale(&s.locale).is_some());
     }
 
@@ -746,7 +792,7 @@ mod tests {
         // Go 版 Default() 里这两项都是 true。缺字段当成 false 会让用户在完全
         // 没动过设置的情况下，升级之后提示音自己关掉了。
         assert!(s.sound_enabled);
-        assert!(s.open_bag_on_hit);
+        assert_eq!(s.open_on_hit, OpenOnHit::Bag);
     }
 
     #[test]

@@ -73,7 +73,7 @@ const DEFAULT_SETTINGS: Settings = {
   intervalSeconds: 30,
   barkUrl: "",
   soundEnabled: true,
-  openBagOnHit: true,
+  openOnHit: "bag",
 };
 
 let state: UiState = {
@@ -367,7 +367,13 @@ export async function testNotify(): Promise<void> {
   try {
     await settingsWrite;
     await invoke("test_notify");
-    pushLog("已执行测试提醒（不代表有货）；开启自动跳转且已有监控目标时会打开第一个目标的商品页。");
+    const jump =
+      state.settings.openOnHit === "bag"
+        ? "，并打开购物袋"
+        : state.settings.openOnHit === "product" && state.settings.targets.length > 0
+          ? "，并打开第一个监控目标的商品详情"
+          : "";
+    pushLog(`已执行测试提醒${jump}（不代表有货）。`);
   } catch (err) {
     pushLog(`测试提醒失败：${String(err)}`);
   }

@@ -31,6 +31,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
   Table,
@@ -68,6 +75,7 @@ import {
   type Availability,
   type PickupDetails,
   type Category,
+  type OpenOnHit,
   describeAdvice,
   formatTime,
   isUntrusted,
@@ -646,14 +654,25 @@ export default function App() {
                       onCheckedChange={(value) => void saveSettings({ soundEnabled: value })}
                     />
                   </div>
-                  <div className="setting-row">
-                    <span className="flex items-center gap-2 text-sm"><ShoppingBag className="size-4 text-muted-foreground" aria-hidden="true" />自动打开商品页</span>
-                    <Switch
-                      id="openbag"
-                      aria-label="有货时自动打开商品页"
-                      checked={ui.settings.openBagOnHit}
-                      onCheckedChange={(value) => void saveSettings({ openBagOnHit: value })}
-                    />
+                  <div className="setting-row gap-3">
+                    <Label htmlFor="open-on-hit" className="flex items-center gap-2 text-sm font-normal">
+                      <ShoppingBag className="size-4 text-muted-foreground" aria-hidden="true" />到货后打开
+                    </Label>
+                    <Select
+                      value={ui.settings.openOnHit}
+                      onValueChange={(value) =>
+                        void saveSettings({ openOnHit: value as OpenOnHit })
+                      }
+                    >
+                      <SelectTrigger id="open-on-hit" className="h-9 w-[8.5rem] bg-background/45" aria-label="到货后打开">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent align="end">
+                        <SelectItem value="none">不自动打开</SelectItem>
+                        <SelectItem value="bag">购物袋</SelectItem>
+                        <SelectItem value="product">商品详情</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 

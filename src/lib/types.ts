@@ -82,13 +82,16 @@ export interface Store {
   title: string;
 }
 
+/** 检测到有货时自动打开的页面，与 Rust 侧 `OpenOnHit` 一一对应。 */
+export type OpenOnHit = "none" | "bag" | "product";
+
 export interface Settings {
   locale: string;
   targets: Target[];
   intervalSeconds: number;
   barkUrl: string;
   soundEnabled: boolean;
-  openBagOnHit: boolean;
+  openOnHit: OpenOnHit;
 }
 
 /** 监控目标的唯一键，与 Rust 侧 Target::key 的构成保持一致。 */

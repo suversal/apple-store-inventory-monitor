@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use apw_core::config::{
-    ConfigError, DEFAULT_INTERVAL_SECONDS, MAX_SETTINGS_BYTES, Settings, SettingsStore,
+    ConfigError, DEFAULT_INTERVAL_SECONDS, MAX_SETTINGS_BYTES, OpenOnHit, Settings, SettingsStore,
 };
 use apw_core::model::Target;
 
@@ -86,7 +86,7 @@ fn 样例设置() -> Settings {
         interval_seconds: 45,
         bark_url: "https://api.day.app/xxxx".into(),
         sound_enabled: false,
-        open_bag_on_hit: true,
+        open_on_hit: OpenOnHit::Product,
     }
 }
 
@@ -247,7 +247,7 @@ fn 缺字段的文件取默认值而不是取零值() {
     // 老版本写下的文件可能少几个字段。缺字段当零值处理的话，用户什么都没改，
     // 提示音和自动开购物袋却会自己关掉。
     assert!(got.sound_enabled);
-    assert!(got.open_bag_on_hit);
+    assert_eq!(got.open_on_hit, OpenOnHit::Bag);
     assert_eq!(got.interval_seconds, DEFAULT_INTERVAL_SECONDS);
 }
 
@@ -402,7 +402,7 @@ fn 迁移能读出旧版格式() {
     assert_eq!(got.interval_seconds, 60);
     assert_eq!(got.bark_url, "https://api.day.app/legacy");
     assert!(!got.sound_enabled);
-    assert!(got.open_bag_on_hit);
+    assert_eq!(got.open_on_hit, OpenOnHit::Bag);
     assert_eq!(got.targets.len(), 1);
     assert_eq!(got.targets[0].store_number, "R409");
     assert_eq!(got.targets[0].store_title, "香港-銅鑼灣");
@@ -494,12 +494,38 @@ fn 设置的线上格式是小驼峰() {
         "intervalSeconds",
         "barkUrl",
         "soundEnabled",
-        "openBagOnHit",
+        "openOnHit",
     ] {
         assert!(obj.contains_key(key), "缺少字段 {key}：{value}");
     }
     assert!(!obj.contains_key("interval_seconds"), "不该有蛇形字段");
+    assert_eq!(obj.get("openOnHit"), Some(&serde_json::json!("product")));
+    assert!(!obj.contains_key("openBagOnHit"));
     assert_eq!(obj.len(), 6);
+}
+
+#[test]
+fn 新版旧布尔字段会迁移成等价跳转方式() {
+    let dir = 临时目录::new("v2-open-migration");
+    let path = dir.设置路径();
+
+    fs::write(&path, br#"{"locale":"zh_CN","openBagOnHit":true}"#).expect("写测试文件失败");
+    assert_eq!(
+        SettingsStore::at(path.clone())
+            .load()
+            .expect("旧开关 true 应能读取")
+            .open_on_hit,
+        OpenOnHit::Bag
+    );
+
+    fs::write(&path, br#"{"locale":"zh_CN","openBagOnHit":false}"#).expect("写测试文件失败");
+    assert_eq!(
+        SettingsStore::at(path)
+            .load()
+            .expect("旧开关 false 应能读取")
+            .open_on_hit,
+        OpenOnHit::None
+    );
 }
 
 #[test]
