@@ -141,7 +141,7 @@ pub struct Settings {
     pub bark_url: String,
     /// 有货时是否播放提示音。
     pub sound_enabled: bool,
-    /// 有货时是否自动打开购物袋页面。
+    /// 有货时是否自动打开商品配置页；保留原字段名以兼容已保存的设置。
     pub open_bag_on_hit: bool,
 }
 

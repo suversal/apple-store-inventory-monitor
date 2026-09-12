@@ -444,6 +444,26 @@ pub struct Target {
 }
 
 impl Target {
+    /// 打开相应地区的商品配置页；不会加入购物袋或保留库存。
+    pub fn purchase_url(&self, product: Option<&Product>) -> Option<String> {
+        let region = region_by_locale(&self.locale)?;
+        if let Some(product) = product
+            && product.category == Category::Watch
+        {
+            // Watch 的表壳零件必须搭配表带，部分零件号没有独立商品页。
+            return Some(region.buy_page_url(&Family {
+                category: Category::Watch,
+                slug: &product.family,
+            }));
+        }
+        let mut url = reqwest::Url::parse(region.base_url).ok()?;
+        url.path_segments_mut()
+            .ok()?
+            .extend(["shop", "product"])
+            .extend(self.part_number.split('/'));
+        Some(url.into())
+    }
+
     /// 唯一键，用于去重与状态索引。
     pub fn key(&self) -> TargetKey {
         TargetKey(format!(
