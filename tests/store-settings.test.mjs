@@ -24,7 +24,7 @@ registerHooks({
 
 const defaults = {
   locale: "zh_CN", targets: [], intervalSeconds: 30,
-  barkUrl: "https://example.invalid/old", soundEnabled: true, openBagOnHit: true,
+  barkUrl: "https://example.invalid/old", soundEnabled: true, openOnHit: "bag",
 };
 let generation = 0;
 async function setup() {
@@ -62,11 +62,17 @@ test("overlapping edits merge with the last saved settings", async () => {
   const first = ctx.store.saveSettings({ barkUrl: "" });
   await tick();
   const second = ctx.store.saveSettings({ soundEnabled: false });
+  const third = ctx.store.saveSettings({ openOnHit: "product" });
   await tick();
   assert.deepEqual(ctx.calls, ["save_settings"]);
   ctx.release();
-  await Promise.all([first, second]);
-  assert.deepEqual(ctx.persisted(), { ...defaults, barkUrl: "", soundEnabled: false });
+  await Promise.all([first, second, third]);
+  assert.deepEqual(ctx.persisted(), {
+    ...defaults,
+    barkUrl: "",
+    soundEnabled: false,
+    openOnHit: "product",
+  });
 });
 
 test("interval and target commands cannot be overwritten by queued settings", async () => {
