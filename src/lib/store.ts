@@ -252,13 +252,26 @@ export async function loadCatalog(locale: string): Promise<void> {
   }
 }
 
-export async function saveSettings(next: Settings): Promise<void> {
-  try {
-    const saved = await invoke<Settings>("save_settings", { settings: next });
-    update({ settings: saved });
-  } catch (err) {
-    pushLog(`保存设置失败：${String(err)}`);
-  }
+// 所有修改设置的命令按顺序执行，查询间隔和目标列表也不能被旧设置覆盖。
+let settingsWrite: Promise<unknown> = Promise.resolve();
+
+function enqueueSettingsWrite<T>(operation: () => Promise<T>): Promise<T> {
+  const next = settingsWrite.then(operation);
+  settingsWrite = next.catch(() => undefined);
+  return next;
+}
+
+export function saveSettings(patch: Partial<Settings>): Promise<void> {
+  return enqueueSettingsWrite(async () => {
+    try {
+      const saved = await invoke<Settings>("save_settings", {
+        settings: { ...state.settings, ...patch },
+      });
+      update({ settings: saved });
+    } catch (err) {
+      pushLog(`保存设置失败：${String(err)}`);
+    }
+  });
 }
 
 export function setCategory(category: Category): void {
@@ -266,19 +279,21 @@ export function setCategory(category: Category): void {
 }
 
 export async function changeLocale(locale: string): Promise<void> {
-  await saveSettings({ ...state.settings, locale });
+  await saveSettings({ locale });
   await loadCatalog(locale);
 }
 
 export async function setTargets(targets: Target[]): Promise<boolean> {
-  try {
-    const rows = await invoke<TargetState[]>("set_targets", { targets });
-    update({ rows, settings: { ...state.settings, targets } });
-    return true;
-  } catch (err) {
-    pushLog(`更新监控列表失败：${String(err)}`);
-    return false;
-  }
+  return enqueueSettingsWrite(async () => {
+    try {
+      const rows = await invoke<TargetState[]>("set_targets", { targets });
+      update({ rows, settings: { ...state.settings, targets } });
+      return true;
+    } catch (err) {
+      pushLog(`更新监控列表失败：${String(err)}`);
+      return false;
+    }
+  });
 }
 
 export async function startWatching(): Promise<void> {
@@ -308,12 +323,14 @@ export async function stopWatching(): Promise<void> {
 }
 
 export async function setIntervalSeconds(seconds: number): Promise<void> {
-  try {
-    const applied = await invoke<number>("set_interval", { seconds });
-    update({ settings: { ...state.settings, intervalSeconds: applied } });
-  } catch (err) {
-    pushLog(`设置查询间隔失败：${String(err)}`);
-  }
+  return enqueueSettingsWrite(async () => {
+    try {
+      const applied = await invoke<number>("set_interval", { seconds });
+      update({ settings: { ...state.settings, intervalSeconds: applied } });
+    } catch (err) {
+      pushLog(`设置查询间隔失败：${String(err)}`);
+    }
+  });
 }
 
 /**
@@ -348,6 +365,7 @@ export async function refreshProducts(): Promise<void> {
 
 export async function testNotify(): Promise<void> {
   try {
+    await settingsWrite;
     await invoke("test_notify");
     pushLog("已发出测试提醒。");
   } catch (err) {

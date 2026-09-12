@@ -475,11 +475,23 @@ impl AppleChromiumFetcher {
         if guard.is_none() {
             *guard = Some(ChromiumSession::start().await?);
         }
-        let payload = guard
+        let fetched = guard
             .as_mut()
             .expect("刚初始化的 Chromium 会话应当存在")
             .fetch(region, store_number, parts)
-            .await?;
+            .await;
+        let payload = match fetched {
+            Ok(payload) => payload,
+            Err(error) => {
+                // CDP 断连、命令超时或页面执行失败后，不再缓存这个失效会话。
+                // 保留原错误交给引擎处理，后续查询才重建，不在失败请求内重试。
+                // Apple 的 HTTP 限流和库存数据仍走下面原有的分类逻辑。
+                if matches!(error, ApiError::Transport(_)) {
+                    *guard = None;
+                }
+                return Err(error);
+            }
+        };
 
         match payload.status {
             200 => {
@@ -524,6 +536,91 @@ impl Fetcher for AppleChromiumFetcher {
 mod tests {
     use super::*;
     use apw_core::model::region_by_locale;
+
+    /// 模拟浏览器的 CDP 边界，不启动 Chromium，也不访问 Apple。
+    async fn cdp_fixture(response: Value) -> (AppleChromiumFetcher, tokio::task::JoinHandle<bool>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let peer = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            let request = socket.next().await.unwrap().unwrap();
+            let request: Value = serde_json::from_str(request.to_text().unwrap()).unwrap();
+            let mut response = response;
+            response["id"] = request["id"].clone();
+            socket
+                .send(Message::Text(response.to_string().into()))
+                .await
+                .unwrap();
+            // 观察浏览器一端的连接生命周期，不依赖查询器内部的 Option 状态。
+            matches!(
+                tokio::time::timeout(Duration::from_millis(500), socket.next()).await,
+                Ok(None) | Ok(Some(Err(_))) | Ok(Some(Ok(Message::Close(_))))
+            )
+        });
+        let (socket, _) = connect_async(format!("ws://{address}")).await.unwrap();
+        let session = ChromiumSession {
+            child: Command::new("rustc")
+                .arg("--version")
+                .stdout(Stdio::null())
+                .spawn()
+                .unwrap(),
+            _profile: tempfile::tempdir().unwrap(),
+            socket,
+            next_command_id: 1,
+            locale: Some("zh_CN"),
+            last_inventory_request: None,
+        };
+        (
+            AppleChromiumFetcher {
+                session: Arc::new(Mutex::new(Some(session))),
+            },
+            peer,
+        )
+    }
+
+    #[tokio::test]
+    async fn 浏览器会话错误后释放失效连接供下轮重建() {
+        let (fetcher, peer) = cdp_fixture(json!({
+            "error": {"code": -32000, "message": "Target closed"}
+        }))
+        .await;
+        let result = fetcher
+            .pickup_message(
+                region_by_locale("zh_CN").unwrap(),
+                "R390",
+                &["MG6X4CH/A".to_string()],
+            )
+            .await;
+        assert!(matches!(result, Err(ApiError::Transport(_))));
+        assert!(
+            peer.await.unwrap(),
+            "失效 CDP 连接仍被缓存，下轮会继续使用坏会话"
+        );
+    }
+
+    #[tokio::test]
+    async fn 限流保留会话而明确拦截仍清理会话() {
+        for (status, should_close) in [(429, false), (403, true), (541, true)] {
+            let (fetcher, peer) = cdp_fixture(json!({
+                "result": {"result": {"value": {"status": status, "body": "{}"}}}
+            }))
+            .await;
+            let result = fetcher
+                .pickup_message(
+                    region_by_locale("zh_CN").unwrap(),
+                    "R390",
+                    &["MG6X4CH/A".to_string()],
+                )
+                .await;
+            if status == 429 {
+                assert!(matches!(result, Err(ApiError::RateLimited(_))));
+            } else {
+                assert!(matches!(result, Err(ApiError::Blocked(_))));
+            }
+            assert_eq!(peer.await.unwrap(), should_close, "HTTP {status}");
+        }
+    }
 
     #[test]
     fn 能找到本机chromium浏览器() {
