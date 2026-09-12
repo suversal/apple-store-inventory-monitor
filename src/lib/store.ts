@@ -349,9 +349,17 @@ export async function refreshProducts(): Promise<void> {
 export async function testNotify(): Promise<void> {
   try {
     await invoke("test_notify");
-    pushLog("已发出测试提醒。");
+    pushLog("已执行测试提醒（不代表有货）；开启自动跳转且已有监控目标时会打开第一个目标的商品页。");
   } catch (err) {
     pushLog(`测试提醒失败：${String(err)}`);
+  }
+}
+
+export async function openTargetProduct(target: Target): Promise<void> {
+  try {
+    await invoke("open_target_product", { target });
+  } catch (err) {
+    pushLog(`打开商品页失败：${String(err)}`);
   }
 }
 

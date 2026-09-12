@@ -304,19 +304,56 @@ async fn install_update(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// 手动试一次提醒，让用户在真正抢购之前确认铃声和推送都通。
+/// 与库存目标共用目录信息，避免 Apple Watch 的表壳料号跳到不存在的详情页。
+fn target_purchase_url(app: &AppHandle, target: &Target) -> Option<String> {
+    let product = app.try_state::<AppState>().and_then(|state| {
+        state
+            .catalog
+            .product_by_part(&target.locale, &target.part_number)
+    });
+    target.purchase_url(product.as_ref())
+}
+
+#[tauri::command]
+fn open_target_product(app: AppHandle, target: Target) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let url = target_purchase_url(&app, &target).ok_or("无法识别目标地区")?;
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+/// 手动测试提醒和首个目标的跳转，便于提前验证实际操作链路。
 #[tauri::command]
 async fn test_notify(app: AppHandle) -> Result<(), String> {
     let settings = app.state::<AppState>().settings_snapshot();
-    if !settings.sound_enabled && settings.bark_url.trim().is_empty() {
-        return Err("请先开启提示音或配置 Bark，再测试提醒".into());
+    if !settings.sound_enabled && settings.bark_url.trim().is_empty() && !settings.open_bag_on_hit {
+        return Err("请先开启提示音、商品页跳转或配置 Bark，再测试提醒".into());
     }
-    dispatch_notification(
-        &app,
-        Notification::new("提醒测试", "请确认已开启的提示音或 Bark 推送是否收到"),
-    )
-    .await
-    .map_err(|e| e.to_string())
+    let mut notification = Notification::new(
+        "提醒测试（不代表有货）",
+        "请确认已开启的提醒是否收到；商品页面仍需自行结账",
+    );
+    if settings.open_bag_on_hit
+        && settings.targets.is_empty()
+        && !settings.sound_enabled
+        && settings.bark_url.trim().is_empty()
+    {
+        return Err("请先添加监控目标，再测试商品页跳转".into());
+    }
+    if let Some(target) = settings.targets.first() {
+        let url = target_purchase_url(&app, target).ok_or("无法识别目标地区")?;
+        notification = notification.with_url(url.clone());
+        if settings.open_bag_on_hit {
+            use tauri_plugin_opener::OpenerExt;
+            app.opener()
+                .open_url(url, None::<&str>)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    dispatch_notification(&app, notification)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 按用户设置发送提示音和 Bark 提醒。
@@ -361,8 +398,8 @@ async fn pump_events(app: AppHandle, mut events: tokio::sync::mpsc::Receiver<Eve
                 "有货了",
                 format!("{} {}", target.store_title, target.product_name),
             );
-            let notification = match region_by_locale(&target.locale) {
-                Some(region) => notification.with_url(region.bag_url()),
+            let notification = match target_purchase_url(&app, target) {
+                Some(url) => notification.with_url(url),
                 None => notification,
             };
 
@@ -371,15 +408,15 @@ async fn pump_events(app: AppHandle, mut events: tokio::sync::mpsc::Receiver<Eve
                 .map(|s| s.settings_snapshot())
                 .unwrap_or_default();
 
-            let mut bag_opened = false;
+            let mut product_opened = false;
             if settings.open_bag_on_hit
-                && let Some(region) = region_by_locale(&target.locale)
+                && let Some(url) = target_purchase_url(&app, target)
             {
                 use tauri_plugin_opener::OpenerExt;
-                match app.opener().open_url(region.bag_url(), None::<&str>) {
-                    Ok(()) => bag_opened = true,
+                match app.opener().open_url(url, None::<&str>) {
+                    Ok(()) => product_opened = true,
                     Err(err) => {
-                        let _ = app.emit(NOTICE_CHANNEL, format!("自动打开购物袋失败：{err}"));
+                        let _ = app.emit(NOTICE_CHANNEL, format!("自动打开商品页失败：{err}"));
                     }
                 }
             }
@@ -395,8 +432,8 @@ async fn pump_events(app: AppHandle, mut events: tokio::sync::mpsc::Receiver<Eve
                 if !settings.bark_url.trim().is_empty() {
                     actions.push("Bark");
                 }
-                if bag_opened {
-                    actions.push("已打开购物袋");
+                if product_opened {
+                    actions.push("已打开商品页");
                 }
                 if actions.is_empty() {
                     continue;
@@ -606,6 +643,7 @@ pub fn run() {
             stop_watching,
             is_running,
             test_notify,
+            open_target_product,
             check_for_update,
             install_update,
         ])

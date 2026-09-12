@@ -53,6 +53,7 @@ import {
   dismissUpdate,
   installUpdate,
   openReleasePage,
+  openTargetProduct,
   refreshProducts,
   saveSettings,
   setCategory,
@@ -531,7 +532,13 @@ export default function App() {
                             <TableCell className="px-4"><StatusBadge availability={row.availability} pickupDetails={row.pickupDetails} /></TableCell>
                             <TableCell className="px-3 font-medium">{row.target.storeTitle}</TableCell>
                             <TableCell className="max-w-[24rem] truncate px-3 text-muted-foreground" title={row.target.productName}>
-                              {row.target.productName}
+                              <button
+                                className="text-left hover:text-primary hover:underline"
+                                aria-label={`打开商品页：${row.target.productName}`}
+                                onClick={() => void openTargetProduct(row.target)}
+                              >
+                                {row.target.productName}
+                              </button>
                             </TableCell>
                             <TableCell className="px-3 font-mono text-xs tabular-nums text-muted-foreground">
                               {formatTime(row.lastCheckedMs)}
@@ -640,10 +647,10 @@ export default function App() {
                     />
                   </div>
                   <div className="setting-row">
-                    <span className="flex items-center gap-2 text-sm"><ShoppingBag className="size-4 text-muted-foreground" aria-hidden="true" />自动打开购物袋</span>
+                    <span className="flex items-center gap-2 text-sm"><ShoppingBag className="size-4 text-muted-foreground" aria-hidden="true" />自动打开商品页</span>
                     <Switch
                       id="openbag"
-                      aria-label="有货时自动打开购物袋"
+                      aria-label="有货时自动打开商品页"
                       checked={ui.settings.openBagOnHit}
                       onCheckedChange={(value) => void saveSettings({ ...ui.settings, openBagOnHit: value })}
                     />
@@ -651,7 +658,7 @@ export default function App() {
                 </div>
 
                 <Button variant="outline" className="mt-3 h-10 w-full rounded-xl border-border/70 bg-background/30" onClick={() => void testNotify()}>
-                  <BellRing aria-hidden="true" /> 测试提醒
+                  <BellRing aria-hidden="true" /> 测试提醒与跳转
                 </Button>
               </section>
 
