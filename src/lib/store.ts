@@ -72,6 +72,7 @@ const DEFAULT_SETTINGS: Settings = {
   targets: [],
   intervalSeconds: 30,
   barkUrl: "",
+  productBarkUrls: {},
   soundEnabled: true,
   openOnHit: "bag",
 };
@@ -287,10 +288,42 @@ export async function setTargets(targets: Target[]): Promise<boolean> {
   return enqueueSettingsWrite(async () => {
     try {
       const rows = await invoke<TargetState[]>("set_targets", { targets });
-      update({ rows, settings: { ...state.settings, targets } });
+      const activeParts = new Set(targets.map((target) => target.partNumber));
+      const productBarkUrls = Object.fromEntries(
+        Object.entries(state.settings.productBarkUrls).filter(([partNumber]) =>
+          activeParts.has(partNumber),
+        ),
+      );
+      update({ rows, settings: { ...state.settings, targets, productBarkUrls } });
       return true;
     } catch (err) {
       pushLog(`更新监控列表失败：${String(err)}`);
+      return false;
+    }
+  });
+}
+
+/** 为一个型号设置专属 Bark；空地址表示恢复使用默认 Bark。 */
+export function setProductBarkUrl(target: Target, barkUrl: string): Promise<boolean> {
+  return enqueueSettingsWrite(async () => {
+    const productBarkUrls = { ...state.settings.productBarkUrls };
+    const normalized = barkUrl.trim();
+    if (normalized) productBarkUrls[target.partNumber] = normalized;
+    else delete productBarkUrls[target.partNumber];
+
+    try {
+      const saved = await invoke<Settings>("save_settings", {
+        settings: { ...state.settings, productBarkUrls },
+      });
+      update({ settings: saved });
+      pushLog(
+        normalized
+          ? `已为 ${target.productName} 设置专属 Bark。`
+          : `${target.productName} 已恢复使用默认 Bark。`,
+      );
+      return true;
+    } catch (err) {
+      pushLog(`保存型号专属 Bark 失败：${String(err)}`);
       return false;
     }
   });
@@ -373,7 +406,13 @@ export async function testNotify(): Promise<void> {
         : state.settings.openOnHit === "product" && state.settings.targets.length > 0
           ? "，并打开第一个监控目标的商品详情"
           : "";
-    pushLog(`已执行测试提醒${jump}（不代表有货）。`);
+    const firstTarget = state.settings.targets[0];
+    const bark = firstTarget && state.settings.productBarkUrls[firstTarget.partNumber]
+      ? "，并向第一个监控型号的专属 Bark 推送"
+      : state.settings.barkUrl
+        ? "，并向默认 Bark 推送"
+        : "";
+    pushLog(`已执行测试提醒${bark}${jump}（不代表有货）。`);
   } catch (err) {
     pushLog(`测试提醒失败：${String(err)}`);
   }

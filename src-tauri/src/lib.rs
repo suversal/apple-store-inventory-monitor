@@ -169,9 +169,10 @@ async fn set_targets(
     state: tauri::State<'_, AppState>,
     targets: Vec<Target>,
 ) -> Result<Vec<TargetState>, String> {
-    state.watcher.set_targets(targets.clone()).await;
     let mut next = state.settings_snapshot();
     next.targets = targets;
+    next.normalize();
+    state.watcher.set_targets(next.targets.clone()).await;
     state.put_settings(next)?;
     Ok(state.watcher.snapshot().await)
 }
@@ -344,8 +345,12 @@ fn open_target_product(app: AppHandle, target: Target) -> Result<(), String> {
 #[tauri::command]
 async fn test_notify(app: AppHandle) -> Result<(), String> {
     let settings = app.state::<AppState>().settings_snapshot();
+    let bark_url = settings.targets.first().map_or_else(
+        || settings.bark_url.as_str(),
+        |target| settings.bark_url_for(target),
+    );
     if !settings.sound_enabled
-        && settings.bark_url.trim().is_empty()
+        && bark_url.trim().is_empty()
         && settings.open_on_hit == OpenOnHit::None
     {
         return Err("请先开启提示音、页面跳转或配置 Bark，再测试提醒".into());
@@ -357,7 +362,7 @@ async fn test_notify(app: AppHandle) -> Result<(), String> {
     if settings.open_on_hit == OpenOnHit::Product
         && settings.targets.is_empty()
         && !settings.sound_enabled
-        && settings.bark_url.trim().is_empty()
+        && bark_url.trim().is_empty()
     {
         return Err("请先添加监控目标，再测试商品页跳转".into());
     }
@@ -380,7 +385,7 @@ async fn test_notify(app: AppHandle) -> Result<(), String> {
     if settings.open_on_hit != OpenOnHit::None
         && jump_url.is_none()
         && !settings.sound_enabled
-        && settings.bark_url.trim().is_empty()
+        && bark_url.trim().is_empty()
     {
         return Err(format!(
             "无法生成{}跳转地址",
@@ -395,7 +400,7 @@ async fn test_notify(app: AppHandle) -> Result<(), String> {
             .open_url(url, None::<&str>)
             .map_err(|e| e.to_string())?;
     }
-    dispatch_notification(&app, notification)
+    dispatch_notification(&app, notification, bark_url)
         .await
         .map_err(|e| e.to_string())
 }
@@ -404,6 +409,7 @@ async fn test_notify(app: AppHandle) -> Result<(), String> {
 async fn dispatch_notification(
     app: &AppHandle,
     notification: Notification,
+    bark_url: &str,
 ) -> Result<(), apw_core::notify::NotifyError> {
     let settings = match app.try_state::<AppState>() {
         Some(state) => state.settings_snapshot(),
@@ -414,14 +420,14 @@ async fn dispatch_notification(
     if settings.sound_enabled {
         channels.push(Sound::embedded());
     }
-    if !settings.bark_url.trim().is_empty() {
+    if !bark_url.trim().is_empty() {
         let http = app
             .try_state::<AppState>()
             .map(|s| s.http.clone())
             .unwrap_or_default();
         // Bark 每次现构造：地址是用户随时可改的设置项，缓存实例会在改完地址后
         // 继续往旧地址推。共享的 http 客户端一并传进去，连接池仍然复用。
-        channels.push(Bark::new(settings.bark_url.clone(), http));
+        channels.push(Bark::new(bark_url.to_owned(), http));
     }
     if channels.is_empty() {
         return Ok(());
@@ -443,6 +449,8 @@ async fn pump_events(app: AppHandle, mut events: tokio::sync::mpsc::Receiver<Eve
                 .map(|s| s.settings_snapshot())
                 .unwrap_or_default();
             let destination_url = target_open_url(&app, target, settings.open_on_hit);
+            let bark_url = settings.bark_url_for(target).to_owned();
+            let has_product_bark = settings.product_bark_urls.contains_key(&target.part_number);
             let mut notification = Notification::new(
                 "有货了",
                 format!("{} {}", target.store_title, target.product_name),
@@ -479,7 +487,7 @@ async fn pump_events(app: AppHandle, mut events: tokio::sync::mpsc::Receiver<Eve
                 }
             }
 
-            if let Err(err) = dispatch_notification(&app, notification).await {
+            if let Err(err) = dispatch_notification(&app, notification, &bark_url).await {
                 // 提醒没发出去是遗憾，但绝不能让监控本身停下来。
                 let _ = app.emit(NOTICE_CHANNEL, format!("发送提醒时出错：{err}"));
             } else {
@@ -487,8 +495,12 @@ async fn pump_events(app: AppHandle, mut events: tokio::sync::mpsc::Receiver<Eve
                 if settings.sound_enabled {
                     actions.push("提示音");
                 }
-                if !settings.bark_url.trim().is_empty() {
-                    actions.push("Bark");
+                if !bark_url.trim().is_empty() {
+                    actions.push(if has_product_bark {
+                        "Bark（型号专属）"
+                    } else {
+                        "Bark"
+                    });
                 }
                 if let Some(destination) = opened_destination {
                     match destination {

@@ -85,6 +85,9 @@ fn 样例设置() -> Settings {
         targets: vec![目标("R683", "MG724CH/A"), 目标("R448", "MG0A4CH/A")],
         interval_seconds: 45,
         bark_url: "https://api.day.app/xxxx".into(),
+        product_bark_urls: [("MG724CH/A".into(), "https://api.day.app/friend".into())]
+            .into_iter()
+            .collect(),
         sound_enabled: false,
         open_on_hit: OpenOnHit::Product,
     }
@@ -493,6 +496,7 @@ fn 设置的线上格式是小驼峰() {
         "targets",
         "intervalSeconds",
         "barkUrl",
+        "productBarkUrls",
         "soundEnabled",
         "openOnHit",
     ] {
@@ -501,7 +505,34 @@ fn 设置的线上格式是小驼峰() {
     assert!(!obj.contains_key("interval_seconds"), "不该有蛇形字段");
     assert_eq!(obj.get("openOnHit"), Some(&serde_json::json!("product")));
     assert!(!obj.contains_key("openBagOnHit"));
-    assert_eq!(obj.len(), 6);
+    assert_eq!(obj.len(), 7);
+}
+
+#[test]
+fn 型号专属_bark_覆盖默认地址并清理失效配置() {
+    let target = 目标("R683", "MG724CH/A");
+    let mut settings = Settings {
+        targets: vec![target.clone()],
+        bark_url: "https://api.day.app/default".into(),
+        product_bark_urls: [
+            ("MG724CH/A".into(), "  https://api.day.app/friend  ".into()),
+            ("REMOVED/A".into(), "https://api.day.app/stale".into()),
+        ]
+        .into_iter()
+        .collect(),
+        ..Settings::default()
+    };
+
+    settings.normalize();
+
+    assert_eq!(settings.bark_url_for(&target), "https://api.day.app/friend");
+    assert!(!settings.product_bark_urls.contains_key("REMOVED/A"));
+
+    settings.product_bark_urls.clear();
+    assert_eq!(
+        settings.bark_url_for(&target),
+        "https://api.day.app/default"
+    );
 }
 
 #[test]

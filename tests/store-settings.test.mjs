@@ -25,6 +25,7 @@ registerHooks({
 const defaults = {
   locale: "zh_CN", targets: [], intervalSeconds: 30,
   barkUrl: "https://example.invalid/old", soundEnabled: true, openOnHit: "bag",
+  productBarkUrls: {},
 };
 let generation = 0;
 async function setup() {
@@ -112,4 +113,20 @@ test("a failed write does not prevent subsequent edits", async () => {
   invoke = originalInvoke;
   await ctx.store.saveSettings({ barkUrl: "" });
   assert.deepEqual(ctx.persisted(), { ...defaults, barkUrl: "" });
+});
+
+test("a product-specific Bark URL can be set and cleared", async () => {
+  const ctx = await setup();
+  const target = {
+    locale: "zh_CN", storeNumber: "R390", storeTitle: "Test",
+    partNumber: "TEST/A", productName: "Test Product",
+  };
+
+  assert.equal(await ctx.store.setProductBarkUrl(target, " https://api.day.app/friend "), true);
+  assert.deepEqual(ctx.persisted().productBarkUrls, {
+    "TEST/A": "https://api.day.app/friend",
+  });
+
+  assert.equal(await ctx.store.setProductBarkUrl(target, ""), true);
+  assert.deepEqual(ctx.persisted().productBarkUrls, {});
 });

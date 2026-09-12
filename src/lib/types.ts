@@ -89,6 +89,8 @@ export interface Settings {
   locale: string;
   targets: Target[];
   intervalSeconds: number;
+  /** 按商品零件号覆盖默认 Bark；同一型号在不同门店共用。 */
+  productBarkUrls: Record<string, string>;
   barkUrl: string;
   soundEnabled: boolean;
   openOnHit: OpenOnHit;

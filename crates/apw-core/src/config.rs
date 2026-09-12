@@ -17,6 +17,7 @@
 //! 这和 [`crate::model::Availability`] 守的是同一条线：**「不知道」不能被折叠成
 //! 一个看起来正常的值。**
 
+use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
@@ -180,6 +181,8 @@ pub struct Settings {
     pub interval_seconds: u64,
     /// 为空表示不启用 Bark 推送。
     pub bark_url: String,
+    /// 按商品零件号覆盖默认 Bark；同一型号在不同门店共用一条路由。
+    pub product_bark_urls: BTreeMap<String, String>,
     /// 有货时是否播放提示音。
     pub sound_enabled: bool,
     /// 有货时自动打开的页面；旧字段 `openBagOnHit` 通过别名兼容。
@@ -201,6 +204,7 @@ impl Default for Settings {
             targets: Vec::new(),
             interval_seconds: DEFAULT_INTERVAL_SECONDS,
             bark_url: String::new(),
+            product_bark_urls: BTreeMap::new(),
             sound_enabled: true,
             open_on_hit: OpenOnHit::Bag,
         }
@@ -251,11 +255,30 @@ impl Settings {
             }
         }
         self.targets = kept;
+
+        // 型号专属 Bark 只保留仍在监控的型号。地址在保存时统一去掉首尾空白，
+        // 空值等价于「沿用默认 Bark」，不必在配置文件里留一条无效覆盖。
+        let active_parts: HashSet<String> = self
+            .targets
+            .iter()
+            .map(|target| target.part_number.clone())
+            .collect();
+        self.product_bark_urls.retain(|part_number, bark_url| {
+            *bark_url = bark_url.trim().to_string();
+            active_parts.contains(part_number) && !bark_url.is_empty()
+        });
     }
 
     /// 查询间隔。
     pub fn interval(&self) -> Duration {
         Duration::from_secs(self.interval_seconds)
+    }
+
+    /// 返回某个型号实际使用的 Bark 地址：专属地址优先，否则沿用默认地址。
+    pub fn bark_url_for(&self, target: &Target) -> &str {
+        self.product_bark_urls
+            .get(&target.part_number)
+            .map_or(self.bark_url.as_str(), String::as_str)
     }
 }
 
@@ -613,6 +636,7 @@ impl LegacySettings {
                 .and_then(|v| u64::try_from(v).ok())
                 .unwrap_or(fallback.interval_seconds),
             bark_url: self.bark_url.unwrap_or(fallback.bark_url),
+            product_bark_urls: BTreeMap::new(),
             sound_enabled: self.sound_enabled.unwrap_or(fallback.sound_enabled),
             open_on_hit: match self.open_bag_on_hit {
                 Some(true) => OpenOnHit::Bag,

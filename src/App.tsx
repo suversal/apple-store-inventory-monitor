@@ -30,6 +30,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
@@ -65,6 +73,7 @@ import {
   saveSettings,
   setCategory,
   setIntervalSeconds,
+  setProductBarkUrl,
   setTargets,
   startWatching,
   stopWatching,
@@ -128,6 +137,86 @@ function StatusBadge({ availability, pickupDetails }: { availability: Availabili
       </TooltipTrigger>
       <TooltipContent className="max-w-90">{detail}</TooltipContent>
     </Tooltip>
+  );
+}
+
+function ProductBarkRoute({
+  target,
+  customUrl,
+  disabled,
+}: {
+  target: Target;
+  customUrl?: string;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const hasCustomUrl = Boolean(customUrl);
+
+  async function save() {
+    setSaving(true);
+    try {
+      if (await setProductBarkUrl(target, draft)) setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) setDraft(customUrl ?? "");
+        setOpen(nextOpen);
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={hasCustomUrl ? "text-primary" : "text-muted-foreground"}
+          aria-label={`${target.productName}：${hasCustomUrl ? "已设置专属 Bark" : "使用默认 Bark"}`}
+          disabled={disabled}
+        >
+          <BellRing aria-hidden="true" />
+          {hasCustomUrl ? "专属" : "默认"}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-96 max-w-[calc(100vw-2rem)] space-y-4 rounded-xl">
+        <PopoverHeader>
+          <PopoverTitle>此型号的 Bark 推送</PopoverTitle>
+          <PopoverDescription className="break-words leading-5">
+            {target.productName}。同一型号在不同门店共用此地址；留空则沿用右侧监控设置里的默认 Bark。
+          </PopoverDescription>
+        </PopoverHeader>
+        <div className="field-group">
+          <Label htmlFor={`product-bark-${targetKey(target)}`} className="control-label">
+            专属 Bark 地址
+          </Label>
+          <Input
+            id={`product-bark-${targetKey(target)}`}
+            type="url"
+            className="control-surface select-text"
+            placeholder="https://api.day.app/对方的BarkKey"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void save();
+            }}
+            disabled={saving}
+          />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setOpen(false)} disabled={saving}>
+            取消
+          </Button>
+          <Button size="sm" onClick={() => void save()} disabled={saving}>
+            {saving ? "保存中…" : draft.trim() ? "保存专属地址" : "使用默认地址"}
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -514,13 +603,14 @@ export default function App() {
                         <TableHead className="px-3 text-xs text-muted-foreground">门店</TableHead>
                         <TableHead className="px-3 text-xs text-muted-foreground">型号</TableHead>
                         <TableHead className="w-24 px-3 text-xs text-muted-foreground">最后检查</TableHead>
+                        <TableHead className="w-24 px-2 text-xs text-muted-foreground">Bark</TableHead>
                         <TableHead className="w-14" />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {ui.rows.length === 0 ? (
                         <TableRow className="hover:bg-transparent">
-                          <TableCell colSpan={5} className="h-44 text-center">
+                          <TableCell colSpan={6} className="h-44 text-center">
                             <div className="mx-auto flex max-w-xs flex-col items-center">
                               <div className="mb-3 flex size-11 items-center justify-center rounded-2xl border border-border/60 bg-muted/35 text-muted-foreground">
                                 <Radar className="size-5" aria-hidden="true" />
@@ -550,6 +640,13 @@ export default function App() {
                             </TableCell>
                             <TableCell className="px-3 font-mono text-xs tabular-nums text-muted-foreground">
                               {formatTime(row.lastCheckedMs)}
+                            </TableCell>
+                            <TableCell className="px-1">
+                              <ProductBarkRoute
+                                target={row.target}
+                                customUrl={ui.settings.productBarkUrls[row.target.partNumber]}
+                                disabled={isAdding}
+                              />
                             </TableCell>
                             <TableCell className="pr-3">
                               <Button
@@ -629,7 +726,7 @@ export default function App() {
 
                 <div className="mt-3 field-group">
                   <Label htmlFor="bark" className="control-label">
-                    <BellRing className="size-3.5" aria-hidden="true" /> Bark 推送
+                    <BellRing className="size-3.5" aria-hidden="true" /> 默认 Bark 推送
                   </Label>
                   <Input
                     id="bark"
@@ -642,6 +739,9 @@ export default function App() {
                       void saveSettings({ barkUrl: barkValue.trim() });
                     }}
                   />
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    监控列表可为某个型号指定其他人的 Bark 地址。
+                  </p>
                 </div>
 
                 <div className="mt-4 space-y-1 rounded-xl border border-border/55 bg-background/30 p-1">
