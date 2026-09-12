@@ -8,7 +8,9 @@
 //! 这个实现不会读取用户现有 Chrome 的个人资料、Cookie 或浏览记录。临时目录随
 //! 会话销毁，浏览器进程也由应用持有并在退出时终止。
 
-use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
