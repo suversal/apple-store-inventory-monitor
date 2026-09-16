@@ -241,6 +241,7 @@ jobs:
           releaseBody: |
             ### v1.0.8 更新内容
 
+            - 应用正式使用中文名称「果到雷达」，并换用红色果实与雷达扫描组合的新图标；网页图标和各桌面平台安装包同步更新。
             - 同一地区、相同型号组合的附近门店优先复用 Apple 批量响应；缺少门店或型号时自动补查，不会把未返回误判成无货。
             - 新增全局请求预算，按实际负载调整下一轮时间，并在界面和日志中显示真实请求数、批量响应覆盖门店数与保护节奏。
             - Apple 返回 `403`、`429` 或 `541` 后进入分级冷却，冷却结束后自动探测，避免持续请求加重保护。
@@ -265,7 +266,7 @@ jobs:
             若确认文件来自本仓库 Release 后仍需移除下载隔离标记，可执行：
 
             ```sh
-            xattr -cr "/Applications/Apple Store Inventory Monitor.app"
+            xattr -cr "/Applications/果到雷达.app"
             ```
 
             这条命令只移除该应用的下载隔离标记，不会关闭系统的全局安全功能。
@@ -323,7 +324,7 @@ jobs:
           }
           trap cleanup EXIT
           hdiutil attach -readonly -nobrowse -mountpoint "$mount_path" "$dmg_path" >/dev/null
-          verify_app "$mount_path/Apple Store Inventory Monitor.app"
+          verify_app "$mount_path/果到雷达.app"
 
           tar -xzf "$archive_path" -C "$archive_dir"
           archived_app="$(find "$archive_dir" -maxdepth 1 -name '*.app' -print -quit)"
