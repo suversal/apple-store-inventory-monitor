@@ -239,18 +239,11 @@ jobs:
           # 四个作业传的是同一段文字，后跑完的作业会用它覆盖 Release 说明，
           # 内容一致所以结果是幂等的。改这里记得别引入 ${{ }}，会被当成表达式求值。
           releaseBody: |
-            ### v1.0.6 更新内容
+            ### v1.0.7 更新内容
 
-            - 新增预计送货列，显示 Apple 返回的具体日期或日期范围，并按送达速度使用不同颜色。
-            - Apple 只给出「2–3 周」等范围时保留原文，不再推算并伪造成具体日期；界面会说明 Apple 暂未给出准确日期。
-            - 新增 Apple 官网省、市、区三级送货地区选择，选完区县自动保存，无需手工输入地址。
-            - Apple Watch 支持完整表壳与表带组合查询，可按官网选项选择表带款式、颜色和腕围尺码；实际表带会显示在列表、日志和提醒中。
-            - 修正 Apple Watch 型号规格，恢复表壳材质、尺寸、连接类型和颜色等关键信息。
-            - 有货时显示可取日期，并将列表「状态」明确为「取货状态」。
-            - 优化窗口自适应和列表布局，加宽门店、预计送货与监控设置区域，恢复并固定删除按钮。
-            - 应用标题栏显示版本号，便于确认当前运行版本。
+            - 补充北京荟聚 Apple Store（R792），北京门店列表由五家恢复为六家。
 
-            完整逐项记录见 [CHANGELOG.md](https://github.com/suversal/apple-store-inventory-monitor/blob/v1.0.6/CHANGELOG.md)。
+            完整逐项记录见 [CHANGELOG.md](https://github.com/suversal/apple-store-inventory-monitor/blob/v1.0.7/CHANGELOG.md)。
 
             ### 下载哪一个
 

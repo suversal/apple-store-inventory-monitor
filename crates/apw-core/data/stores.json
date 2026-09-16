@@ -242,6 +242,22 @@
               "stateCode": null
             },
             "__typename": "RgdsStore"
+          },
+          {
+            "id": "R792",
+            "name": "北京荟聚",
+            "slug": "livatbeijing",
+            "telephone": "400-009-6560",
+            "address": {
+              "address1": "北京市大兴区欣宁街 15 号",
+              "address2": "北京荟聚 1 层",
+              "city": "北京",
+              "postalCode": "100162",
+              "__typename": "PostalAddress",
+              "stateName": "北京",
+              "stateCode": null
+            },
+            "__typename": "RgdsStore"
           }
         ]
       },

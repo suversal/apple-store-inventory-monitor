@@ -136,6 +136,17 @@ fn 中国大陆的商品展示名带本地化颜色() {
 }
 
 #[test]
+fn 中国大陆门店包含北京荟聚() {
+    let catalog = Catalog::new();
+    let store = catalog
+        .store_by_number("zh_CN", "R792")
+        .expect("中国大陆门店目录应当包含北京荟聚 R792");
+
+    assert_eq!(store.name, "北京荟聚");
+    assert_eq!(store.title, "北京-北京荟聚");
+}
+
+#[test]
 fn 日本站按零件号去重() {
     let catalog = Catalog::new();
     let products = catalog.products("ja_JP").expect("日本站数据应当可用");
