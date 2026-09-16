@@ -16,7 +16,9 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use apw_core::apple::{ApiError, Fetcher, StoreAvailability, parse_pickup_message};
+use apw_core::apple::{
+    ApiError, CycleStats, Fetcher, ScheduleHint, StoreAvailability, parse_pickup_message,
+};
 use apw_core::model::{DeliveryRegion, Region, Target};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -36,6 +38,15 @@ const MAX_RESPONSE_BYTES: usize = 4 << 20;
 const FALLBACK_CHROMIUM_MAJOR: u32 = 152;
 const MAX_EXCEPTION_SUMMARY_CHARS: usize = 160;
 const DELIVERY_CACHE_TTL: Duration = Duration::from_secs(60);
+const REQUEST_BUDGET_CAPACITY: u32 = 20;
+const REQUEST_BUDGET_REFILL: Duration = Duration::from_secs(60);
+const PROBE_RETRY_AFTER_TRANSIENT_ERROR: Duration = Duration::from_secs(60);
+const COOLDOWN_STEPS: [Duration; 4] = [
+    Duration::from_secs(5 * 60),
+    Duration::from_secs(10 * 60),
+    Duration::from_secs(20 * 60),
+    Duration::from_secs(30 * 60),
+];
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -54,7 +65,6 @@ struct ChromiumSession {
     socket: Socket,
     next_command_id: u64,
     locale: Option<&'static str>,
-    last_inventory_request: Option<Instant>,
     delivery_cache: HashMap<String, (Instant, Option<String>)>,
 }
 
@@ -156,7 +166,6 @@ impl ChromiumSession {
             socket,
             next_command_id: 1,
             locale: None,
-            last_inventory_request: None,
             delivery_cache: HashMap::new(),
         })
     }
@@ -272,24 +281,16 @@ impl ChromiumSession {
         store_number: &str,
         parts: &[String],
         delivery_region: Option<&DeliveryRegion>,
+        gate: &mut RequestGate,
     ) -> Result<BrowserPayload, ApiError> {
         self.ensure_region(region).await?;
-
-        // 监控引擎会并发调度不同门店。虽然外层 Mutex 已把 DevTools 命令串行化，
-        // 但“串行”仍可能是毫秒级连续请求；Apple 会把这种突发识别成自动化并
-        // 返回 541。把节流放在共享浏览器会话里，确保跨门店也遵守最小间隔。
-        if let Some(last) = self.last_inventory_request {
-            let elapsed = last.elapsed();
-            if elapsed < MIN_REQUEST_INTERVAL {
-                tokio::time::sleep(MIN_REQUEST_INTERVAL - elapsed).await;
-            }
-        }
-        self.last_inventory_request = Some(Instant::now());
+        gate.acquire().await;
 
         let mut pairs = vec![
             ("fae".to_string(), "true".to_string()),
             ("pl".to_string(), "true".to_string()),
             ("mts.0".to_string(), "regular".to_string()),
+            ("searchNearby".to_string(), "true".to_string()),
         ];
         pairs.extend(
             parts
@@ -346,6 +347,7 @@ impl ChromiumSession {
         region: &'static Region,
         target: &Target,
         location: &DeliveryRegion,
+        gate: &mut RequestGate,
     ) -> Result<Option<String>, ApiError> {
         let (Some(kit), Some(companion)) = (
             target
@@ -377,13 +379,7 @@ impl ChromiumSession {
             return Ok(message.clone());
         }
 
-        if let Some(last) = self.last_inventory_request {
-            let elapsed = last.elapsed();
-            if elapsed < MIN_REQUEST_INTERVAL {
-                tokio::time::sleep(MIN_REQUEST_INTERVAL - elapsed).await;
-            }
-        }
-        self.last_inventory_request = Some(Instant::now());
+        gate.acquire().await;
 
         let pairs = vec![
             ("fae".to_string(), "true".to_string()),
@@ -592,13 +588,239 @@ AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{FALLBACK_CHROMIUM_MAJOR}.0.0.0 Sa
 /// 可交给核心监控引擎的 Chromium 查询器。
 #[derive(Debug, Clone)]
 pub struct AppleChromiumFetcher {
-    session: Arc<Mutex<Option<ChromiumSession>>>,
+    state: Arc<Mutex<QueryState>>,
+}
+
+type PickupCacheKey = (&'static str, Vec<String>, Option<DeliveryRegion>);
+
+#[derive(Debug)]
+struct RequestBudget {
+    tokens: f64,
+    updated: Instant,
+}
+
+impl RequestBudget {
+    fn new(now: Instant) -> Self {
+        Self {
+            tokens: f64::from(REQUEST_BUDGET_CAPACITY),
+            updated: now,
+        }
+    }
+
+    fn refill(&mut self, now: Instant) {
+        let elapsed = now.saturating_duration_since(self.updated);
+        let gained = elapsed.as_secs_f64() / REQUEST_BUDGET_REFILL.as_secs_f64();
+        self.tokens = (self.tokens + gained).min(f64::from(REQUEST_BUDGET_CAPACITY));
+        self.updated = now;
+    }
+
+    /// 只计算等待时间，不预约、不扣额度。等待 future 被取消时不会留下虚假欠账。
+    fn available_in(&mut self, now: Instant) -> Duration {
+        self.available_for_in(now, 1)
+    }
+
+    /// 准备好一整轮预计请求数还要多久。这里只做估算，不提前扣额度。
+    fn available_for_in(&mut self, now: Instant, requests: u32) -> Duration {
+        self.refill(now);
+        let shortfall = f64::from(requests) - self.tokens;
+        if shortfall <= 0.0 {
+            Duration::ZERO
+        } else {
+            REQUEST_BUDGET_REFILL.mul_f64(shortfall)
+        }
+    }
+
+    fn take(&mut self, now: Instant) -> bool {
+        self.refill(now);
+        if self.tokens < 1.0 {
+            return false;
+        }
+        self.tokens -= 1.0;
+        true
+    }
+}
+
+#[derive(Debug)]
+struct RequestGate {
+    budget: RequestBudget,
+    last_sent: Option<Instant>,
+    cycle_request_count: u32,
+}
+
+impl Default for RequestGate {
+    fn default() -> Self {
+        Self {
+            budget: RequestBudget::new(Instant::now()),
+            last_sent: None,
+            cycle_request_count: 0,
+        }
+    }
+}
+
+impl RequestGate {
+    fn next_delay(&mut self, now: Instant) -> Duration {
+        let interval = self
+            .last_sent
+            .map(|last| (last + MIN_REQUEST_INTERVAL).saturating_duration_since(now))
+            .unwrap_or_default();
+        interval.max(self.budget.available_in(now))
+    }
+
+    fn next_cycle_delay(&mut self, now: Instant) -> Duration {
+        let expected_requests = self.cycle_request_count.max(1);
+        let interval = self
+            .last_sent
+            .map(|last| (last + MIN_REQUEST_INTERVAL).saturating_duration_since(now))
+            .unwrap_or_default();
+        interval.max(self.budget.available_for_in(now, expected_requests))
+    }
+
+    async fn acquire(&mut self) {
+        loop {
+            let now = Instant::now();
+            let delay = self.next_delay(now);
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+                continue;
+            }
+
+            // 额度只在即将进入真实 fetch 前扣除。若监控在上面的等待期间暂停，
+            // future 会直接被丢弃，这里不会运行，也就不会产生上游实现的虚假欠账。
+            let now = Instant::now();
+            if !self.budget.take(now) {
+                continue;
+            }
+            self.last_sent = Some(now);
+            self.cycle_request_count = self.cycle_request_count.saturating_add(1);
+            return;
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CooldownState {
+    until: Instant,
+    level: usize,
+    detail: String,
+    announce: bool,
+}
+
+#[derive(Debug, Default)]
+struct QueryState {
+    session: Option<ChromiumSession>,
+    pickup_cache: HashMap<PickupCacheKey, String>,
+    cooldowns: HashMap<&'static str, CooldownState>,
+    gate: RequestGate,
+    cycle_reused_response_count: u32,
+}
+
+impl QueryState {
+    fn begin_cycle(&mut self) {
+        self.pickup_cache.clear();
+        self.gate.cycle_request_count = 0;
+        self.cycle_reused_response_count = 0;
+    }
+
+    fn active_cooldown_error(&mut self, region: &'static Region) -> Option<ApiError> {
+        let now = Instant::now();
+        let state = self.cooldowns.get_mut(region.locale)?;
+        let remaining = state.until.saturating_duration_since(now);
+        if remaining.is_zero() {
+            return None;
+        }
+        let newly_started = std::mem::take(&mut state.announce);
+        Some(ApiError::CoolingDown {
+            remaining_seconds: remaining
+                .as_secs()
+                .saturating_add(u64::from(remaining.subsec_nanos() > 0)),
+            detail: state.detail.clone(),
+            newly_started,
+        })
+    }
+
+    fn start_or_escalate_cooldown(
+        &mut self,
+        region: &'static Region,
+        detail: impl Into<String>,
+    ) -> ApiError {
+        let now = Instant::now();
+        let level = self
+            .cooldowns
+            .get(region.locale)
+            .map(|state| {
+                if now >= state.until {
+                    state.level.saturating_add(1)
+                } else {
+                    state.level
+                }
+            })
+            .unwrap_or(0)
+            .min(COOLDOWN_STEPS.len() - 1);
+        self.cooldowns.insert(
+            region.locale,
+            CooldownState {
+                until: now + COOLDOWN_STEPS[level],
+                level,
+                detail: detail.into(),
+                announce: true,
+            },
+        );
+        self.pickup_cache.retain(|key, _| key.0 != region.locale);
+        self.active_cooldown_error(region)
+            .expect("刚建立的冷却应当立即生效")
+    }
+
+    /// 冷却结束后的唯一探测若遇到普通网络错误，不升档，但短暂挡住本轮其余门店。
+    fn defer_after_transient_probe_error(&mut self, region: &'static Region, detail: &str) {
+        let now = Instant::now();
+        if let Some(state) = self.cooldowns.get_mut(region.locale)
+            && now >= state.until
+        {
+            state.until = now + PROBE_RETRY_AFTER_TRANSIENT_ERROR;
+            state.detail = format!("恢复探测暂时失败：{detail}");
+            state.announce = false;
+        }
+    }
+
+    fn record_success(&mut self, region: &'static Region) {
+        self.cooldowns.remove(region.locale);
+    }
+
+    fn schedule_hint(&mut self, locales: &[String]) -> ScheduleHint {
+        let now = Instant::now();
+        // 以上一轮实际产生的网络请求数估算下一轮，而不是只等到够发第一条就开跑。
+        // 否则预算不足时，界面会长时间停在“正在查询”，其余请求仍在轮内排队。
+        let mut delay = self.gate.next_cycle_delay(now);
+
+        if !locales.is_empty() {
+            let mut all_cooling = true;
+            let mut earliest = None::<Duration>;
+            for locale in locales {
+                let remaining = self
+                    .cooldowns
+                    .get(locale.as_str())
+                    .map(|state| state.until.saturating_duration_since(now))
+                    .filter(|remaining| !remaining.is_zero());
+                match remaining {
+                    Some(remaining) => {
+                        earliest = Some(earliest.map_or(remaining, |old| old.min(remaining)));
+                    }
+                    None => all_cooling = false,
+                }
+            }
+            if all_cooling && let Some(cooldown) = earliest {
+                delay = delay.max(cooldown);
+            }
+        }
+
+        ScheduleHint { delay }
+    }
 }
 
 impl AppleChromiumFetcher {
     pub fn new() -> Self {
         Self {
-            session: Arc::new(Mutex::new(None)),
+            state: Arc::new(Mutex::new(QueryState::default())),
         }
     }
 
@@ -628,17 +850,40 @@ impl AppleChromiumFetcher {
             }
         }
 
+        parts.sort_unstable();
+        parts.dedup();
+        let can_reuse_nearby = targets
+            .iter()
+            .all(|target| target.companion_part.is_none() && target.kit_part.is_none());
+        let cache_key = (region.locale, parts.clone(), delivery_region.cloned());
+
         // 一把锁覆盖整个浏览器命令往返。监控引擎可以并发调多个门店，但同一个
         // DevTools 连接与 Apple 会话必须串行使用，避免请求突发再次触发 541。
-        let mut guard = self.session.lock().await;
-        if guard.is_none() {
-            *guard = Some(ChromiumSession::start().await?);
+        let mut guard = self.state.lock().await;
+        if let Some(error) = guard.active_cooldown_error(region) {
+            return Err(error);
         }
-        let fetched = guard
-            .as_mut()
-            .expect("刚初始化的 Chromium 会话应当存在")
-            .fetch(region, store_number, &parts, delivery_region)
-            .await;
+        if can_reuse_nearby
+            && let Some(body) = guard.pickup_cache.get(&cache_key)
+            && let Ok(availability) = parse_pickup_message(body.as_bytes(), store_number)
+            && parts
+                .iter()
+                .all(|part| availability.parts.contains_key(part))
+        {
+            guard.cycle_reused_response_count = guard.cycle_reused_response_count.saturating_add(1);
+            return Ok(availability);
+        }
+        if guard.session.is_none() {
+            guard.session = Some(ChromiumSession::start().await?);
+        }
+        let fetched = {
+            let QueryState { session, gate, .. } = &mut *guard;
+            session
+                .as_mut()
+                .expect("刚初始化的 Chromium 会话应当存在")
+                .fetch(region, store_number, &parts, delivery_region, gate)
+                .await
+        };
         let payload = match fetched {
             Ok(payload) => payload,
             Err(error) => {
@@ -646,7 +891,11 @@ impl AppleChromiumFetcher {
                 // 保留原错误交给引擎处理，后续查询才重建，不在失败请求内重试。
                 // Apple 的 HTTP 限流和库存数据仍走下面原有的分类逻辑。
                 if matches!(error, ApiError::Transport(_)) {
-                    *guard = None;
+                    guard.session = None;
+                    guard.defer_after_transient_probe_error(region, &error.to_string());
+                } else if matches!(error, ApiError::Blocked(_) | ApiError::RateLimited(_)) {
+                    guard.session = None;
+                    return Err(guard.start_or_escalate_cooldown(region, error.to_string()));
                 }
                 return Err(error);
             }
@@ -660,18 +909,37 @@ impl AppleChromiumFetcher {
                     .find(|byte| !byte.is_ascii_whitespace())
                     .is_some_and(|byte| *byte != b'{' && *byte != b'[')
                 {
-                    return Err(ApiError::Blocked("HTTP 200 但响应不是 JSON".into()));
+                    guard.session = None;
+                    return Err(
+                        guard.start_or_escalate_cooldown(region, "HTTP 200 但响应不是 JSON")
+                    );
                 }
-                let mut availability = parse_pickup_message(bytes, store_number)?;
+                let mut availability = match parse_pickup_message(bytes, store_number) {
+                    Ok(availability) => availability,
+                    Err(error @ (ApiError::Blocked(_) | ApiError::RateLimited(_))) => {
+                        guard.session = None;
+                        return Err(guard.start_or_escalate_cooldown(region, error.to_string()));
+                    }
+                    Err(error) => {
+                        guard.defer_after_transient_probe_error(region, &error.to_string());
+                        return Err(error);
+                    }
+                };
+                guard.record_success(region);
+                if can_reuse_nearby {
+                    guard.pickup_cache.insert(cache_key, payload.body.clone());
+                }
                 if let Some(location) = delivery_region {
-                    let mut reset_session = false;
                     for target in targets.iter().filter(|target| target.kit_part.is_some()) {
-                        match guard
-                            .as_mut()
-                            .expect("查询期间 Chromium 会话应当存在")
-                            .fetch_watch_delivery(region, target, location)
-                            .await
-                        {
+                        let delivery = {
+                            let QueryState { session, gate, .. } = &mut *guard;
+                            session
+                                .as_mut()
+                                .expect("查询期间 Chromium 会话应当存在")
+                                .fetch_watch_delivery(region, target, location, gate)
+                                .await
+                        };
+                        match delivery {
                             Ok(Some(message)) => {
                                 if let Some(status) =
                                     availability.parts.get_mut(&target.part_number)
@@ -685,13 +953,22 @@ impl AppleChromiumFetcher {
                                 // 送货是附加信息，失败不能抹掉已经拿到的门店库存结论。
                                 // 保留取货响应里的粗略文案，下轮自动重试精确送货。
                                 eprintln!("Watch 送货查询失败（{}）：{error}", target.part_number);
-                                reset_session |=
-                                    matches!(error, ApiError::Blocked(_) | ApiError::Transport(_));
+                                match error {
+                                    ApiError::Blocked(_) | ApiError::RateLimited(_) => {
+                                        guard.start_or_escalate_cooldown(region, error.to_string());
+                                    }
+                                    ApiError::Transport(_) => {
+                                        guard.session = None;
+                                        guard.defer_after_transient_probe_error(
+                                            region,
+                                            &error.to_string(),
+                                        );
+                                    }
+                                    _ => {}
+                                }
+                                break;
                             }
                         }
-                    }
-                    if reset_session {
-                        *guard = None;
                     }
                 }
                 Ok(availability)
@@ -699,20 +976,43 @@ impl AppleChromiumFetcher {
             403 | 541 => {
                 // 当前浏览器会话已经被拒绝。直接销毁临时资料与进程；下一轮会用
                 // 全新会话重新握手，不拿失效 Cookie 反复撞接口。
-                *guard = None;
-                Err(ApiError::Blocked(format!("HTTP {}", payload.status)))
+                guard.session = None;
+                Err(guard.start_or_escalate_cooldown(region, format!("HTTP {}", payload.status)))
             }
-            429 => Err(ApiError::RateLimited("HTTP 429".into())),
-            status if status >= 500 => Err(ApiError::RateLimited(format!("HTTP {status}"))),
-            0 => Err(ApiError::Transport(
-                payload.body.chars().take(300).collect(),
-            )),
+            429 => Err(guard.start_or_escalate_cooldown(region, "HTTP 429")),
+            status if status >= 500 => {
+                let error = ApiError::Transport(format!("Apple 服务暂时异常：HTTP {status}"));
+                guard.defer_after_transient_probe_error(region, &error.to_string());
+                Err(error)
+            }
+            0 => {
+                let error = ApiError::Transport(payload.body.chars().take(300).collect());
+                guard.session = None;
+                guard.defer_after_transient_probe_error(region, &error.to_string());
+                Err(error)
+            }
             status => Err(ApiError::Transport(format!("HTTP {status}"))),
         }
     }
 }
 
 impl Fetcher for AppleChromiumFetcher {
+    async fn begin_cycle(&self) {
+        self.state.lock().await.begin_cycle();
+    }
+
+    async fn cycle_stats(&self) -> CycleStats {
+        let state = self.state.lock().await;
+        CycleStats {
+            request_count: state.gate.cycle_request_count,
+            reused_response_count: state.cycle_reused_response_count,
+        }
+    }
+
+    async fn schedule_hint(&self, locales: &[String]) -> ScheduleHint {
+        self.state.lock().await.schedule_hint(locales)
+    }
+
     async fn pickup_message(
         &self,
         region: &'static Region,
@@ -745,19 +1045,30 @@ mod tests {
 
     /// 模拟浏览器的 CDP 边界，不启动 Chromium，也不访问 Apple。
     async fn cdp_fixture(response: Value) -> (AppleChromiumFetcher, tokio::task::JoinHandle<bool>) {
+        cdp_responses(vec![response]).await
+    }
+
+    async fn cdp_responses(
+        responses: Vec<Value>,
+    ) -> (AppleChromiumFetcher, tokio::task::JoinHandle<bool>) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let peer = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.unwrap();
             let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
-            let request = socket.next().await.unwrap().unwrap();
-            let request: Value = serde_json::from_str(request.to_text().unwrap()).unwrap();
-            let mut response = response;
-            response["id"] = request["id"].clone();
-            socket
-                .send(Message::Text(response.to_string().into()))
-                .await
-                .unwrap();
+            for mut response in responses {
+                let request = tokio::time::timeout(Duration::from_secs(5), socket.next())
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .unwrap();
+                let request: Value = serde_json::from_str(request.to_text().unwrap()).unwrap();
+                response["id"] = request["id"].clone();
+                socket
+                    .send(Message::Text(response.to_string().into()))
+                    .await
+                    .unwrap();
+            }
             // 观察浏览器一端的连接生命周期，不依赖查询器内部的 Option 状态。
             matches!(
                 tokio::time::timeout(Duration::from_millis(500), socket.next()).await,
@@ -775,15 +1086,190 @@ mod tests {
             socket,
             next_command_id: 1,
             locale: Some("zh_CN"),
-            last_inventory_request: None,
             delivery_cache: HashMap::new(),
         };
         (
             AppleChromiumFetcher {
-                session: Arc::new(Mutex::new(Some(session))),
+                state: Arc::new(Mutex::new(QueryState {
+                    session: Some(session),
+                    ..QueryState::default()
+                })),
             },
             peer,
         )
+    }
+
+    fn pickup_response(stores: &[&str], part: &str, display: &str) -> Value {
+        let stores: Vec<_> = stores
+            .iter()
+            .map(|store| {
+                json!({
+                    "storeNumber": store,
+                    "partsAvailability": {
+                        part: {"partNumber": part, "pickupDisplay": display}
+                    }
+                })
+            })
+            .collect();
+        json!({"result":{"result":{"value":{
+            "status": 200,
+            "body": json!({"body":{"stores":stores}}).to_string()
+        }}}})
+    }
+
+    #[tokio::test]
+    async fn 同轮附近门店复用一次响应且下一轮重新查询() {
+        let stores = ["R428", "R673", "R610", "R409", "R499", "R485"];
+        let (fetcher, peer) = cdp_responses(vec![
+            pickup_response(&stores, "MJXQ4ZA/A", "available"),
+            pickup_response(&stores, "MJXQ4ZA/A", "unavailable"),
+        ])
+        .await;
+        {
+            let mut state = fetcher.state.lock().await;
+            state.session.as_mut().unwrap().locale = Some("zh_HK");
+        }
+        let region = region_by_locale("zh_HK").unwrap();
+
+        for expected_in_stock in [true, false] {
+            fetcher.begin_cycle().await;
+            // 测试不需要真的等生产环境的两秒最小间隔。
+            fetcher.state.lock().await.gate.last_sent = None;
+            for store in stores {
+                let result = fetcher
+                    .pickup_message(region, store, &[test_target("MJXQ4ZA/A")], None)
+                    .await
+                    .unwrap();
+                assert_eq!(result.store_number, store);
+                assert_eq!(
+                    result.parts["MJXQ4ZA/A"].availability.is_in_stock(),
+                    expected_in_stock
+                );
+            }
+            assert_eq!(
+                fetcher.cycle_stats().await,
+                CycleStats {
+                    request_count: 1,
+                    reused_response_count: 5,
+                }
+            );
+        }
+        assert!(!peer.await.unwrap(), "有效会话不应被提前关闭");
+    }
+
+    #[tokio::test]
+    async fn 缓存缺门店时回退真实请求() {
+        let (fetcher, peer) = cdp_responses(vec![
+            pickup_response(&["R390"], "one", "available"),
+            pickup_response(&["R683"], "one", "unavailable"),
+        ])
+        .await;
+        let region = region_by_locale("zh_CN").unwrap();
+        fetcher.begin_cycle().await;
+
+        let first = fetcher
+            .pickup_message(region, "R390", &[test_target("one")], None)
+            .await
+            .unwrap();
+        assert!(first.parts["one"].availability.is_in_stock());
+        fetcher.state.lock().await.gate.last_sent = None;
+        let second = fetcher
+            .pickup_message(region, "R683", &[test_target("one")], None)
+            .await
+            .unwrap();
+        assert!(!second.parts["one"].availability.is_in_stock());
+        assert_eq!(fetcher.cycle_stats().await.request_count, 2);
+        assert_eq!(fetcher.cycle_stats().await.reused_response_count, 0);
+        assert!(!peer.await.unwrap());
+    }
+
+    #[test]
+    fn 请求预算等待不会预扣额度() {
+        let start = Instant::now();
+        let mut budget = RequestBudget::new(start);
+        for _ in 0..REQUEST_BUDGET_CAPACITY {
+            assert!(budget.take(start));
+        }
+        assert!(!budget.take(start));
+        let before = budget.tokens;
+        assert_eq!(budget.available_in(start), REQUEST_BUDGET_REFILL);
+        assert_eq!(budget.available_in(start), REQUEST_BUDGET_REFILL);
+        assert_eq!(budget.tokens, before, "只查看等待时间不应欠下未来额度");
+        assert!(budget.take(start + REQUEST_BUDGET_REFILL));
+    }
+
+    #[test]
+    fn 下一轮预算会等待整轮额度而不是只等第一条() {
+        let start = Instant::now();
+        let mut gate = RequestGate {
+            budget: RequestBudget::new(start),
+            ..RequestGate::default()
+        };
+        for _ in 0..REQUEST_BUDGET_CAPACITY {
+            assert!(gate.budget.take(start));
+        }
+        gate.cycle_request_count = 3;
+        assert_eq!(gate.next_cycle_delay(start), REQUEST_BUDGET_REFILL * 3,);
+        assert_eq!(gate.budget.tokens, 0.0, "调度估算不应提前扣额度");
+    }
+
+    #[test]
+    fn 冷却只在恢复探测再次被拒时升档() {
+        let region = region_by_locale("zh_CN").unwrap();
+        let mut state = QueryState::default();
+        let first = state.start_or_escalate_cooldown(region, "HTTP 541");
+        assert!(matches!(
+            first,
+            ApiError::CoolingDown {
+                newly_started: true,
+                ..
+            }
+        ));
+        let level = state.cooldowns[region.locale].level;
+        for _ in 0..6 {
+            assert!(matches!(
+                state.active_cooldown_error(region),
+                Some(ApiError::CoolingDown {
+                    newly_started: false,
+                    ..
+                })
+            ));
+        }
+        assert_eq!(state.cooldowns[region.locale].level, level);
+
+        state.cooldowns.get_mut(region.locale).unwrap().until =
+            Instant::now() - Duration::from_secs(1);
+        let second = state.start_or_escalate_cooldown(region, "HTTP 541");
+        assert!(matches!(
+            second,
+            ApiError::CoolingDown {
+                newly_started: true,
+                ..
+            }
+        ));
+        assert_eq!(state.cooldowns[region.locale].level, level + 1);
+    }
+
+    #[tokio::test]
+    async fn 服务端五百错误不进入固定地区冷却() {
+        let (fetcher, peer) = cdp_fixture(json!({
+            "result": {"result": {"value": {"status": 503, "body": "{}"}}}
+        }))
+        .await;
+        let region = region_by_locale("zh_CN").unwrap();
+        let result = fetcher
+            .pickup_message(region, "R390", &[test_target("MG6X4CH/A")], None)
+            .await;
+        assert!(matches!(result, Err(ApiError::Transport(_))));
+        assert!(
+            !fetcher
+                .state
+                .lock()
+                .await
+                .cooldowns
+                .contains_key(region.locale)
+        );
+        assert!(!peer.await.unwrap(), "普通 5xx 不应销毁仍连接的浏览器会话");
     }
 
     #[tokio::test]
@@ -822,11 +1308,7 @@ mod tests {
                     None,
                 )
                 .await;
-            if status == 429 {
-                assert!(matches!(result, Err(ApiError::RateLimited(_))));
-            } else {
-                assert!(matches!(result, Err(ApiError::Blocked(_))));
-            }
+            assert!(matches!(result, Err(ApiError::CoolingDown { .. })));
             assert_eq!(peer.await.unwrap(), should_close, "HTTP {status}");
         }
     }
@@ -1025,11 +1507,38 @@ mod tests {
         );
     }
 
+    /// 现场契约：香港六店同一型号应由首个 searchNearby 响应覆盖，后五店不再出站。
+    #[tokio::test]
+    #[ignore = "需要本机 Chromium 与 Apple 官网网络"]
+    async fn 真实香港六店同轮只发一次取货请求() {
+        let region = region_by_locale("zh_HK").unwrap();
+        let fetcher = AppleChromiumFetcher::new();
+        let stores = ["R428", "R673", "R610", "R409", "R499", "R485"];
+        fetcher.begin_cycle().await;
+
+        for store in stores {
+            let availability = fetcher
+                .pickup(region, store, &[test_target("MJXQ4ZA/A")], None)
+                .await
+                .expect("香港门店取货响应应可解析");
+            assert_eq!(availability.store_number, store);
+        }
+
+        assert_eq!(
+            fetcher.cycle_stats().await,
+            CycleStats {
+                request_count: 1,
+                reused_response_count: 5,
+            }
+        );
+    }
+
     #[tokio::test]
     #[ignore = "现场只读诊断，需要本机 Chromium 与 Apple 官网网络"]
     async fn diagnose_missing_store_response() {
         let region = region_by_locale("zh_CN").unwrap();
         let mut session = ChromiumSession::start().await.unwrap();
+        let mut gate = RequestGate::default();
         for (store, part) in [
             ("R581", "MFA04CH/B"),
             ("R683", "MG8X4CH/A"),
@@ -1037,7 +1546,7 @@ mod tests {
             ("R683", "MJYH4CH/A"),
         ] {
             let payload = session
-                .fetch(region, store, &[part.to_string()], None)
+                .fetch(region, store, &[part.to_string()], None, &mut gate)
                 .await
                 .unwrap();
             println!("store={store} part={part} http={}", payload.status);
@@ -1066,6 +1575,7 @@ mod tests {
     async fn diagnose_old_products_without_new_iphone() {
         let region = region_by_locale("zh_CN").unwrap();
         let mut session = ChromiumSession::start().await.unwrap();
+        let mut gate = RequestGate::default();
         let batches: &[(&str, &[&str])] = &[
             ("watch_only", &["MF9T4CH/B"]),
             ("iphone17pro_only", &["MG0G4CH/A"]),
@@ -1075,7 +1585,10 @@ mod tests {
         ];
         for (name, parts) in batches {
             let parts: Vec<_> = parts.iter().map(|p| p.to_string()).collect();
-            let payload = session.fetch(region, "R359", &parts, None).await.unwrap();
+            let payload = session
+                .fetch(region, "R359", &parts, None, &mut gate)
+                .await
+                .unwrap();
             println!(
                 "case={name} requested={parts:?} status={} parsed={:?}",
                 payload.status,

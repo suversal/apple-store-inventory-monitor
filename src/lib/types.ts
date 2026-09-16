@@ -14,6 +14,7 @@ export type UnknownReason =
   | { reason: "not_yet_checked" }
   | { reason: "blocked"; detail: string }
   | { reason: "rate_limited" }
+  | { reason: "cooling_down"; remaining_seconds: number; detail: string }
   | { reason: "schema_drift"; field: string; raw: string }
   | { reason: "no_pickup_data"; store_number: string }
   | { reason: "product_not_returned"; part_number: string }
@@ -150,7 +151,11 @@ export interface UpdateInfo {
  * 由引擎判定并传过来，而不是让界面去匹配那句中文里有没有「拦截」两个字 ——
  * 那种写法在文案改动或加了别的语言之后会静默失效，而且不会有任何东西报错。
  */
-export type TroubleAdvice = "try_another_network" | "wait_for_update" | "check_product";
+export type TroubleAdvice =
+  | "try_another_network"
+  | "wait_for_retry"
+  | "wait_for_update"
+  | "check_product";
 
 export interface Trouble {
   reason: string;
@@ -161,7 +166,17 @@ export type WatcherEvent =
   | { type: "stateChanged"; state: TargetState }
   | { type: "inStock"; state: TargetState }
   | { type: "cycleStarted"; cycle: number; storeCount: number; targetCount: number }
-  | { type: "cycleComplete"; cycle: number; elapsedMs: number; healthy: boolean; snapshot: TargetState[] }
+  | {
+      type: "cycleComplete";
+      cycle: number;
+      elapsedMs: number;
+      requestCount: number;
+      reusedResponseCount: number;
+      nextCheckInSecs: number;
+      paced: boolean;
+      healthy: boolean;
+      snapshot: TargetState[];
+    }
   | { type: "trouble"; reason: string; advice: TroubleAdvice | null }
   | { type: "runStateChanged"; running: boolean };
 
@@ -173,6 +188,8 @@ export function describeAdvice(advice: TroubleAdvice): string {
         "Apple 拒绝了这次查询，尚不能确定是会话、请求频率还是网络原因。" +
         "程序会延长重试间隔；若持续失败，可重启应用后重试，并对照官网或其他网络检查。"
       );
+    case "wait_for_retry":
+      return "程序已暂停当前地区的真实请求，冷却结束后会自动进行一次恢复探测，无需手动重启。";
     case "wait_for_update":
       return "返回数据与当前解析规则不一致；如果持续出现，需要进一步排查或更新程序。";
     case "check_product":
@@ -233,6 +250,12 @@ function describeUnknown(a: { kind: "unknown" } & UnknownReason): {
         label: "未知",
         tone: "unknown",
         detail: "请求过于频繁被限流，正在退避",
+      };
+    case "cooling_down":
+      return {
+        label: "冷却中",
+        tone: "unknown",
+        detail: `约 ${a.remaining_seconds} 秒后自动探测；${a.detail}。当前没有向 Apple 发出请求`,
       };
     case "schema_drift":
       return {

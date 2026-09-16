@@ -31,6 +31,17 @@ pub enum ApiError {
     #[error("请求过于频繁被限流：{0}")]
     RateLimited(String),
 
+    /// 查询器正在主动保护当前地区，本次没有向 Apple 发出请求。
+    ///
+    /// `newly_started` 只供调度层决定是否发一次顶部告警；同一冷却期内其余门店
+    /// 仍会进入明确的「冷却中」未知状态，但不会重复刷屏。
+    #[error("Apple 查询保护冷却中，约 {remaining_seconds} 秒后自动探测：{detail}")]
+    CoolingDown {
+        remaining_seconds: u64,
+        detail: String,
+        newly_started: bool,
+    },
+
     /// 响应能解析成 JSON，但结构与预期不符，通常意味着 Apple 又改了接口。
     #[error("接口返回结构与预期不符：字段 {field} 的取值为 {raw:?}")]
     SchemaDrift { field: String, raw: String },
@@ -59,6 +70,14 @@ impl ApiError {
         match self {
             Self::Blocked(detail) => UnknownReason::Blocked { detail },
             Self::RateLimited(_) => UnknownReason::RateLimited,
+            Self::CoolingDown {
+                remaining_seconds,
+                detail,
+                ..
+            } => UnknownReason::CoolingDown {
+                remaining_seconds,
+                detail,
+            },
             Self::SchemaDrift { field, raw } => UnknownReason::SchemaDrift { field, raw },
             Self::NoPickupData { store_number } => UnknownReason::NoPickupData { store_number },
             Self::Apple(message) => UnknownReason::AppleError { message },
@@ -455,6 +474,24 @@ fn looks_like_json(content_type: &str, body: &[u8]) -> bool {
 /// 用泛型约束而不是 trait object：async fn in trait 在泛型位置可以直接写，
 /// 做成 `dyn` 还得引第三方宏来装箱 future，而引擎只需要一个具体实现，不值得。
 pub trait Fetcher: Clone + Send + Sync + 'static {
+    /// 开始新轮次。真实查询器用它清空只允许在单轮内复用的响应缓存。
+    fn begin_cycle(&self) -> impl std::future::Future<Output = ()> + Send {
+        async {}
+    }
+
+    /// 当前轮次实际发出的请求数与响应复用次数。
+    fn cycle_stats(&self) -> impl std::future::Future<Output = CycleStats> + Send {
+        async { CycleStats::default() }
+    }
+
+    /// 按请求预算或地区冷却计算下一轮至少还要等待多久。
+    fn schedule_hint(
+        &self,
+        _locales: &[String],
+    ) -> impl std::future::Future<Output = ScheduleHint> + Send {
+        async { ScheduleHint::default() }
+    }
+
     fn pickup_message(
         &self,
         region: &'static Region,
@@ -462,6 +499,19 @@ pub trait Fetcher: Clone + Send + Sync + 'static {
         targets: &[Target],
         delivery_region: Option<&DeliveryRegion>,
     ) -> impl std::future::Future<Output = Result<StoreAvailability, ApiError>> + Send;
+}
+
+/// 一轮内查询器真正产生的网络负载。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CycleStats {
+    pub request_count: u32,
+    pub reused_response_count: u32,
+}
+
+/// 查询器对下一轮开始时间的最低要求。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ScheduleHint {
+    pub delay: Duration,
 }
 
 impl Fetcher for AppleClient {

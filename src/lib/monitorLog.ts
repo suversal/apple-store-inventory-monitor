@@ -22,6 +22,7 @@ export function describeMonitorStatus(row: Pick<TargetState, "availability" | "p
     const labels: Record<string, string> = {
       no_pickup_data: "暂无取货数据", product_not_returned: "未返回型号",
       blocked: "请求被拦截", rate_limited: "请求被限流",
+      cooling_down: "保护冷却中",
       transport: "查询失败", schema_drift: "响应解析失败", apple_error: "Apple 返回错误",
     };
     return { ...base, label: labels[a.reason] ?? base.label };

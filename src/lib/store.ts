@@ -42,6 +42,10 @@ const MAX_LOG_LINES = 300;
 export interface UiState {
   rows: TargetState[];
   running: boolean;
+  /** 调度器给出的真实下一轮时间；请求预算和冷却会反映在这里。 */
+  nextCheckAtMs: number | null;
+  /** 下一轮是否被 Apple 请求保护节奏主动推迟。 */
+  paced: boolean;
   /** 非 null 表示「当前的状态不可信」，界面要挂一条持续可见的告警。 */
   trouble: Trouble | null;
   logs: string[];
@@ -84,6 +88,8 @@ const DEFAULT_SETTINGS: Settings = {
 let state: UiState = {
   rows: [],
   running: false,
+  nextCheckAtMs: null,
+  paced: false,
   trouble: null,
   logs: [],
   regions: [],
@@ -158,6 +164,7 @@ function applyEvent(event: WatcherEvent): void {
       break;
 
     case "cycleStarted":
+      update({ nextCheckAtMs: null, paced: false });
       pushLog(
         `第 ${event.cycle} 轮开始查询：${event.storeCount} 家门店、${event.targetCount} 项监控。${event.cycle === 1 ? "首次使用时会先建立 Apple 查询会话，通常需要几秒。" : ""}`,
       );
@@ -167,6 +174,8 @@ function applyEvent(event: WatcherEvent): void {
       const recovered = event.healthy && state.trouble !== null;
       update({
         rows: event.snapshot,
+        nextCheckAtMs: Date.now() + event.nextCheckInSecs * 1_000,
+        paced: event.paced,
         // 只有引擎明说本轮健康，才收起告警。用「所有行都没错误」去反推是
         // 不可靠的：某些故障路径下状态压根没被更新。
         trouble: event.healthy ? null : state.trouble,
@@ -174,8 +183,10 @@ function applyEvent(event: WatcherEvent): void {
       const lines = event.snapshot.map((row) => describeCycleRow(event.cycle, row));
       if (recovered) lines.unshift("查询已恢复正常。");
       lines.push(
-        `第 ${event.cycle} 轮完成（${formatElapsed(event.elapsedMs)}）：${describeCycleSummary(event.snapshot)}。` +
-        (event.healthy ? `约 ${state.settings.intervalSeconds} 秒后查询。` : "未取得结果的项目将自动重试；请按逐项原因核对。"),
+        `第 ${event.cycle} 轮完成（${formatElapsed(event.elapsedMs)}，实际请求 ${event.requestCount} 次` +
+        `${event.reusedResponseCount > 0 ? `，复用响应 ${event.reusedResponseCount} 次` : ""}）：` +
+        `${describeCycleSummary(event.snapshot)}。约 ${event.nextCheckInSecs} 秒后查询` +
+        `${event.paced ? "（已按请求预算或保护冷却调整）" : ""}。`,
       );
       pushLogs(lines);
       break;
@@ -188,7 +199,11 @@ function applyEvent(event: WatcherEvent): void {
 
     case "runStateChanged":
       if (state.running !== event.running) {
-        update({ running: event.running });
+        update({
+          running: event.running,
+          nextCheckAtMs: event.running ? state.nextCheckAtMs : null,
+          paced: event.running ? state.paced : false,
+        });
         pushLog(event.running ? "已开始监控。" : "已暂停监控。");
       }
       break;
