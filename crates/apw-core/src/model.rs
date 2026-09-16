@@ -59,6 +59,7 @@ impl Availability {
             Self::Unknown(UnknownReason::NotYetChecked) => "待查询",
             Self::Unknown(UnknownReason::NoPickupData { .. }) => "暂无数据",
             Self::Unknown(UnknownReason::ProductNotReturned { .. }) => "未返回型号",
+            Self::Unknown(UnknownReason::CoolingDown { .. }) => "冷却中",
             Self::Unknown(_) => "未知",
         }
     }
@@ -88,6 +89,11 @@ pub enum UnknownReason {
     Blocked { detail: String },
     /// 触发了频率限制，正在退避。
     RateLimited,
+    /// 查询器为避免持续触发 Apple 保护而主动暂停当前地区。
+    CoolingDown {
+        remaining_seconds: u64,
+        detail: String,
+    },
     /// 响应能解析成 JSON，但结构与预期不符 —— 通常意味着 Apple 又改了接口。
     ///
     /// 必须让用户看见。带上出问题的字段与原始取值，否则排查时无从下手。
@@ -109,6 +115,12 @@ impl UnknownReason {
             Self::NotYetChecked => "尚未查询".to_string(),
             Self::Blocked { detail } => format!("请求被 Apple 拦截：{detail}"),
             Self::RateLimited => "请求过于频繁被限流，正在退避".to_string(),
+            Self::CoolingDown {
+                remaining_seconds,
+                detail,
+            } => format!(
+                "Apple 查询保护冷却中，约 {remaining_seconds} 秒后自动探测；{detail}。当前没有向 Apple 发出请求"
+            ),
             Self::SchemaDrift { field, raw } => {
                 format!("接口返回结构与预期不符：字段 {field} 的取值为 {raw:?}")
             }

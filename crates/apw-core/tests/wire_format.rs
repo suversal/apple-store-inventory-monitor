@@ -62,6 +62,13 @@ fn 未知状态会扁平成两层判别字段() {
             json!({"kind": "unknown", "reason": "rate_limited"}),
         ),
         (
+            UnknownReason::CoolingDown {
+                remaining_seconds: 299,
+                detail: "HTTP 541".into(),
+            },
+            json!({"kind": "unknown", "reason": "cooling_down", "remaining_seconds": 299, "detail": "HTTP 541"}),
+        ),
+        (
             UnknownReason::SchemaDrift {
                 field: "pickupDisplay".into(),
                 raw: "weird".into(),
@@ -165,7 +172,9 @@ fn 故障建议的线上格式是小写标识符() {
     // 理由就是让他知道。
     for (advice, want) in [
         (TroubleAdvice::TryAnotherNetwork, "try_another_network"),
+        (TroubleAdvice::WaitForRetry, "wait_for_retry"),
         (TroubleAdvice::WaitForUpdate, "wait_for_update"),
+        (TroubleAdvice::CheckProduct, "check_product"),
     ] {
         assert_eq!(to_value(&advice), json!(want));
     }
@@ -196,12 +205,20 @@ fn 轮询事件携带前端可用的轮次与耗时() {
     let completed = to_value(&Event::CycleComplete {
         cycle: 2,
         elapsed_ms: 2_150,
+        request_count: 1,
+        reused_response_count: 2,
+        next_check_in_secs: 60,
+        paced: true,
         healthy: true,
         snapshot: Vec::new(),
     });
     assert_eq!(completed.get("type"), Some(&json!("cycleComplete")));
     assert_eq!(completed.get("cycle"), Some(&json!(2)));
     assert_eq!(completed.get("elapsedMs"), Some(&json!(2_150)));
+    assert_eq!(completed.get("requestCount"), Some(&json!(1)));
+    assert_eq!(completed.get("reusedResponseCount"), Some(&json!(2)));
+    assert_eq!(completed.get("nextCheckInSecs"), Some(&json!(60)));
+    assert_eq!(completed.get("paced"), Some(&json!(true)));
     assert!(completed.get("elapsed_ms").is_none());
 }
 

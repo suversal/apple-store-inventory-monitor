@@ -9,3 +9,16 @@ test("空取货数据保持不可信并指导核对型号，不要求等待程�
   assert.match(describeAdvice("check_product"), /刷新型号目录/);
   assert.doesNotMatch(describeAdvice("check_product"), /等程序更新/);
 });
+
+test("保护冷却明确显示等待时间且不建议用户重启", () => {
+  const state = {
+    kind: "unknown",
+    reason: "cooling_down",
+    remaining_seconds: 299,
+    detail: "HTTP 541",
+  };
+  const presentation = describeAvailability(state);
+  assert.equal(presentation.label, "冷却中");
+  assert.match(presentation.detail, /299 秒后自动探测/);
+  assert.match(describeAdvice("wait_for_retry"), /无需手动重启/);
+});

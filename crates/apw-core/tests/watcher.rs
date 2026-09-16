@@ -7,9 +7,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use apw_core::apple::{ApiError, Fetcher, PartStatus, StoreAvailability};
+use apw_core::apple::{ApiError, CycleStats, Fetcher, PartStatus, ScheduleHint, StoreAvailability};
 use apw_core::model::{Availability, Region, Target, UnknownReason};
-use apw_core::watcher::{Event, Watcher, WatcherConfig};
+use apw_core::watcher::{Event, TroubleAdvice, Watcher, WatcherConfig};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::Receiver;
 
@@ -174,6 +174,110 @@ fn count_in_stock(events: &[Event]) -> usize {
         .iter()
         .filter(|e| matches!(e, Event::InStock { .. }))
         .count()
+}
+
+#[derive(Clone, Default)]
+struct PacedFetcher {
+    calls: Arc<AtomicUsize>,
+}
+
+impl Fetcher for PacedFetcher {
+    async fn cycle_stats(&self) -> CycleStats {
+        CycleStats {
+            request_count: 3,
+            reused_response_count: 2,
+        }
+    }
+
+    async fn schedule_hint(&self, _locales: &[String]) -> ScheduleHint {
+        ScheduleHint {
+            delay: Duration::from_millis(250),
+        }
+    }
+
+    async fn pickup_message(
+        &self,
+        _region: &'static Region,
+        store_number: &str,
+        targets: &[Target],
+        _delivery_region: Option<&apw_core::model::DeliveryRegion>,
+    ) -> Result<StoreAvailability, ApiError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        let parts = targets
+            .iter()
+            .map(|target| target.part_number.clone())
+            .collect::<Vec<_>>();
+        Ok(ok_response(store_number, &parts, Availability::OutOfStock))
+    }
+}
+
+#[tokio::test]
+async fn 请求预算会驱动真实下轮时间与负载统计() {
+    let fake = PacedFetcher::default();
+    let (watcher, mut rx) = Watcher::spawn(fake.clone(), fast_config());
+    watcher.set_targets(vec![target("R683", "MG724CH/A")]).await;
+    watcher.start().await;
+
+    let events = wait_cycle(&mut rx).await;
+    let completed = events
+        .iter()
+        .find_map(|event| match event {
+            Event::CycleComplete {
+                request_count,
+                reused_response_count,
+                next_check_in_secs,
+                paced,
+                ..
+            } => Some((
+                *request_count,
+                *reused_response_count,
+                *next_check_in_secs,
+                *paced,
+            )),
+            _ => None,
+        })
+        .expect("应收到轮次完成事件");
+    assert_eq!(completed, (3, 2, 1, true));
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        fake.calls.load(Ordering::SeqCst),
+        1,
+        "预算提示生效前不应提前开始下一轮"
+    );
+    watcher.stop().await;
+}
+
+#[tokio::test]
+async fn 新冷却只告警等待自动探测且不建议重启() {
+    let fake = FakeFetcher::new(|_, _, _| {
+        Err(ApiError::CoolingDown {
+            remaining_seconds: 299,
+            detail: "HTTP 541".into(),
+            newly_started: true,
+        })
+    });
+    let (watcher, mut rx) = Watcher::spawn(fake, fast_config());
+    watcher.set_targets(vec![target("R683", "MG724CH/A")]).await;
+    watcher.start().await;
+
+    let events = wait_cycle(&mut rx).await;
+    watcher.stop().await;
+    assert!(events.iter().any(|event| matches!(
+        event,
+        Event::Trouble {
+            advice: Some(TroubleAdvice::WaitForRetry),
+            ..
+        }
+    )));
+    let snapshot = watcher.snapshot().await;
+    assert!(matches!(
+        snapshot[0].availability,
+        Availability::Unknown(UnknownReason::CoolingDown {
+            remaining_seconds: 299,
+            ..
+        })
+    ));
 }
 
 #[tokio::test]

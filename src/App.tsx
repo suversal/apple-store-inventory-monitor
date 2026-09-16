@@ -574,14 +574,13 @@ export default function App() {
     deliveryOptions.states.some((option) => option.value === deliveryDraft.state)
     && deliveryOptions.cities.some((option) => option.value === deliveryDraft.city)
     && deliveryOptions.districts.some((option) => option.value === deliveryDraft.district);
-  const latestCheckedMs = Math.max(0, ...ui.rows.map((row) => row.lastCheckedMs ?? 0));
-  const secondsUntilNextCheck = latestCheckedMs
-    ? Math.max(0, Math.ceil((latestCheckedMs + ui.settings.intervalSeconds * 1_000 - clockMs) / 1_000))
+  const secondsUntilNextCheck = ui.nextCheckAtMs
+    ? Math.max(0, Math.ceil((ui.nextCheckAtMs - clockMs) / 1_000))
     : null;
   const runningLabel =
     secondsUntilNextCheck === null || secondsUntilNextCheck === 0
       ? "正在查询"
-      : `约 ${secondsUntilNextCheck} 秒后检查`;
+      : `约 ${secondsUntilNextCheck} 秒后检查${ui.paced ? " · 保护节奏" : ""}`;
 
   const storeOptions = useMemo(
     () => ui.stores.map((store) => ({ value: store.number, label: store.title })),

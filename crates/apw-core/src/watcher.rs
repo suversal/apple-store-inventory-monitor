@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{Semaphore, mpsc, oneshot};
 use tokio::task::JoinSet;
 
-use crate::apple::{ApiError, Fetcher};
+use crate::apple::{ApiError, CycleStats, Fetcher, ScheduleHint};
 use crate::model::{
     Availability, DeliveryRegion, PickupDetails, Target, TargetKey, UnknownReason, region_by_locale,
 };
@@ -100,6 +100,17 @@ pub enum Event {
         /// 从开始调度到所有门店查询结束的耗时，包含限速与会话暖场。
         #[serde(rename = "elapsedMs")]
         elapsed_ms: u64,
+        /// 本轮真正发往 Apple 的请求数；响应缓存命中不计入。
+        #[serde(rename = "requestCount")]
+        request_count: u32,
+        /// 本轮有多少个门店直接复用了同地区响应。
+        #[serde(rename = "reusedResponseCount")]
+        reused_response_count: u32,
+        /// 调度器实际采用的下一轮等待秒数。
+        #[serde(rename = "nextCheckInSecs")]
+        next_check_in_secs: u64,
+        /// 下一轮是否因请求预算或保护冷却而晚于正常节奏。
+        paced: bool,
         /// 本轮是否所有目标都拿到了明确答复。
         ///
         /// 界面需要一个明确的「恢复」信号才能收起故障告警。用「所有行都没有
@@ -263,6 +274,8 @@ pub enum TroubleAdvice {
     ///
     /// HTTP 541 本身不能证明网络被封锁，更不能保证换网络就能恢复。
     TryAnotherNetwork,
+    /// 已进入保护冷却，用户无需操作，等待程序自动探测。
+    WaitForRetry,
     /// 用户做什么都没用，只能等新版本。
     ///
     /// 接口结构变了、或者程序内部出错时给这条。明说「你没法解决」也是一种有用的
@@ -328,6 +341,7 @@ async fn run_queries<F: Fetcher>(
     concurrency: usize,
     delivery_region: Option<DeliveryRegion>,
 ) -> Vec<StoreOutcome> {
+    client.begin_cycle().await;
     let sem = Arc::new(Semaphore::new(concurrency.max(1)));
     let mut set = JoinSet::new();
 
@@ -421,6 +435,10 @@ async fn query_one_store<F: Fetcher>(
             // 自己就好了，弹出来只是噪音。
             let advice = match &err {
                 ApiError::Blocked(_) => Some(TroubleAdvice::TryAnotherNetwork),
+                ApiError::CoolingDown {
+                    newly_started: true,
+                    ..
+                } => Some(TroubleAdvice::WaitForRetry),
                 ApiError::SchemaDrift { .. } => Some(TroubleAdvice::WaitForUpdate),
                 ApiError::NoPickupData { .. } => Some(TroubleAdvice::CheckProduct),
                 _ => None,
@@ -581,6 +599,10 @@ impl<F: Fetcher> Engine<F> {
             // 在飞的 HTTP 请求会跟着一起停。
             let groups = self.group_targets();
             let expected = expected_keys(&groups);
+            let mut locales: Vec<String> =
+                groups.iter().map(|group| group.locale.clone()).collect();
+            locales.sort_unstable();
+            locales.dedup();
             self.cycle_number = self.cycle_number.saturating_add(1);
             let cycle = self.cycle_number;
             let started_at = Instant::now();
@@ -617,6 +639,9 @@ impl<F: Fetcher> Engine<F> {
 
             let Some(outcomes) = outcomes else { continue };
 
+            let stats = self.client.cycle_stats().await;
+            let schedule_hint = self.client.schedule_hint(&locales).await;
+
             // 写状态之前先把已经排队的命令处理掉。
             //
             // 内层 select 用了 biased，结果就绪时优先于命令。用户恰好在同一瞬间删掉
@@ -638,19 +663,21 @@ impl<F: Fetcher> Engine<F> {
                 continue;
             }
 
-            self.apply(
-                cycle,
-                started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
-                expected,
-                outcomes,
-            )
-            .await;
+            let delay = self
+                .apply(
+                    cycle,
+                    started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
+                    expected,
+                    outcomes,
+                    stats,
+                    schedule_hint,
+                )
+                .await;
 
             if !self.running {
                 continue;
             }
 
-            let delay = self.next_delay();
             tokio::select! {
                 () = tokio::time::sleep(delay) => {}
                 maybe = cmd_rx.recv() => match maybe {
@@ -758,7 +785,9 @@ impl<F: Fetcher> Engine<F> {
         elapsed_ms: u64,
         mut missing: BTreeSet<TargetKey>,
         outcomes: Vec<StoreOutcome>,
-    ) {
+        stats: CycleStats,
+        schedule_hint: ScheduleHint,
+    ) -> Duration {
         let mut ok = 0usize;
         let mut failed = 0usize;
         let mut problems = 0usize;
@@ -852,13 +881,23 @@ impl<F: Fetcher> Engine<F> {
         // 目标数超过通道容量时，排在最后的 CycleComplete 必然被丢，界面就会一直
         // 停在上一轮的取值上 —— 而那很可能正是「无货」。实测 260 个目标时连续
         // 18 轮一条都没送达。
+        let normal_delay = self.next_delay();
+        let delay = normal_delay.max(schedule_hint.delay);
+        let next_check_in_secs = delay
+            .as_secs()
+            .saturating_add(u64::from(delay.subsec_nanos() > 0));
         self.emit_critical(Event::CycleComplete {
             cycle,
             elapsed_ms,
+            request_count: stats.request_count,
+            reused_response_count: stats.reused_response_count,
+            next_check_in_secs,
+            paced: schedule_hint.delay > normal_delay,
             healthy: problems == 0 && ok > 0,
             snapshot: self.snapshot(),
         })
         .await;
+        delay
     }
 
     /// 下一轮的等待时长，含抖动与全局退避。
