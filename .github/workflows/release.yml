@@ -147,7 +147,7 @@ jobs:
 
       # ── 签名密钥缺失时的降级处理 ────────────────────────────────────────────
       # tauri.conf.json 里配了 updater 的 pubkey，Tauri CLI 因此会在打包结束后强制
-      # 对所有「可用于更新」的产物（.app.tar.gz / nsis / msi / AppImage / deb / rpm）
+      # 对所有「可用于更新」的产物（.app.tar.gz / NSIS / AppImage / deb / rpm）
       # 签名，找不到私钥就直接报错退出：
       #   "A public key has been found, but no private key. Make sure to set
       #    `TAURI_SIGNING_PRIVATE_KEY` environment variable."
@@ -220,9 +220,9 @@ jobs:
           # 这个文件有重试逻辑，不需要我们串行化。
           uploadUpdaterJson: true
 
-          # Windows 上 targets: "all" 会同时产出 .msi 和 setup.exe(NSIS)，
-          # 这项决定 latest.json 里指向哪一个。选 NSIS：它配合 tauri.conf.json 里的
-          # windows.installMode = "passive" 能安静地就地升级，MSI 走 msiexec 需要提权。
+          # Windows 只构建 setup.exe（NSIS），见 tauri.windows.conf.json。
+          # 它配合 tauri.conf.json 里的 windows.installMode = "passive" 能安静地就地升级。
+          # 这里继续显式指定 NSIS，防止未来重新加入其他 Windows 安装格式后更新源漂移。
           updaterJsonPreferNsis: true
 
           # 手动空跑时没有 Release 可传，把产物挂成 workflow artifact，
@@ -254,7 +254,7 @@ jobs:
             | --- | --- |
             | macOS（Apple Silicon）| `*_aarch64.dmg` |
             | macOS（Intel）| `*_x64.dmg` |
-            | Windows | `*-setup.exe`（推荐）或 `*_x64_en-US.msi` |
+            | Windows | `*-setup.exe` |
             | Linux | `*_amd64.deb` 或 `*_amd64.AppImage` |
 
             ### macOS：首次打开被拦下
