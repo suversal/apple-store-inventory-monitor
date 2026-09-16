@@ -239,11 +239,13 @@ jobs:
           # 四个作业传的是同一段文字，后跑完的作业会用它覆盖 Release 说明，
           # 内容一致所以结果是幂等的。改这里记得别引入 ${{ }}，会被当成表达式求值。
           releaseBody: |
-            ### v1.0.7 更新内容
+            ### v1.0.8 更新内容
 
-            - 补充北京荟聚 Apple Store（R792），北京门店列表由五家恢复为六家。
+            - 同一地区、相同型号组合的附近门店优先复用 Apple 批量响应；缺少门店或型号时自动补查，不会把未返回误判成无货。
+            - 新增全局请求预算，按实际负载调整下一轮时间，并在界面和日志中显示真实请求数、批量响应覆盖门店数与保护节奏。
+            - Apple 返回 `403`、`429` 或 `541` 后进入分级冷却，冷却结束后自动探测，避免持续请求加重保护。
 
-            完整逐项记录见 [CHANGELOG.md](https://github.com/suversal/apple-store-inventory-monitor/blob/v1.0.7/CHANGELOG.md)。
+            完整逐项记录见 [CHANGELOG.md](https://github.com/suversal/apple-store-inventory-monitor/blob/v1.0.8/CHANGELOG.md)。
 
             ### 下载哪一个
 

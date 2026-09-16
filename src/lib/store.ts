@@ -184,7 +184,7 @@ function applyEvent(event: WatcherEvent): void {
       if (recovered) lines.unshift("查询已恢复正常。");
       lines.push(
         `第 ${event.cycle} 轮完成（${formatElapsed(event.elapsedMs)}，实际请求 ${event.requestCount} 次` +
-        `${event.reusedResponseCount > 0 ? `，复用响应 ${event.reusedResponseCount} 次` : ""}）：` +
+        `${event.reusedResponseCount > 0 ? `，批量响应覆盖 ${event.reusedResponseCount} 家门店` : ""}）：` +
         `${describeCycleSummary(event.snapshot)}。约 ${event.nextCheckInSecs} 秒后查询` +
         `${event.paced ? "（已按请求预算或保护冷却调整）" : ""}。`,
       );
