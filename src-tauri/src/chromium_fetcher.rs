@@ -737,6 +737,11 @@ impl QueryState {
 
         ScheduleHint { delay }
     }
+
+    fn retry_now(&mut self) {
+        self.cooldowns.clear();
+        self.pickup_cache.clear();
+    }
 }
 
 impl AppleChromiumFetcher {
@@ -933,6 +938,10 @@ impl Fetcher for AppleChromiumFetcher {
 
     async fn schedule_hint(&self, locales: &[String]) -> ScheduleHint {
         self.state.lock().await.schedule_hint(locales)
+    }
+
+    async fn retry_now(&self) {
+        self.state.lock().await.retry_now();
     }
 
     async fn pickup_message(
@@ -1175,6 +1184,22 @@ mod tests {
             }
         ));
         assert_eq!(state.cooldowns[region.locale].level, level + 1);
+    }
+
+    #[test]
+    fn 用户立即重试会解除当前冷却等待() {
+        let region = region_by_locale("zh_CN").unwrap();
+        let mut state = QueryState::default();
+        state.start_or_escalate_cooldown(region, "HTTP 541");
+        assert!(state.schedule_hint(&[region.locale.to_string()]).delay > Duration::ZERO);
+
+        state.retry_now();
+
+        assert_eq!(
+            state.schedule_hint(&[region.locale.to_string()]),
+            ScheduleHint::default()
+        );
+        assert!(state.active_cooldown_error(region).is_none());
     }
 
     #[tokio::test]

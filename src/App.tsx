@@ -77,6 +77,7 @@ import {
   openReleasePage,
   openTargetProduct,
   refreshProducts,
+  retryWatchingNow,
   saveSettings,
   setCategory,
   setIntervalSeconds,
@@ -487,6 +488,7 @@ export default function App() {
   const [storeNumbers, setStoreNumbers] = useState<string[]>([]);
   const [partNumbers, setPartNumbers] = useState<string[]>([]);
   const [isAdding, setIsAdding] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [barkDraft, setBarkDraft] = useState<string | null>(null);
   const [intervalDraft, setIntervalDraft] = useState<number | null>(null);
   const [deliveryDraft, setDeliveryDraft] = useState<DeliveryRegion>({ state: "", city: "", district: "" });
@@ -580,7 +582,9 @@ export default function App() {
   const runningLabel =
     secondsUntilNextCheck === null || secondsUntilNextCheck === 0
       ? "正在查询"
-      : `约 ${secondsUntilNextCheck} 秒后检查${ui.paced ? " · 保护节奏" : ""}`;
+      : ui.paced
+        ? `保护冷却中 · 约 ${secondsUntilNextCheck} 秒后检查`
+        : `约 ${secondsUntilNextCheck} 秒后检查`;
 
   const storeOptions = useMemo(
     () => ui.stores.map((store) => ({ value: store.number, label: store.title })),
@@ -681,6 +685,15 @@ export default function App() {
     await setTargets(targets.filter((item) => targetKey(item) !== targetKey(target)));
   }
 
+  async function onRetryNow() {
+    setIsRetrying(true);
+    try {
+      await retryWatchingNow();
+    } finally {
+      setIsRetrying(false);
+    }
+  }
+
   return (
     <TooltipProvider delayDuration={180}>
       <div className="app-canvas min-h-screen text-foreground">
@@ -752,6 +765,18 @@ export default function App() {
                 <span className="hidden text-xs text-muted-foreground sm:inline">监控状态</span>
                 <span className="text-sm font-medium">{ui.running ? runningLabel : "已暂停"}</span>
               </div>
+              {ui.running && ui.paced && (
+                <Button
+                  variant="outline"
+                  className="h-10 rounded-xl px-4"
+                  onClick={() => void onRetryNow()}
+                  disabled={isRetrying}
+                  aria-busy={isRetrying}
+                >
+                  <RefreshCw className={isRetrying ? "animate-spin" : ""} aria-hidden="true" />
+                  {isRetrying ? "正在重试" : "立即重试"}
+                </Button>
+              )}
               {ui.running ? (
                 <Button
                   variant="secondary"

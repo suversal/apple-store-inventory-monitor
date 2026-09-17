@@ -585,6 +585,11 @@ async fn stop_watching(state: tauri::State<'_, AppState>) -> Result<(), String> 
 }
 
 #[tauri::command]
+async fn retry_watching_now(state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    Ok(state.watcher.retry_now().await)
+}
+
+#[tauri::command]
 async fn is_running(state: tauri::State<'_, AppState>) -> Result<bool, String> {
     Ok(state.watcher.is_running().await)
 }
@@ -1137,6 +1142,7 @@ pub fn run() {
             set_interval,
             start_watching,
             stop_watching,
+            retry_watching_now,
             is_running,
             test_notify,
             open_target_product,

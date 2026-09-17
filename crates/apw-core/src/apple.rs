@@ -492,6 +492,14 @@ pub trait Fetcher: Clone + Send + Sync + 'static {
         async { ScheduleHint::default() }
     }
 
+    /// 用户主动要求立即重试时，解除查询器内部的等待状态。
+    ///
+    /// 默认查询器没有地区冷却，因此默认实现无需处理。带保护冷却的实现应当只
+    /// 清除等待，不伪造成功；下一轮仍按 Apple 的真实响应重新判断状态。
+    fn retry_now(&self) -> impl std::future::Future<Output = ()> + Send {
+        async {}
+    }
+
     fn pickup_message(
         &self,
         region: &'static Region,

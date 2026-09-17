@@ -187,6 +187,7 @@ fn count_in_stock(events: &[Event]) -> usize {
 #[derive(Clone, Default)]
 struct ProtectedFetcher {
     calls: Arc<AtomicUsize>,
+    retries: Arc<AtomicUsize>,
 }
 
 impl Fetcher for ProtectedFetcher {
@@ -201,6 +202,10 @@ impl Fetcher for ProtectedFetcher {
         ScheduleHint {
             delay: Duration::from_millis(250),
         }
+    }
+
+    async fn retry_now(&self) {
+        self.retries.fetch_add(1, Ordering::SeqCst);
     }
 
     async fn pickup_message(
@@ -254,6 +259,25 @@ async fn 保护冷却会驱动真实下轮时间与负载统计() {
         "保护冷却生效前不应提前开始下一轮"
     );
     watcher.stop().await;
+}
+
+#[tokio::test]
+async fn 用户可在保护冷却期间立即重试且不会被强制等待() {
+    let fake = ProtectedFetcher::default();
+    let (watcher, mut rx) = Watcher::spawn(fake.clone(), fast_config());
+    watcher.set_targets(vec![target("R683", "MG724CH/A")]).await;
+    watcher.start().await;
+    wait_cycle(&mut rx).await;
+
+    assert!(watcher.retry_now().await, "运行中应接受用户的立即重试");
+    tokio::time::timeout(Duration::from_millis(150), wait_cycle(&mut rx))
+        .await
+        .expect("立即重试不应继续等待保护冷却");
+    assert_eq!(fake.retries.load(Ordering::SeqCst), 1);
+    assert!(fake.calls.load(Ordering::SeqCst) >= 2);
+
+    watcher.stop().await;
+    assert!(!watcher.retry_now().await, "暂停后不应擅自启动监控");
 }
 
 #[tokio::test]

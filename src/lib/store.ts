@@ -44,7 +44,7 @@ export interface UiState {
   running: boolean;
   /** 调度器给出的真实下一轮时间；保护冷却会反映在这里。 */
   nextCheckAtMs: number | null;
-  /** 下一轮是否被 Apple 请求保护节奏主动推迟。 */
+  /** 下一轮是否处于 Apple 请求保护冷却。 */
   paced: boolean;
   /** 非 null 表示「当前的状态不可信」，界面要挂一条持续可见的告警。 */
   trouble: Trouble | null;
@@ -186,7 +186,7 @@ function applyEvent(event: WatcherEvent): void {
         `第 ${event.cycle} 轮完成（${formatElapsed(event.elapsedMs)}，实际请求 ${event.requestCount} 次` +
         `${event.reusedResponseCount > 0 ? `，批量响应覆盖 ${event.reusedResponseCount} 家门店` : ""}）：` +
         `${describeCycleSummary(event.snapshot)}。约 ${event.nextCheckInSecs} 秒后查询` +
-        `${event.paced ? "（已按 Apple 保护冷却调整）" : ""}。`,
+        `${event.paced ? "（当前保护冷却中，可选择立即重试）" : ""}。`,
       );
       pushLogs(lines);
       break;
@@ -407,6 +407,21 @@ export async function stopWatching(): Promise<void> {
   } catch (err) {
     pushLog(`暂停监控失败：${String(err)}`);
   }
+}
+
+export async function retryWatchingNow(): Promise<boolean> {
+  try {
+    const accepted = await invoke<boolean>("retry_watching_now");
+    if (accepted) {
+      update({ nextCheckAtMs: null, paced: false });
+      pushLog("已按你的选择立即重新查询。");
+      return true;
+    }
+    pushLog("监控当前未运行，无法立即重试。");
+  } catch (err) {
+    pushLog(`立即重试失败：${String(err)}`);
+  }
+  return false;
 }
 
 export async function setIntervalSeconds(seconds: number): Promise<void> {

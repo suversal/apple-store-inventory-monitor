@@ -171,6 +171,7 @@ enum Command {
     SetDeliveryRegion(Option<DeliveryRegion>),
     Start(oneshot::Sender<()>),
     Stop(oneshot::Sender<()>),
+    RetryNow(oneshot::Sender<bool>),
     Snapshot(oneshot::Sender<Vec<TargetState>>),
     IsRunning(oneshot::Sender<bool>),
 }
@@ -246,6 +247,16 @@ impl Watcher {
         if self.cmd.send(Command::Stop(tx)).await.is_ok() {
             let _ = rx.await;
         }
+    }
+
+    /// 用户主动要求立即查询。运行中返回 `true`，并唤醒当前轮次等待；暂停时
+    /// 返回 `false`，不会擅自启动监控。
+    pub async fn retry_now(&self) -> bool {
+        let (tx, rx) = oneshot::channel();
+        if self.cmd.send(Command::RetryNow(tx)).await.is_err() {
+            return false;
+        }
+        rx.await.unwrap_or(false)
     }
 
     /// 取当前全部状态的快照。
@@ -719,6 +730,13 @@ impl<F: Fetcher> Engine<F> {
             Command::Stop(reply) => {
                 self.set_running(false).await;
                 let _ = reply.send(());
+            }
+            Command::RetryNow(reply) => {
+                let accepted = self.running;
+                if accepted {
+                    self.client.retry_now().await;
+                }
+                let _ = reply.send(accepted);
             }
             Command::Snapshot(reply) => {
                 let _ = reply.send(self.snapshot());
