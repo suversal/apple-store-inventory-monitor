@@ -16,8 +16,10 @@ test("Linux 包名使用合法 ASCII 标识且保留中文桌面名称", async (
 test("公开资产名和 Linux 安装说明使用稳定的 ASCII 文件名", async () => {
   const workflow = await readFile(new URL(".github/workflows/release.yml", root), "utf8");
   const readme = await readFile(new URL("README.md", root), "utf8");
+  const packageJson = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
+  const escapedVersion = packageJson.version.replaceAll(".", "\\.");
   assert.match(workflow, /releaseAssetNamePattern: "\[mainBinaryName\]_\[version\]_\[arch\]\[setup\]\[ext\]"/);
   assert.match(workflow, /dpkg-query -W.*guodao-radar/);
-  assert.match(readme, /apple-store-inventory-monitor_1\.0\.9_amd64\.deb/);
-  assert.doesNotMatch(readme, /Apple\.Store\.Inventory\.Monitor_1\.0\.9/);
+  assert.match(readme, new RegExp(`apple-store-inventory-monitor_${escapedVersion}_amd64\\.deb`));
+  assert.doesNotMatch(readme, new RegExp(`Apple\\.Store\\.Inventory\\.Monitor_${escapedVersion}`));
 });
