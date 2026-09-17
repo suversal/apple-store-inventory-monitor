@@ -44,8 +44,8 @@ export interface UiState {
   running: boolean;
   /** 调度器给出的真实下一轮时间；保护冷却会反映在这里。 */
   nextCheckAtMs: number | null;
-  /** 下一轮是否处于 Apple 请求保护冷却。 */
-  paced: boolean;
+  /** 当前目标地区中是否仍有 Apple 请求保护冷却。 */
+  cooling: boolean;
   /** 非 null 表示「当前的状态不可信」，界面要挂一条持续可见的告警。 */
   trouble: Trouble | null;
   logs: string[];
@@ -89,7 +89,7 @@ let state: UiState = {
   rows: [],
   running: false,
   nextCheckAtMs: null,
-  paced: false,
+  cooling: false,
   trouble: null,
   logs: [],
   regions: [],
@@ -164,7 +164,7 @@ function applyEvent(event: WatcherEvent): void {
       break;
 
     case "cycleStarted":
-      update({ nextCheckAtMs: null, paced: false });
+      update({ nextCheckAtMs: null, cooling: false });
       pushLog(
         `第 ${event.cycle} 轮开始查询：${event.storeCount} 家门店、${event.targetCount} 项监控。${event.cycle === 1 ? "首次使用时会先建立 Apple 查询会话，通常需要几秒。" : ""}`,
       );
@@ -175,7 +175,7 @@ function applyEvent(event: WatcherEvent): void {
       update({
         rows: event.snapshot,
         nextCheckAtMs: Date.now() + event.nextCheckInSecs * 1_000,
-        paced: event.paced,
+        cooling: event.cooling,
         // 只有引擎明说本轮健康，才收起告警。用「所有行都没错误」去反推是
         // 不可靠的：某些故障路径下状态压根没被更新。
         trouble: event.healthy ? null : state.trouble,
@@ -186,7 +186,7 @@ function applyEvent(event: WatcherEvent): void {
         `第 ${event.cycle} 轮完成（${formatElapsed(event.elapsedMs)}，实际请求 ${event.requestCount} 次` +
         `${event.reusedResponseCount > 0 ? `，批量响应覆盖 ${event.reusedResponseCount} 家门店` : ""}）：` +
         `${describeCycleSummary(event.snapshot)}。约 ${event.nextCheckInSecs} 秒后查询` +
-        `${event.paced ? "（当前保护冷却中，可选择立即重试）" : ""}。`,
+        `${event.cooling ? "（当前保护冷却中，可选择立即重试）" : ""}。`,
       );
       pushLogs(lines);
       break;
@@ -202,7 +202,7 @@ function applyEvent(event: WatcherEvent): void {
         update({
           running: event.running,
           nextCheckAtMs: event.running ? state.nextCheckAtMs : null,
-          paced: event.running ? state.paced : false,
+          cooling: event.running ? state.cooling : false,
         });
         pushLog(event.running ? "已开始监控。" : "已暂停监控。");
       }
@@ -413,7 +413,7 @@ export async function retryWatchingNow(): Promise<boolean> {
   try {
     const accepted = await invoke<boolean>("retry_watching_now");
     if (accepted) {
-      update({ nextCheckAtMs: null, paced: false });
+      update({ nextCheckAtMs: null, cooling: false });
       pushLog("已按你的选择立即重新查询。");
       return true;
     }

@@ -115,8 +115,8 @@ pub enum Event {
         /// 调度器实际采用的下一轮等待秒数。
         #[serde(rename = "nextCheckInSecs")]
         next_check_in_secs: u64,
-        /// 下一轮是否因保护冷却而晚于正常节奏。
-        paced: bool,
+        /// 当前目标地区中是否仍有 Apple 查询保护冷却。
+        cooling: bool,
         /// 本轮是否所有目标都拿到了明确答复。
         ///
         /// 界面需要一个明确的「恢复」信号才能收起故障告警。用「所有行都没有
@@ -962,7 +962,7 @@ impl<F: Fetcher> Engine<F> {
             request_count: stats.request_count,
             reused_response_count: stats.reused_response_count,
             next_check_in_secs,
-            paced: schedule_hint.delay > normal_delay,
+            cooling: schedule_hint.cooling,
             healthy: problems == 0 && ok > 0,
             snapshot: self.snapshot(),
         })

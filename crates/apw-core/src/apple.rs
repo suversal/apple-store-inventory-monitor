@@ -520,6 +520,11 @@ pub struct CycleStats {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ScheduleHint {
     pub delay: Duration,
+    /// 当前目标地区中是否仍有 Apple 查询保护冷却。
+    ///
+    /// 这和 `delay` 是否最终拉长下一轮不是一回事：冷却剩余时间可能短于用户
+    /// 配置的普通间隔，但界面仍应如实展示冷却状态并允许用户立即重试。
+    pub cooling: bool,
 }
 
 impl Fetcher for AppleClient {

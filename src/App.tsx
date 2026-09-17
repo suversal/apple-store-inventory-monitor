@@ -582,7 +582,7 @@ export default function App() {
   const runningLabel =
     secondsUntilNextCheck === null || secondsUntilNextCheck === 0
       ? "正在查询"
-      : ui.paced
+      : ui.cooling
         ? `保护冷却中 · 约 ${secondsUntilNextCheck} 秒后检查`
         : `约 ${secondsUntilNextCheck} 秒后检查`;
 
@@ -765,7 +765,7 @@ export default function App() {
                 <span className="hidden text-xs text-muted-foreground sm:inline">监控状态</span>
                 <span className="text-sm font-medium">{ui.running ? runningLabel : "已暂停"}</span>
               </div>
-              {ui.running && ui.paced && (
+              {ui.running && ui.cooling && (
                 <Button
                   variant="outline"
                   className="h-10 rounded-xl px-4"

@@ -713,6 +713,7 @@ impl QueryState {
     fn schedule_hint(&mut self, locales: &[String]) -> ScheduleHint {
         let now = Instant::now();
         let mut delay = Duration::ZERO;
+        let mut cooling = false;
 
         if !locales.is_empty() {
             let mut all_cooling = true;
@@ -725,6 +726,7 @@ impl QueryState {
                     .filter(|remaining| !remaining.is_zero());
                 match remaining {
                     Some(remaining) => {
+                        cooling = true;
                         earliest = Some(earliest.map_or(remaining, |old| old.min(remaining)));
                     }
                     None => all_cooling = false,
@@ -735,7 +737,7 @@ impl QueryState {
             }
         }
 
-        ScheduleHint { delay }
+        ScheduleHint { delay, cooling }
     }
 
     fn retry_now(&mut self) {

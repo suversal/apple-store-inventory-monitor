@@ -174,7 +174,7 @@ export type WatcherEvent =
       requestCount: number;
       reusedResponseCount: number;
       nextCheckInSecs: number;
-      paced: boolean;
+      cooling: boolean;
       healthy: boolean;
       snapshot: TargetState[];
     }
