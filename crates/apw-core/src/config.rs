@@ -24,6 +24,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
 use serde::{Deserialize, Serialize};
 
 use crate::model::{DeliveryRegion, REGIONS, Target, region_by_locale};
@@ -347,6 +350,7 @@ impl SettingsStore {
     /// **文件不存在**返回默认设置且不算错误；文件存在却读不出来一律返回错误。
     /// 这个区分是刻意的，理由见模块文档。
     pub fn load(&self) -> Result<Settings, ConfigError> {
+        harden_existing_config(&self.path)?;
         let file = match File::open(&self.path) {
             Ok(f) => f,
             // 只有「确实没有这个文件」才等于「用户还没有配置」。
@@ -522,11 +526,11 @@ fn create_temp_file(dir: &Path) -> Result<(TempFile, File), ConfigError> {
     for _ in 0..32 {
         let seq = TEMP_SEQ.fetch_add(1, Ordering::Relaxed);
         let candidate = dir.join(format!(".apw-settings-{}-{seq}.tmp", std::process::id()));
-        match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&candidate)
-        {
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        match options.open(&candidate) {
             Ok(file) => {
                 return Ok((
                     TempFile {
@@ -553,6 +557,7 @@ fn create_temp_file(dir: &Path) -> Result<(TempFile, File), ConfigError> {
 fn write_atomically(path: &Path, data: &[u8]) -> Result<(), ConfigError> {
     let dir = parent_dir(path);
     fs::create_dir_all(dir).map_err(|e| ConfigError::io("创建配置目录", dir, e))?;
+    harden_config_dir(dir)?;
 
     let (mut guard, mut file) = create_temp_file(dir)?;
 
@@ -574,6 +579,43 @@ fn write_atomically(path: &Path, data: &[u8]) -> Result<(), ConfigError> {
     if let Ok(handle) = File::open(dir) {
         let _ = handle.sync_all();
     }
+    Ok(())
+}
+
+/// Unix 上把配置目录与设置文件收紧到当前用户可读写。
+///
+/// Bark 地址里含设备密钥，不能依赖系统 umask 恰好足够严格。Windows 的用户配置
+/// 目录由 ACL 保护，因此这里不额外改动。
+#[cfg(unix)]
+fn harden_config_dir(dir: &Path) -> Result<(), ConfigError> {
+    // 裸文件名会退回当前目录，测试或嵌入方不应因此被修改整个工作目录权限。
+    if dir == Path::new(".") {
+        return Ok(());
+    }
+    fs::set_permissions(dir, fs::Permissions::from_mode(0o700))
+        .map_err(|source| ConfigError::io("收紧配置目录权限", dir, source))
+}
+
+#[cfg(not(unix))]
+fn harden_config_dir(_dir: &Path) -> Result<(), ConfigError> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn harden_existing_config(path: &Path) -> Result<(), ConfigError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => {
+            harden_config_dir(parent_dir(path))?;
+            fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+                .map_err(|source| ConfigError::io("收紧设置文件权限", path, source))
+        }
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(source) => Err(ConfigError::io("检查设置文件权限", path, source)),
+    }
+}
+
+#[cfg(not(unix))]
+fn harden_existing_config(_path: &Path) -> Result<(), ConfigError> {
     Ok(())
 }
 

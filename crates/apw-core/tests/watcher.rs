@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use apw_core::apple::{ApiError, CycleStats, Fetcher, PartStatus, ScheduleHint, StoreAvailability};
-use apw_core::model::{Availability, Region, Target, UnknownReason};
+use apw_core::model::{Availability, DeliveryRegion, Region, Target, UnknownReason};
 use apw_core::watcher::{Event, TroubleAdvice, Watcher, WatcherConfig};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::Receiver;
@@ -16,6 +16,7 @@ use tokio::sync::mpsc::Receiver;
 /// 假查询源的应答函数：入参依次是「第几次调用」「门店号」「请求的零件号」。
 type Responder =
     Arc<dyn Fn(usize, &str, &[String]) -> Result<StoreAvailability, ApiError> + Send + Sync>;
+type SeenDeliveryRegions = Arc<Mutex<Vec<(String, Option<DeliveryRegion>)>>>;
 
 /// 假的查询源，可编程返回值，并记录调用情况。
 #[derive(Clone)]
@@ -27,6 +28,8 @@ struct FakeFetcher {
     peak: Arc<AtomicUsize>,
     /// 每次调用记录下收到的零件号，用于验证「按门店合并请求」。
     seen_parts: Arc<Mutex<Vec<Vec<String>>>>,
+    /// 每次调用实际收到的地区与送货目的地，用于防止大陆地址污染其他站点。
+    seen_delivery_regions: SeenDeliveryRegions,
     delay: Duration,
     responder: Responder,
 }
@@ -43,6 +46,7 @@ impl FakeFetcher {
             in_flight: Arc::new(AtomicUsize::new(0)),
             peak: Arc::new(AtomicUsize::new(0)),
             seen_parts: Arc::new(Mutex::new(Vec::new())),
+            seen_delivery_regions: Arc::new(Mutex::new(Vec::new())),
             delay: Duration::from_millis(5),
             responder: Arc::new(responder),
         }
@@ -60,10 +64,10 @@ impl FakeFetcher {
 impl Fetcher for FakeFetcher {
     async fn pickup_message(
         &self,
-        _region: &'static Region,
+        region: &'static Region,
         store_number: &str,
         targets: &[Target],
-        _delivery_region: Option<&apw_core::model::DeliveryRegion>,
+        delivery_region: Option<&DeliveryRegion>,
     ) -> Result<StoreAvailability, ApiError> {
         let parts: Vec<String> = targets
             .iter()
@@ -77,6 +81,10 @@ impl Fetcher for FakeFetcher {
         // 等于循环次数，看上去像引擎跑出了二十条循环。Drop 在取消路径上照样执行。
         let _guard = InFlightGuard::enter(&self.in_flight, &self.peak);
         self.seen_parts.lock().await.push(parts.clone());
+        self.seen_delivery_regions
+            .lock()
+            .await
+            .push((region.locale.to_string(), delivery_region.cloned()));
 
         tokio::time::sleep(self.delay).await;
         (self.responder)(nth, store_number, &parts)
@@ -543,6 +551,98 @@ async fn 同一门店的多个型号合并成一次请求() {
         seen[0]
     );
     assert_eq!(w.snapshot().await.len(), 3);
+}
+
+#[tokio::test]
+async fn 单门店超过二十个零件号会自动分批且全部得到结果() {
+    let fake =
+        FakeFetcher::new(|_, store, parts| Ok(ok_response(store, parts, Availability::OutOfStock)));
+    let (watcher, mut rx) = Watcher::spawn(fake.clone(), fast_config());
+    let targets = (0..25)
+        .map(|index| target("R683", &format!("PART-{index:02}/A")))
+        .collect();
+    watcher.set_targets(targets).await;
+    watcher.start().await;
+    let events = wait_cycle(&mut rx).await;
+    watcher.stop().await;
+
+    let seen = fake.seen_parts.lock().await;
+    let mut batch_sizes = seen.iter().map(Vec::len).collect::<Vec<_>>();
+    batch_sizes.sort_unstable();
+    assert_eq!(batch_sizes, vec![5, 20], "实际分批为 {batch_sizes:?}");
+    assert!(seen.iter().all(|parts| parts.len() <= 20));
+    assert_eq!(watcher.snapshot().await.len(), 25);
+    assert!(
+        watcher
+            .snapshot()
+            .await
+            .iter()
+            .all(|state| state.availability == Availability::OutOfStock)
+    );
+
+    let store_count = events.iter().find_map(|event| match event {
+        Event::CycleStarted { store_count, .. } => Some(*store_count),
+        _ => None,
+    });
+    assert_eq!(store_count, Some(1), "分批后仍然只有一家门店");
+}
+
+#[tokio::test]
+async fn watch表带零件号也计入单次二十个上限() {
+    let fake =
+        FakeFetcher::new(|_, store, parts| Ok(ok_response(store, parts, Availability::OutOfStock)));
+    let (watcher, mut rx) = Watcher::spawn(fake.clone(), fast_config());
+    let targets = (0..11)
+        .map(|index| {
+            let mut item = target("R683", &format!("CASE-{index:02}/A"));
+            item.companion_part = Some(format!("BAND-{index:02}/A"));
+            item
+        })
+        .collect();
+    watcher.set_targets(targets).await;
+    watcher.start().await;
+    wait_cycle(&mut rx).await;
+    watcher.stop().await;
+
+    let seen = fake.seen_parts.lock().await;
+    let mut batch_sizes = seen.iter().map(Vec::len).collect::<Vec<_>>();
+    batch_sizes.sort_unstable();
+    assert_eq!(
+        batch_sizes,
+        vec![1, 10],
+        "每条 Watch 目标还会占一个表带零件号"
+    );
+}
+
+#[tokio::test]
+async fn 大陆送货地址只传给中国大陆查询() {
+    let fake =
+        FakeFetcher::new(|_, store, parts| Ok(ok_response(store, parts, Availability::OutOfStock)));
+    let mut config = fast_config();
+    config.delivery_region = Some(DeliveryRegion {
+        state: "上海市".into(),
+        city: "上海市".into(),
+        district: "普陀区".into(),
+    });
+    let (watcher, mut rx) = Watcher::spawn(fake.clone(), config);
+    let mainland = target("R683", "CN/A");
+    let mut japan = target("R718", "JP/A");
+    japan.locale = "ja_JP".into();
+    watcher.set_targets(vec![mainland, japan]).await;
+    watcher.start().await;
+    wait_cycle(&mut rx).await;
+    watcher.stop().await;
+
+    let seen = fake.seen_delivery_regions.lock().await;
+    assert_eq!(seen.len(), 2);
+    assert!(
+        seen.iter()
+            .any(|(locale, region)| locale == "zh_CN" && region.is_some())
+    );
+    assert!(
+        seen.iter()
+            .any(|(locale, region)| locale == "ja_JP" && region.is_none())
+    );
 }
 
 #[tokio::test]

@@ -11,6 +11,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 use apw_core::config::{
     ConfigError, DEFAULT_INTERVAL_SECONDS, MAX_SETTINGS_BYTES, OpenOnHit, Settings, SettingsStore,
 };
@@ -119,6 +122,58 @@ fn 保存会顺手创建不存在的配置目录() {
     let store = SettingsStore::at(dir.join("nested").join("settings.v2.json"));
     store.save(&样例设置()).expect("保存失败");
     assert_eq!(store.load().expect("读取失败"), 样例设置());
+}
+
+#[cfg(unix)]
+#[test]
+fn 保存后的配置目录和文件仅当前用户可访问() {
+    let dir = 临时目录::new("private-permissions");
+    let path = dir.设置路径();
+    SettingsStore::at(path.clone())
+        .save(&样例设置())
+        .expect("保存失败");
+
+    let dir_mode = fs::metadata(&dir.path)
+        .expect("读目录元数据失败")
+        .permissions()
+        .mode()
+        & 0o777;
+    let file_mode = fs::metadata(&path)
+        .expect("读文件元数据失败")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(dir_mode, 0o700);
+    assert_eq!(file_mode, 0o600);
+}
+
+#[cfg(unix)]
+#[test]
+fn 读取旧配置时会修复过宽的权限() {
+    let dir = 临时目录::new("repair-permissions");
+    let path = dir.设置路径();
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(&样例设置()).expect("序列化失败"),
+    )
+    .expect("写测试设置失败");
+    fs::set_permissions(&dir.path, fs::Permissions::from_mode(0o755)).expect("改目录权限失败");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("改文件权限失败");
+
+    SettingsStore::at(path.clone()).load().expect("读取失败");
+
+    let dir_mode = fs::metadata(&dir.path)
+        .expect("读目录元数据失败")
+        .permissions()
+        .mode()
+        & 0o777;
+    let file_mode = fs::metadata(&path)
+        .expect("读文件元数据失败")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(dir_mode, 0o700);
+    assert_eq!(file_mode, 0o600);
 }
 
 #[test]

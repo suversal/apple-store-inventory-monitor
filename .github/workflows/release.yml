@@ -134,6 +134,7 @@ jobs:
             libxdo-dev \
             libssl-dev \
             libasound2-dev \
+            rpm \
             patchelf \
             file \
             wget \
@@ -220,6 +221,10 @@ jobs:
           # 这个文件有重试逻辑，不需要我们串行化。
           uploadUpdaterJson: true
 
+          # 中文 productName 在部分打包器里无法生成稳定的文件名。公开资产统一用
+          # ASCII 主二进制名，latest.json 会同步采用重命名后的下载地址。
+          releaseAssetNamePattern: "[mainBinaryName]_[version]_[arch][setup][ext]"
+
           # Windows 只构建 setup.exe（NSIS），见 tauri.windows.conf.json。
           # 它配合 tauri.conf.json 里的 windows.installMode = "passive" 能安静地就地升级。
           # 这里继续显式指定 NSIS，防止未来重新加入其他 Windows 安装格式后更新源漂移。
@@ -290,6 +295,48 @@ jobs:
             本项目直接基于 [ENCHIGO/apple-pickup-watcher](https://github.com/ENCHIGO/apple-pickup-watcher)
             继续开发；该项目是 [hteen/apple-store-helper](https://github.com/hteen/apple-store-helper)
             的 GPL-3.0 重写版本。详见仓库内的 `LICENSE` 与 `NOTICE`。
+
+      - name: 验证并安装 Linux 发布包
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+
+          deb_path="$(find target/release/bundle/deb -maxdepth 1 -name '*.deb' -print -quit)"
+          rpm_path="$(find target/release/bundle/rpm -maxdepth 1 -name '*.rpm' -print -quit)"
+          appimage_path="$(find target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)"
+          test -n "$deb_path"
+          test -n "$rpm_path"
+          test -n "$appimage_path"
+
+          deb_name="$(dpkg-deb -f "$deb_path" Package)"
+          rpm_name="$(rpm -qp --queryformat '%{NAME}' "$rpm_path")"
+          package_name_pattern='^[a-z0-9][a-z0-9+.-]*$'
+          [[ "$deb_name" =~ $package_name_pattern ]]
+          [[ "$rpm_name" =~ $package_name_pattern ]]
+          test "$deb_name" = "guodao-radar"
+          test "$rpm_name" = "guodao-radar"
+          test -x "$appimage_path"
+
+          sudo apt-get install -y "$deb_path"
+          dpkg-query -W -f='${Status}\n' guodao-radar | grep -qx 'install ok installed'
+
+      - name: 静默安装并启动 Windows 发布包
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem target/release/bundle/nsis -Filter '*.exe' | Select-Object -First 1
+          if (-not $installer) { throw '没有找到 NSIS 安装包' }
+          $installDir = Join-Path $env:RUNNER_TEMP 'guodao-radar-install'
+          $install = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$installDir") -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "NSIS 安装失败：$($install.ExitCode)" }
+          $app = Get-ChildItem $installDir -Filter '*.exe' -Recurse |
+            Where-Object { $_.Name -notmatch 'uninstall' } |
+            Select-Object -First 1
+          if (-not $app) { throw '安装完成后没有找到应用程序' }
+          $running = Start-Process -FilePath $app.FullName -PassThru
+          Start-Sleep -Seconds 8
+          if ($running.HasExited) { throw "应用启动后提前退出：$($running.ExitCode)" }
+          Stop-Process -Id $running.Id -Force
 
       # tauri-action 会在这一步之前把产物上传到草稿 Release，但草稿不会对用户可见。
       # 如果更新归档或 DMG 内的应用签名无效，这里让作业失败，发布者就不能把这批

@@ -310,6 +310,38 @@ async fn bark四百和五百都必须报错() {
 }
 
 #[tokio::test]
+async fn bark错误不会泄露设备密钥() {
+    let server = TestServer::start("500 Internal Error", "devkey 暂时不可用");
+    let err = Bark::new(server.base_url(), client())
+        .notify(&到货通知())
+        .await
+        .expect_err("服务端错误必须报错");
+    let text = err.to_string();
+    assert!(!text.contains("devkey"), "错误泄露了设备密钥：{text}");
+    assert!(
+        text.contains("***"),
+        "脱敏后仍应保留可识别的错误摘要：{text}"
+    );
+}
+
+#[tokio::test]
+async fn bark网络错误不会把完整请求地址写进日志文本() {
+    let secret = "super-secret-device-key";
+    let err = Bark::new(format!("http://127.0.0.1:9/{secret}"), client())
+        .with_timeout(Duration::from_millis(300))
+        .notify(&到货通知())
+        .await
+        .expect_err("不可达端口必须报错");
+    let text = err.to_string();
+    assert!(matches!(err, NotifyError::Transport { .. }));
+    assert!(!text.contains(secret), "网络错误泄露了设备密钥：{text}");
+    assert!(
+        !text.contains("127.0.0.1"),
+        "网络错误泄露了完整地址：{text}"
+    );
+}
+
+#[tokio::test]
 async fn bark两百响应体里的业务错误码也要报错() {
     let server = TestServer::start("200 OK", r#"{"code":400,"message":"device key 无效"}"#);
     let err = Bark::new(server.base_url(), client())

@@ -95,7 +95,7 @@ Release 提供 x64 的 `.deb` 和 `.AppImage`。安装包在 Ubuntu 24.04 上构
 **Debian / Ubuntu：**
 
 ```bash
-sudo apt install "./Apple.Store.Inventory.Monitor_1.0.9_amd64.deb"
+sudo apt install "./apple-store-inventory-monitor_1.0.9_amd64.deb"
 ```
 
 `apt` 会同时安装包声明的依赖。音频播放和托盘还需要 ALSA 与 AppIndicator 运行库。
@@ -103,14 +103,14 @@ sudo apt install "./Apple.Store.Inventory.Monitor_1.0.9_amd64.deb"
 **AppImage：**
 
 ```bash
-chmod +x "./Apple.Store.Inventory.Monitor_1.0.9_amd64.AppImage"
-"./Apple.Store.Inventory.Monitor_1.0.9_amd64.AppImage"
+chmod +x "./apple-store-inventory-monitor_1.0.9_amd64.AppImage"
+"./apple-store-inventory-monitor_1.0.9_amd64.AppImage"
 ```
 
 AppImage 需要 FUSE 2。Ubuntu 24.04 可以用 `sudo apt install libfuse2t64` 安装；也可以不安装 FUSE，直接解包运行：
 
 ```bash
-"./Apple.Store.Inventory.Monitor_1.0.9_amd64.AppImage" --appimage-extract-and-run
+"./apple-store-inventory-monitor_1.0.9_amd64.AppImage" --appimage-extract-and-run
 ```
 
 Linux 还需要自行安装 Chrome、Edge 或 Chromium。使用 Chromium 时，请确认终端可以运行 `chromium` 或 `chromium-browser`。
@@ -120,7 +120,7 @@ Linux 还需要自行安装 Chrome、Edge 或 Chromium。使用 Chromium 时，�
 - 支持 iPhone、iPad、Mac 和 Apple Watch。
 - 内置中国大陆、中国香港、中国台湾、日本、新加坡、澳大利亚和马来西亚的 Apple Store 列表。
 - 门店和型号都可以多选，添加时会自动生成全部组合。
-- 同一门店的多个型号合并查询，减少不必要的请求。
+- 同一门店的多个型号会合并查询；超过 Apple 单次稳定返回的 20 个零件号时自动分批，避免静默遗漏。
 - iPhone 型号选择和监控列表按代际优先显示新款；型号名称保留可确认的容量、颜色和规格。
 - 区分有货、无货、不支持取货、暂未开售、即将发售和暂不可购买，分别使用独立配色；查询失败保留为未确认状态。
 - 监控列表同时展示门店取货日期和 Apple 预计送货日期；具体日期按送达速度着色，只有周数范围时保留 Apple 原文，不自行推算日期。

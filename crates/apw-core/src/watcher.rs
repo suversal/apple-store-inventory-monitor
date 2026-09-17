@@ -35,6 +35,12 @@ use crate::model::{
     Availability, DeliveryRegion, PickupDetails, Target, TargetKey, UnknownReason, region_by_locale,
 };
 
+/// Apple 取货接口单次请求稳定返回的最大零件号数量。
+///
+/// 实测请求 21 个及以上零件号时，接口可能只返回前 20 个而不报错。调度层必须在
+/// 发请求之前分批，不能把被静默截断的型号长期留在「未返回」状态。
+pub const MAX_PARTS_PER_REQUEST: usize = 20;
+
 /// 单个监控目标的当前状态。
 ///
 /// 注意这里**没有**独立的 `last_error` 字段：原因就装在
@@ -348,7 +354,11 @@ async fn run_queries<F: Fetcher>(
     for group in groups {
         let client = client.clone();
         let sem = Arc::clone(&sem);
-        let delivery_region = delivery_region.clone();
+        // 省、市、区是中国大陆站专用参数。设置本身保留，方便用户切回大陆地区；
+        // 但绝不能带到香港、日本等地区的送货请求里。
+        let delivery_region = (group.locale == "zh_CN")
+            .then(|| delivery_region.clone())
+            .flatten();
         set.spawn(async move {
             // 拿不到许可只可能是信号量被关闭，这里不会发生；真发生了也只是
             // 少查一个门店，不该让整轮崩掉。
@@ -599,6 +609,11 @@ impl<F: Fetcher> Engine<F> {
             // 在飞的 HTTP 请求会跟着一起停。
             let groups = self.group_targets();
             let expected = expected_keys(&groups);
+            let store_count = groups
+                .iter()
+                .map(|group| (&group.locale, &group.store_number))
+                .collect::<BTreeSet<_>>()
+                .len();
             let mut locales: Vec<String> =
                 groups.iter().map(|group| group.locale.clone()).collect();
             locales.sort_unstable();
@@ -608,7 +623,7 @@ impl<F: Fetcher> Engine<F> {
             let started_at = Instant::now();
             self.emit_droppable(Event::CycleStarted {
                 cycle,
-                store_count: groups.len(),
+                store_count,
                 target_count: expected.len(),
             });
             let queries = run_queries(
@@ -752,7 +767,10 @@ impl<F: Fetcher> Engine<F> {
         self.states.values().cloned().collect()
     }
 
-    /// 把目标按 (地区, 门店) 聚合，使每个门店每轮只发一次请求。
+    /// 按 (地区, 门店) 聚合，并把每个请求控制在 Apple 的 20 个零件号上限内。
+    ///
+    /// 普通商品通常一条目标占一个零件号；Watch 取货还可能同时携带表带零件号，
+    /// 因此不能只按目标条数切片，必须按最终会发出的唯一零件号数量分批。
     fn group_targets(&self) -> Vec<StoreGroup> {
         let mut order: Vec<(String, String)> = Vec::new();
         let mut index: BTreeMap<(String, String), Vec<Target>> = BTreeMap::new();
@@ -765,17 +783,51 @@ impl<F: Fetcher> Engine<F> {
             index.entry(k).or_default().push(t.clone());
         }
 
-        order
-            .into_iter()
-            .map(|(locale, store_number)| {
-                let targets = index.remove(&(locale.clone(), store_number.clone()));
-                StoreGroup {
+        let mut groups = Vec::new();
+        for (locale, store_number) in order {
+            let targets = index
+                .remove(&(locale.clone(), store_number.clone()))
+                .unwrap_or_default();
+            let mut batch = Vec::new();
+            let mut parts = BTreeSet::new();
+
+            for target in targets {
+                let mut target_parts = vec![target.part_number.as_str()];
+                if let Some(companion) = target
+                    .companion_part
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|part| !part.is_empty())
+                {
+                    target_parts.push(companion);
+                }
+                let additional = target_parts
+                    .iter()
+                    .filter(|part| !parts.contains::<str>(*part))
+                    .count();
+
+                if !batch.is_empty() && parts.len() + additional > MAX_PARTS_PER_REQUEST {
+                    groups.push(StoreGroup {
+                        locale: locale.clone(),
+                        store_number: store_number.clone(),
+                        targets: std::mem::take(&mut batch),
+                    });
+                    parts.clear();
+                }
+
+                parts.extend(target_parts.into_iter().map(str::to_string));
+                batch.push(target);
+            }
+
+            if !batch.is_empty() {
+                groups.push(StoreGroup {
                     locale,
                     store_number,
-                    targets: targets.unwrap_or_default(),
-                }
-            })
-            .collect()
+                    targets: batch,
+                });
+            }
+        }
+        groups
     }
 
     /// 把一轮的结果写进状态，并发出相应事件。

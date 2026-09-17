@@ -912,11 +912,12 @@ export default function App() {
                       selectionUnit="个型号"
                       disabled={isAdding || productOptions.length === 0}
                     />
-                    {ui.category === "watch" ? (
-                      <p className="text-[11px] leading-4 text-muted-foreground">
-                        Watch 会先使用目录默认表带查询；也可在监控列表中按官网款式、颜色和尺码选择精确表带。
-                      </p>
-                    ) : null}
+                    <p className="text-[11px] leading-4 text-muted-foreground">
+                      单次查询最多包含 20 个零件号，超过后会自动分批，不会遗漏已选型号。
+                      {ui.category === "watch"
+                        ? " Watch 会先使用目录默认表带查询；也可在监控列表中按官网款式、颜色和尺码选择精确表带。"
+                        : ""}
+                    </p>
                   </div>
                 </div>
 

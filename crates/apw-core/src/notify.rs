@@ -231,7 +231,7 @@ impl Notifier for Bark {
             .await
             .map_err(|e| NotifyError::Transport {
                 channel: BARK.to_string(),
-                detail: e.to_string(),
+                detail: safe_transport_detail(&e),
             })?;
 
         let status = resp.status();
@@ -243,7 +243,7 @@ impl Notifier for Bark {
             return Err(NotifyError::Rejected {
                 channel: BARK.to_string(),
                 status: status.as_u16(),
-                body: summarize(&body),
+                body: redact_bark_secret(&summarize(&body), &self.base_url),
             });
         }
 
@@ -252,7 +252,7 @@ impl Notifier for Bark {
             return Err(NotifyError::Remote {
                 channel: BARK.to_string(),
                 code,
-                message,
+                message: redact_bark_secret(&message, &self.base_url),
             });
         }
         Ok(())
@@ -310,6 +310,35 @@ fn summarize(body: &[u8]) -> String {
     }
 }
 
+/// reqwest 的错误文本通常会附带完整请求 URL，而 Bark 的路径里就是设备密钥。
+/// 对用户只保留可操作的网络分类，不把 URL 搬进日志和界面。
+fn safe_transport_detail(error: &reqwest::Error) -> String {
+    if error.is_timeout() {
+        "请求超时".to_string()
+    } else if error.is_connect() {
+        "无法连接推送服务器".to_string()
+    } else if error.is_redirect() {
+        "推送服务器重定向异常".to_string()
+    } else if let Some(status) = error.status() {
+        format!("HTTP {}", status.as_u16())
+    } else {
+        "网络请求异常".to_string()
+    }
+}
+
+/// 防止 Bark 服务端把请求地址或设备 key 原样回显到错误响应中。
+fn redact_bark_secret(detail: &str, base_url: &str) -> String {
+    let mut redacted = detail.replace(base_url, "[Bark 地址已隐藏]");
+    if let Ok(url) = Url::parse(base_url) {
+        for segment in url.path_segments().into_iter().flatten() {
+            if !segment.is_empty() {
+                redacted = redacted.replace(segment, "***");
+            }
+        }
+    }
+    redacted
+}
+
 /// 组装 Bark 推送地址。
 ///
 /// Bark 的路径形式是 `/<设备key>/<标题>/<正文>`，另把要打开的链接放进 `url`
@@ -321,9 +350,9 @@ fn build_bark_url(base_url: &str, n: &Notification) -> Result<Url, NotifyError> 
     let mut u = Url::parse(base_url).map_err(|e| config_err(format!("地址无法解析：{e}")))?;
 
     if !matches!(u.scheme(), "http" | "https") || u.host_str().unwrap_or_default().is_empty() {
-        return Err(config_err(format!(
-            "地址必须是以 http:// 或 https:// 开头的完整地址，当前为 {base_url:?}"
-        )));
+        return Err(config_err(
+            "地址必须是以 http:// 或 https:// 开头的完整地址".to_string(),
+        ));
     }
 
     // 已经是转义形态的路径，原样拿来当前缀，不重新编码。
