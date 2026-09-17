@@ -74,3 +74,14 @@ test("Watch 日志明确标出送货查询使用的目录默认表带", () => {
   const text = describeCycleRow(1, { target: watch, availability: { kind: "in_stock" } });
   assert.match(text, /送货搭配表带=MKDY4FE\/A/);
 });
+
+test("Watch default 取货状态保留 Apple 待开放说明", () => {
+  const pending = row(
+    { kind: "unknown", reason: "pickup_pending" },
+    { pickupDisplay: "default", pickupQuote: "请于 9 月 18 日查看具体供应状况", saleReason: "SELL_IN_KIT_ONLY_RESTRICTION", saleMessage: "2-3 周" },
+  );
+  const status = describeMonitorStatus(pending);
+  assert.equal(status.label, "待开放取货");
+  assert.equal(status.tone, "comingSoon");
+  assert.match(status.detail, /default.*9 月 18 日/);
+});

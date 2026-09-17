@@ -68,6 +68,17 @@ fn 无法识别的取值绝不能变成无货() {
 }
 
 #[test]
+fn 新品默认状态是待开放而不是解析失败或无货() {
+    let raw = response(&part("default"));
+    let got = parse_pickup_message(raw.as_bytes(), "R683").expect("default 是已知业务状态");
+    assert_eq!(
+        got.parts["MG724CH/A"].availability,
+        Availability::Unknown(UnknownReason::PickupPending)
+    );
+    assert!(!got.parts["MG724CH/A"].availability.is_failure());
+}
+
+#[test]
 fn 信封里的错误优先于门店数据() {
     // 这条是独立审查找出来的：errorMessage 非空但 stores 也非空时，Go 版会
     // 无视错误照常解析，最终得出「无货」。

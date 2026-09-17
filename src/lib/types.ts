@@ -12,6 +12,7 @@
 
 export type UnknownReason =
   | { reason: "not_yet_checked" }
+  | { reason: "pickup_pending" }
   | { reason: "blocked"; detail: string }
   | { reason: "rate_limited" }
   | { reason: "cooling_down"; remaining_seconds: number; detail: string }
@@ -239,6 +240,8 @@ function describeUnknown(a: { kind: "unknown" } & UnknownReason): {
   switch (a.reason) {
     case "not_yet_checked":
       return { label: "待查询", tone: "pending", detail: "尚未轮到这一项" };
+    case "pickup_pending":
+      return { label: "待开放取货", tone: "comingSoon", detail: "Apple 尚未公布明确的门店取货状态" };
     case "blocked":
       return {
         label: "未知",
@@ -314,7 +317,7 @@ function describeTransportFailure(raw: string): string {
 
 /** 这一行的数据是否已经不可信。 */
 export function isUntrusted(a: Availability): boolean {
-  return a.kind === "unknown" && a.reason !== "not_yet_checked";
+  return a.kind === "unknown" && a.reason !== "not_yet_checked" && a.reason !== "pickup_pending";
 }
 
 export function formatTime(ms: number | null): string {

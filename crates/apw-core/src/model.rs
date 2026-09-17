@@ -57,6 +57,7 @@ impl Availability {
             Self::InStock => "有货",
             Self::OutOfStock => "无货",
             Self::Unknown(UnknownReason::NotYetChecked) => "待查询",
+            Self::Unknown(UnknownReason::PickupPending) => "待开放取货",
             Self::Unknown(UnknownReason::NoPickupData { .. }) => "暂无数据",
             Self::Unknown(UnknownReason::ProductNotReturned { .. }) => "未返回型号",
             Self::Unknown(UnknownReason::CoolingDown { .. }) => "冷却中",
@@ -80,8 +81,13 @@ impl Availability {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "reason", rename_all = "snake_case")]
 pub enum UnknownReason {
-    /// 刚加进监控列表，还没轮到它。这是唯一一种「正常」的未知。
+    /// 刚加进监控列表，还没轮到它。这是一种「正常」的未知。
     NotYetChecked,
+    /// Apple 已返回商品信息，但门店取货状态尚未开放或仍待公布。
+    ///
+    /// 新品开售前会返回 `pickupDisplay=default`，并通过 `pickupQuote` 告知
+    /// 用户稍后查看。这不是解析故障，也不能被当成无货。
+    PickupPending,
     /// 请求被 Apple 边缘节点拦截。
     ///
     /// Apple 的商品页会先完成浏览器环境校验；缺少有效页面会话的请求可能返回
@@ -113,6 +119,7 @@ impl UnknownReason {
     pub fn describe(&self) -> String {
         match self {
             Self::NotYetChecked => "尚未查询".to_string(),
+            Self::PickupPending => "Apple 尚未公布明确的门店取货状态".to_string(),
             Self::Blocked { detail } => format!("请求被 Apple 拦截：{detail}"),
             Self::RateLimited => "请求过于频繁被限流，正在退避".to_string(),
             Self::CoolingDown {
@@ -137,9 +144,10 @@ impl UnknownReason {
 
     /// 这个原因是否代表一次真正的故障。
     ///
-    /// `NotYetChecked` 只是还没轮到，不该被算进失败数，也不该触发告警或退避。
+    /// `NotYetChecked` 只是还没轮到，`PickupPending` 是 Apple 尚未开放取货；
+    /// 两者都不该被算进失败数，也不该触发告警或退避。
     pub fn is_failure(&self) -> bool {
-        !matches!(self, Self::NotYetChecked)
+        !matches!(self, Self::NotYetChecked | Self::PickupPending)
     }
 }
 
@@ -561,6 +569,7 @@ mod tests {
     #[test]
     fn 尚未查询不算故障() {
         assert!(!UnknownReason::NotYetChecked.is_failure());
+        assert!(!UnknownReason::PickupPending.is_failure());
         assert!(UnknownReason::RateLimited.is_failure());
         assert!(
             UnknownReason::Blocked {

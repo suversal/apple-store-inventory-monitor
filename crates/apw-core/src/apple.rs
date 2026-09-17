@@ -763,7 +763,8 @@ fn check_envelope(resp: &PickupResponse) -> Result<(), ApiError> {
 /// 把 Apple 的 `pickupDisplay` 字段翻译成三态。
 ///
 /// 已实际观测到的取值：`available`（可取货）、`unavailable`（不可取货）、
-/// `ineligible`（该型号在此门店不支持到店取货）。
+/// `ineligible`（该型号在此门店不支持到店取货）、`default`（新品的取货状态
+/// 尚待开放或公布，具体说明由 `pickupQuote` 提供）。
 ///
 /// 未知取值一律归为 `Unknown` 并带上原始值，而不是 `OutOfStock` —— 猜错成
 /// 「无货」会让用户错过机会，猜错成「未知」只是让用户多看一眼。同样重要的是，
@@ -773,6 +774,7 @@ pub fn availability_from(pickup_display: &str) -> Availability {
     match pickup_display.trim().to_ascii_lowercase().as_str() {
         "available" => Availability::InStock,
         "unavailable" | "ineligible" => Availability::OutOfStock,
+        "default" => Availability::Unknown(UnknownReason::PickupPending),
         other => Availability::Unknown(UnknownReason::SchemaDrift {
             field: "pickupDisplay".into(),
             raw: other.to_string(),

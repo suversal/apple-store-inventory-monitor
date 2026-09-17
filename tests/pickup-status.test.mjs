@@ -22,3 +22,11 @@ test("保护冷却明确显示等待时间且不建议用户重启", () => {
   assert.match(presentation.detail, /299 秒后自动探测/);
   assert.match(describeAdvice("wait_for_retry"), /无需手动重启/);
 });
+
+test("新品 default 状态显示待开放取货且不计为故障", () => {
+  const state = { kind: "unknown", reason: "pickup_pending" };
+  const presentation = describeAvailability(state);
+  assert.equal(presentation.label, "待开放取货");
+  assert.equal(presentation.tone, "comingSoon");
+  assert.equal(isUntrusted(state), false);
+});

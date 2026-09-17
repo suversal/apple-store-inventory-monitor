@@ -210,7 +210,7 @@ function DeliveryBadge({ pickupDetails, lastCheckedMs }: { pickupDetails?: Picku
     <Tooltip>
       <TooltipTrigger asChild>
         <span
-          className={`inline-grid min-w-24 max-w-48 cursor-help grid-cols-[auto_minmax(0,1fr)] items-center gap-x-1.5 rounded-lg border px-2 py-1.5 ${DELIVERY_CLASS[delivery.tone]}`}
+          className={`inline-grid min-w-24 max-w-48 cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-x-1.5 rounded-lg border px-2 py-1.5 ${DELIVERY_CLASS[delivery.tone]}`}
           aria-label={`预计送货：${delivery.detail}；${delivery.timing}`}
         >
           <span className="size-1.5 rounded-full bg-current" aria-hidden="true" />
@@ -836,7 +836,7 @@ export default function App() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 lg:grid-cols-[0.9fr_0.9fr_1.3fr_2fr]">
+                <div className="grid grid-cols-2 items-start gap-3 lg:grid-cols-[0.9fr_0.9fr_1.3fr_2fr]">
                   <div className="field-group">
                     <Label className="control-label">
                       <MapPin className="size-3.5" aria-hidden="true" /> 地区
@@ -978,12 +978,12 @@ export default function App() {
                 </div>
 
                 <ScrollArea className="min-h-0 flex-1">
-                  <Table className="table-fixed">
+                  <Table className="min-w-[1024px] table-fixed">
                     <TableHeader className="sticky top-0 z-10 bg-card/95">
                       <TableRow className="hover:bg-transparent">
-                        <TableHead className="w-24 px-4 text-xs text-muted-foreground">取货状态</TableHead>
-                        <TableHead className="w-36 px-3 text-xs text-muted-foreground">门店</TableHead>
-                        <TableHead className="px-3 text-xs text-muted-foreground">型号</TableHead>
+                        <TableHead className="w-36 px-4 text-xs text-muted-foreground">取货状态</TableHead>
+                        <TableHead className="w-44 px-4 text-xs text-muted-foreground">门店</TableHead>
+                        <TableHead className="px-4 text-xs text-muted-foreground">型号</TableHead>
                         <TableHead className="w-48 px-3 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1.5"><Truck className="size-3.5" aria-hidden="true" />预计送货</span>
                         </TableHead>
@@ -1013,8 +1013,8 @@ export default function App() {
                         sortedRows.map((row) => (
                           <TableRow key={targetKey(row.target)} className="group hover:bg-muted/22">
                             <TableCell className="px-4"><StatusBadge availability={row.availability} pickupDetails={row.pickupDetails} /></TableCell>
-                            <TableCell className="truncate px-3 font-medium" title={row.target.storeTitle}>{row.target.storeTitle}</TableCell>
-                            <TableCell className="min-w-0 px-3 py-2.5 text-muted-foreground" title={row.target.productName}>
+                            <TableCell className="truncate px-4 font-medium" title={row.target.storeTitle}>{row.target.storeTitle}</TableCell>
+                            <TableCell className="min-w-0 px-4 py-2.5 text-muted-foreground" title={row.target.productName}>
                               <button
                                 className="block max-w-full whitespace-normal text-left leading-5 hover:text-primary hover:underline"
                                 aria-label={`打开商品页：${row.target.productName}`}

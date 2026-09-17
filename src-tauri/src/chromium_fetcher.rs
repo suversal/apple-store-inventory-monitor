@@ -950,7 +950,7 @@ impl Fetcher for AppleChromiumFetcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use apw_core::model::region_by_locale;
+    use apw_core::model::{Availability, UnknownReason, region_by_locale};
 
     fn test_target(part: &str) -> Target {
         Target {
@@ -1432,6 +1432,45 @@ mod tests {
             message.contains("2026/"),
             "应为精确日期而不是周范围：{message}"
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "用户现场 Series 12 双型号诊断，需要本机 Chromium 与 Apple 官网网络"]
+    async fn 真实series_12双型号取货响应可以解析() {
+        let region = region_by_locale("zh_CN").unwrap();
+        let fetcher = AppleChromiumFetcher::new();
+        let targets: Vec<_> = ["MJKE4CH/B", "MJKD4CH/B"]
+            .into_iter()
+            .map(|part| {
+                let mut target = test_target(part);
+                target.companion_part = Some("MJUY4FE/A".into());
+                target.kit_part = Some("Z0YQ".into());
+                target
+            })
+            .collect();
+        let destination = DeliveryRegion {
+            state: "江苏".into(),
+            city: "苏州".into(),
+            district: "吴江区".into(),
+        };
+        let result = fetcher
+            .pickup(region, "R678", &targets, Some(&destination))
+            .await
+            .expect("Series 12 双型号查询应成功");
+        eprintln!("Series 12 双型号取货响应：{result:#?}");
+        for target in &targets {
+            let status = result
+                .parts
+                .get(&target.part_number)
+                .unwrap_or_else(|| panic!("响应缺少 {}", target.part_number));
+            assert_eq!(
+                status.availability,
+                Availability::Unknown(UnknownReason::PickupPending),
+                "{} 应识别为正常的待开放取货状态",
+                target.part_number
+            );
+            assert!(!status.availability.is_failure());
+        }
     }
 
     /// 现场契约：香港六店同一型号应由首个 searchNearby 响应覆盖，后五店不再出站。
