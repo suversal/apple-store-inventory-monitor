@@ -484,7 +484,7 @@ pub trait Fetcher: Clone + Send + Sync + 'static {
         async { CycleStats::default() }
     }
 
-    /// 按请求预算或地区冷却计算下一轮至少还要等待多久。
+    /// 按地区保护冷却计算下一轮至少还要等待多久。
     fn schedule_hint(
         &self,
         _locales: &[String],

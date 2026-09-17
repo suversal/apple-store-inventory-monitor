@@ -109,7 +109,7 @@ pub enum Event {
         /// 调度器实际采用的下一轮等待秒数。
         #[serde(rename = "nextCheckInSecs")]
         next_check_in_secs: u64,
-        /// 下一轮是否因请求预算或保护冷却而晚于正常节奏。
+        /// 下一轮是否因保护冷却而晚于正常节奏。
         paced: bool,
         /// 本轮是否所有目标都拿到了明确答复。
         ///
@@ -151,7 +151,7 @@ impl Default for WatcherConfig {
     fn default() -> Self {
         Self {
             interval: Duration::from_secs(30),
-            jitter: 0.2,
+            jitter: 0.0,
             concurrency: 4,
             event_buffer: 256,
             delivery_region: None,

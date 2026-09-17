@@ -177,11 +177,11 @@ fn count_in_stock(events: &[Event]) -> usize {
 }
 
 #[derive(Clone, Default)]
-struct PacedFetcher {
+struct ProtectedFetcher {
     calls: Arc<AtomicUsize>,
 }
 
-impl Fetcher for PacedFetcher {
+impl Fetcher for ProtectedFetcher {
     async fn cycle_stats(&self) -> CycleStats {
         CycleStats {
             request_count: 3,
@@ -212,8 +212,8 @@ impl Fetcher for PacedFetcher {
 }
 
 #[tokio::test]
-async fn 请求预算会驱动真实下轮时间与负载统计() {
-    let fake = PacedFetcher::default();
+async fn 保护冷却会驱动真实下轮时间与负载统计() {
+    let fake = ProtectedFetcher::default();
     let (watcher, mut rx) = Watcher::spawn(fake.clone(), fast_config());
     watcher.set_targets(vec![target("R683", "MG724CH/A")]).await;
     watcher.start().await;
@@ -243,8 +243,37 @@ async fn 请求预算会驱动真实下轮时间与负载统计() {
     assert_eq!(
         fake.calls.load(Ordering::SeqCst),
         1,
-        "预算提示生效前不应提前开始下一轮"
+        "保护冷却生效前不应提前开始下一轮"
     );
+    watcher.stop().await;
+}
+
+#[tokio::test]
+async fn 正常轮次严格使用用户设置的三十秒间隔() {
+    let fake =
+        FakeFetcher::new(|_, store, parts| Ok(ok_response(store, parts, Availability::OutOfStock)));
+    let config = WatcherConfig {
+        interval: Duration::from_secs(30),
+        jitter: 0.0,
+        ..fast_config()
+    };
+    let (watcher, mut rx) = Watcher::spawn(fake, config);
+    watcher.set_targets(vec![target("R683", "MG724CH/A")]).await;
+    watcher.start().await;
+
+    let events = wait_cycle(&mut rx).await;
+    let completed = events
+        .iter()
+        .find_map(|event| match event {
+            Event::CycleComplete {
+                next_check_in_secs,
+                paced,
+                ..
+            } => Some((*next_check_in_secs, *paced)),
+            _ => None,
+        })
+        .expect("应收到轮次完成事件");
+    assert_eq!(completed, (30, false));
     watcher.stop().await;
 }
 

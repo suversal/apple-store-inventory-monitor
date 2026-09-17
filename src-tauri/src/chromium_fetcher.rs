@@ -38,8 +38,6 @@ const MAX_RESPONSE_BYTES: usize = 4 << 20;
 const FALLBACK_CHROMIUM_MAJOR: u32 = 152;
 const MAX_EXCEPTION_SUMMARY_CHARS: usize = 160;
 const DELIVERY_CACHE_TTL: Duration = Duration::from_secs(60);
-const REQUEST_BUDGET_CAPACITY: u32 = 20;
-const REQUEST_BUDGET_REFILL: Duration = Duration::from_secs(60);
 const PROBE_RETRY_AFTER_TRANSIENT_ERROR: Duration = Duration::from_secs(60);
 const COOLDOWN_STEPS: [Duration; 4] = [
     Duration::from_secs(5 * 60),
@@ -593,86 +591,17 @@ pub struct AppleChromiumFetcher {
 
 type PickupCacheKey = (&'static str, Vec<String>, Option<DeliveryRegion>);
 
-#[derive(Debug)]
-struct RequestBudget {
-    tokens: f64,
-    updated: Instant,
-}
-
-impl RequestBudget {
-    fn new(now: Instant) -> Self {
-        Self {
-            tokens: f64::from(REQUEST_BUDGET_CAPACITY),
-            updated: now,
-        }
-    }
-
-    fn refill(&mut self, now: Instant) {
-        let elapsed = now.saturating_duration_since(self.updated);
-        let gained = elapsed.as_secs_f64() / REQUEST_BUDGET_REFILL.as_secs_f64();
-        self.tokens = (self.tokens + gained).min(f64::from(REQUEST_BUDGET_CAPACITY));
-        self.updated = now;
-    }
-
-    /// 只计算等待时间，不预约、不扣额度。等待 future 被取消时不会留下虚假欠账。
-    fn available_in(&mut self, now: Instant) -> Duration {
-        self.available_for_in(now, 1)
-    }
-
-    /// 准备好一整轮预计请求数还要多久。这里只做估算，不提前扣额度。
-    fn available_for_in(&mut self, now: Instant, requests: u32) -> Duration {
-        self.refill(now);
-        let shortfall = f64::from(requests) - self.tokens;
-        if shortfall <= 0.0 {
-            Duration::ZERO
-        } else {
-            REQUEST_BUDGET_REFILL.mul_f64(shortfall)
-        }
-    }
-
-    fn take(&mut self, now: Instant) -> bool {
-        self.refill(now);
-        if self.tokens < 1.0 {
-            return false;
-        }
-        self.tokens -= 1.0;
-        true
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct RequestGate {
-    budget: RequestBudget,
     last_sent: Option<Instant>,
     cycle_request_count: u32,
 }
 
-impl Default for RequestGate {
-    fn default() -> Self {
-        Self {
-            budget: RequestBudget::new(Instant::now()),
-            last_sent: None,
-            cycle_request_count: 0,
-        }
-    }
-}
-
 impl RequestGate {
     fn next_delay(&mut self, now: Instant) -> Duration {
-        let interval = self
-            .last_sent
+        self.last_sent
             .map(|last| (last + MIN_REQUEST_INTERVAL).saturating_duration_since(now))
-            .unwrap_or_default();
-        interval.max(self.budget.available_in(now))
-    }
-
-    fn next_cycle_delay(&mut self, now: Instant) -> Duration {
-        let expected_requests = self.cycle_request_count.max(1);
-        let interval = self
-            .last_sent
-            .map(|last| (last + MIN_REQUEST_INTERVAL).saturating_duration_since(now))
-            .unwrap_or_default();
-        interval.max(self.budget.available_for_in(now, expected_requests))
+            .unwrap_or_default()
     }
 
     async fn acquire(&mut self) {
@@ -684,12 +613,7 @@ impl RequestGate {
                 continue;
             }
 
-            // 额度只在即将进入真实 fetch 前扣除。若监控在上面的等待期间暂停，
-            // future 会直接被丢弃，这里不会运行，也就不会产生上游实现的虚假欠账。
             let now = Instant::now();
-            if !self.budget.take(now) {
-                continue;
-            }
             self.last_sent = Some(now);
             self.cycle_request_count = self.cycle_request_count.saturating_add(1);
             return;
@@ -788,9 +712,7 @@ impl QueryState {
 
     fn schedule_hint(&mut self, locales: &[String]) -> ScheduleHint {
         let now = Instant::now();
-        // 以上一轮实际产生的网络请求数估算下一轮，而不是只等到够发第一条就开跑。
-        // 否则预算不足时，界面会长时间停在“正在查询”，其余请求仍在轮内排队。
-        let mut delay = self.gate.next_cycle_delay(now);
+        let mut delay = Duration::ZERO;
 
         if !locales.is_empty() {
             let mut all_cooling = true;
@@ -1184,33 +1106,38 @@ mod tests {
     }
 
     #[test]
-    fn 请求预算等待不会预扣额度() {
+    fn 真实请求只保留两秒最小间隔() {
         let start = Instant::now();
-        let mut budget = RequestBudget::new(start);
-        for _ in 0..REQUEST_BUDGET_CAPACITY {
-            assert!(budget.take(start));
-        }
-        assert!(!budget.take(start));
-        let before = budget.tokens;
-        assert_eq!(budget.available_in(start), REQUEST_BUDGET_REFILL);
-        assert_eq!(budget.available_in(start), REQUEST_BUDGET_REFILL);
-        assert_eq!(budget.tokens, before, "只查看等待时间不应欠下未来额度");
-        assert!(budget.take(start + REQUEST_BUDGET_REFILL));
+        let mut gate = RequestGate {
+            last_sent: Some(start),
+            ..RequestGate::default()
+        };
+        assert_eq!(gate.next_delay(start), MIN_REQUEST_INTERVAL);
+        assert_eq!(
+            gate.next_delay(start + Duration::from_secs(1)),
+            Duration::from_secs(1)
+        );
+        assert_eq!(
+            gate.next_delay(start + MIN_REQUEST_INTERVAL),
+            Duration::ZERO
+        );
     }
 
     #[test]
-    fn 下一轮预算会等待整轮额度而不是只等第一条() {
-        let start = Instant::now();
-        let mut gate = RequestGate {
-            budget: RequestBudget::new(start),
-            ..RequestGate::default()
-        };
-        for _ in 0..REQUEST_BUDGET_CAPACITY {
-            assert!(gate.budget.take(start));
-        }
-        gate.cycle_request_count = 3;
-        assert_eq!(gate.next_cycle_delay(start), REQUEST_BUDGET_REFILL * 3,);
-        assert_eq!(gate.budget.tokens, 0.0, "调度估算不应提前扣额度");
+    fn 正常轮次不会因历史请求量额外延后() {
+        let mut state = QueryState::default();
+        state.gate.cycle_request_count = 4;
+        assert_eq!(
+            state.schedule_hint(&["zh_CN".to_string()]),
+            ScheduleHint::default()
+        );
+
+        state.begin_cycle();
+        state.gate.cycle_request_count = 4;
+        assert_eq!(
+            state.schedule_hint(&["zh_CN".to_string()]),
+            ScheduleHint::default()
+        );
     }
 
     #[test]

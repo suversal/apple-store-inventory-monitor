@@ -42,7 +42,7 @@ const MAX_LOG_LINES = 300;
 export interface UiState {
   rows: TargetState[];
   running: boolean;
-  /** 调度器给出的真实下一轮时间；请求预算和冷却会反映在这里。 */
+  /** 调度器给出的真实下一轮时间；保护冷却会反映在这里。 */
   nextCheckAtMs: number | null;
   /** 下一轮是否被 Apple 请求保护节奏主动推迟。 */
   paced: boolean;
@@ -186,7 +186,7 @@ function applyEvent(event: WatcherEvent): void {
         `第 ${event.cycle} 轮完成（${formatElapsed(event.elapsedMs)}，实际请求 ${event.requestCount} 次` +
         `${event.reusedResponseCount > 0 ? `，批量响应覆盖 ${event.reusedResponseCount} 家门店` : ""}）：` +
         `${describeCycleSummary(event.snapshot)}。约 ${event.nextCheckInSecs} 秒后查询` +
-        `${event.paced ? "（已按请求预算或保护冷却调整）" : ""}。`,
+        `${event.paced ? "（已按 Apple 保护冷却调整）" : ""}。`,
       );
       pushLogs(lines);
       break;
