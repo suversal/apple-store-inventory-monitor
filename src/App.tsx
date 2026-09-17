@@ -978,7 +978,16 @@ export default function App() {
                 </div>
 
                 <ScrollArea className="min-h-0 flex-1">
-                  <Table className="min-w-[1024px] table-fixed">
+                  <Table className="min-w-[1104px] table-fixed">
+                    <colgroup>
+                      <col className="w-36" />
+                      <col className="w-44" />
+                      <col className="w-[22rem]" />
+                      <col className="w-48" />
+                      <col className="w-24" />
+                      <col className="w-24" />
+                      <col className="w-12" />
+                    </colgroup>
                     <TableHeader className="sticky top-0 z-10 bg-card/95">
                       <TableRow className="hover:bg-transparent">
                         <TableHead className="w-36 px-4 text-xs text-muted-foreground">取货状态</TableHead>
