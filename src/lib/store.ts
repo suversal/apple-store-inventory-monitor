@@ -30,7 +30,7 @@ import type {
   WatchBandSize,
   WatcherEvent,
 } from "./types";
-import { assertNever } from "./types";
+import { assertNever, targetKey } from "./types";
 import { describeCycleRow, describeCycleSummary } from "./monitorLog";
 
 import { describeUpdateError, type UpdateProgress } from "./updateStatus";
@@ -338,23 +338,38 @@ export async function changeLocale(locale: string): Promise<void> {
   await loadCatalog(locale);
 }
 
-export async function setTargets(targets: Target[]): Promise<boolean> {
-  return enqueueSettingsWrite(async () => {
-    try {
-      const rows = await invoke<TargetState[]>("set_targets", { targets });
-      const activeParts = new Set(targets.map((target) => target.partNumber));
-      const productBarkUrls = Object.fromEntries(
-        Object.entries(state.settings.productBarkUrls).filter(([partNumber]) =>
-          activeParts.has(partNumber),
-        ),
-      );
-      update({ rows, settings: { ...state.settings, targets, productBarkUrls } });
-      return true;
-    } catch (err) {
-      pushLog(`更新监控列表失败：${String(err)}`);
-      return false;
-    }
-  });
+async function writeTargets(targets: Target[]): Promise<boolean> {
+  try {
+    const rows = await invoke<TargetState[]>("set_targets", { targets });
+    const activeParts = new Set(targets.map((target) => target.partNumber));
+    const productBarkUrls = Object.fromEntries(
+      Object.entries(state.settings.productBarkUrls).filter(([partNumber]) =>
+        activeParts.has(partNumber),
+      ),
+    );
+    update({ rows, settings: { ...state.settings, targets, productBarkUrls } });
+    return true;
+  } catch (err) {
+    pushLog(`更新监控列表失败：${String(err)}`);
+    return false;
+  }
+}
+
+export function setTargets(targets: Target[]): Promise<boolean> {
+  return enqueueSettingsWrite(() => writeTargets(targets));
+}
+
+/**
+ * 删除单条监控。
+ *
+ * 必须在设置写队列开始执行时才读取最新列表：用户连续点击两个删除按钮时，
+ * 后一次操作不能带着点击时的旧快照，把前一次已经删掉的项目重新写回去。
+ */
+export function removeTarget(target: Target): Promise<boolean> {
+  const key = targetKey(target);
+  return enqueueSettingsWrite(() =>
+    writeTargets(state.settings.targets.filter((item) => targetKey(item) !== key)),
+  );
 }
 
 /** 为一个型号设置专属 Bark；空地址表示恢复使用默认 Bark。 */

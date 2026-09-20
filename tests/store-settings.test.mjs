@@ -92,6 +92,31 @@ test("interval and target commands cannot be overwritten by queued settings", as
   assert.deepEqual(ctx.persisted(), { ...defaults, intervalSeconds: 15, targets, soundEnabled: false });
 });
 
+test("rapid removals use the latest queued target list", async () => {
+  const ctx = await setup();
+  const target = (partNumber) => ({
+    locale: "zh_CN", storeNumber: "R390", storeTitle: "Test",
+    partNumber, productName: partNumber,
+  });
+  const firstTarget = target("FIRST/A");
+  const secondTarget = target("SECOND/A");
+  const retainedTarget = target("RETAINED/A");
+  await ctx.store.setTargets([firstTarget, secondTarget, retainedTarget]);
+  ctx.calls.length = 0;
+
+  ctx.block();
+  const firstRemoval = ctx.store.removeTarget(firstTarget);
+  await tick();
+  const secondRemoval = ctx.store.removeTarget(secondTarget);
+  await tick();
+  assert.deepEqual(ctx.calls, ["set_targets"]);
+
+  ctx.release();
+  await Promise.all([firstRemoval, secondRemoval]);
+  assert.deepEqual(ctx.calls, ["set_targets", "set_targets"]);
+  assert.deepEqual(ctx.persisted().targets, [retainedTarget]);
+});
+
 test("test notification waits for the cleared Bark address to finish saving", async () => {
   const ctx = await setup();
   ctx.block();

@@ -6,6 +6,7 @@ import {
   BellRing,
   Clock3,
   Download,
+  LoaderCircle,
   MapPin,
   PackageCheck,
   PackageX,
@@ -77,6 +78,7 @@ import {
   openReleasePage,
   openTargetProduct,
   refreshProducts,
+  removeTarget,
   retryWatchingNow,
   saveSettings,
   setCategory,
@@ -488,6 +490,8 @@ export default function App() {
   const [storeNumbers, setStoreNumbers] = useState<string[]>([]);
   const [partNumbers, setPartNumbers] = useState<string[]>([]);
   const [isAdding, setIsAdding] = useState(false);
+  const [removingTargetKeys, setRemovingTargetKeys] = useState<Set<string>>(() => new Set());
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [barkDraft, setBarkDraft] = useState<string | null>(null);
   const [intervalDraft, setIntervalDraft] = useState<number | null>(null);
@@ -682,7 +686,21 @@ export default function App() {
   }
 
   async function onRemove(target: Target) {
-    await setTargets(targets.filter((item) => targetKey(item) !== targetKey(target)));
+    const key = targetKey(target);
+    setRemoveError(null);
+    setRemovingTargetKeys((current) => new Set(current).add(key));
+    try {
+      const removed = await removeTarget(target);
+      if (!removed) {
+        setRemoveError(`未能删除“${compactProductName(target.productName)}”，请查看活动日志中的具体原因后重试。`);
+      }
+    } finally {
+      setRemovingTargetKeys((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
   }
 
   async function onRetryNow() {
@@ -1002,6 +1020,13 @@ export default function App() {
                   </span>
                 </div>
 
+                {removeError ? (
+                  <div role="alert" className="flex shrink-0 items-start gap-2 border-b border-destructive/20 bg-destructive/8 px-4 py-2.5 text-xs leading-5 text-destructive">
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                    <span>{removeError}</span>
+                  </div>
+                ) : null}
+
                 <ScrollArea className="min-h-0 flex-1">
                   <Table className="min-w-[1104px] table-fixed">
                     <colgroup>
@@ -1044,11 +1069,14 @@ export default function App() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        sortedRows.map((row) => (
-                          <TableRow key={targetKey(row.target)} className="group hover:bg-muted/22">
-                            <TableCell className="px-4"><StatusBadge availability={row.availability} pickupDetails={row.pickupDetails} /></TableCell>
-                            <TableCell className="truncate px-4 font-medium" title={row.target.storeTitle}>{row.target.storeTitle}</TableCell>
-                            <TableCell className="min-w-0 px-4 py-2.5 text-muted-foreground" title={row.target.productName}>
+                        sortedRows.map((row) => {
+                          const rowKey = targetKey(row.target);
+                          const removing = removingTargetKeys.has(rowKey);
+                          return (
+                            <TableRow key={rowKey} className="group hover:bg-muted/22">
+                              <TableCell className="px-4"><StatusBadge availability={row.availability} pickupDetails={row.pickupDetails} /></TableCell>
+                              <TableCell className="truncate px-4 font-medium" title={row.target.storeTitle}>{row.target.storeTitle}</TableCell>
+                              <TableCell className="min-w-0 px-4 py-2.5 text-muted-foreground" title={row.target.productName}>
                               <button
                                 className="block max-w-full whitespace-normal text-left leading-5 hover:text-primary hover:underline"
                                 aria-label={`打开商品页：${row.target.productName}`}
@@ -1064,34 +1092,36 @@ export default function App() {
                                   disabled={isAdding}
                                 />
                               ) : null}
-                            </TableCell>
-                            <TableCell className="overflow-hidden px-2">
-                              <DeliveryBadge pickupDetails={row.pickupDetails} lastCheckedMs={row.lastCheckedMs} />
-                            </TableCell>
-                            <TableCell className="px-2 font-mono text-xs tabular-nums text-muted-foreground">
-                              {formatTime(row.lastCheckedMs)}
-                            </TableCell>
-                            <TableCell className="px-1">
-                              <ProductBarkRoute
-                                target={row.target}
-                                customUrl={ui.settings.productBarkUrls[row.target.partNumber]}
-                                disabled={isAdding}
-                              />
-                            </TableCell>
-                            <TableCell className="sticky right-0 z-10 border-l border-border/40 bg-card/95 pr-2 group-hover:bg-muted">
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                className="text-muted-foreground opacity-80 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                                aria-label="删除这条监控"
-                                disabled={isAdding}
-                                onClick={() => void onRemove(row.target)}
-                              >
-                                <Trash2 />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))
+                              </TableCell>
+                              <TableCell className="overflow-hidden px-2">
+                                <DeliveryBadge pickupDetails={row.pickupDetails} lastCheckedMs={row.lastCheckedMs} />
+                              </TableCell>
+                              <TableCell className="px-2 font-mono text-xs tabular-nums text-muted-foreground">
+                                {formatTime(row.lastCheckedMs)}
+                              </TableCell>
+                              <TableCell className="px-1">
+                                <ProductBarkRoute
+                                  target={row.target}
+                                  customUrl={ui.settings.productBarkUrls[row.target.partNumber]}
+                                  disabled={isAdding}
+                                />
+                              </TableCell>
+                              <TableCell className="sticky right-0 z-10 border-l border-border/40 bg-card/95 pr-2 group-hover:bg-muted">
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="text-muted-foreground opacity-80 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                                  aria-label={removing ? "正在删除这条监控" : "删除这条监控"}
+                                  aria-busy={removing}
+                                  disabled={isAdding || removing}
+                                  onClick={() => void onRemove(row.target)}
+                                >
+                                  {removing ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Trash2 />}
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
                       )}
                     </TableBody>
                   </Table>
