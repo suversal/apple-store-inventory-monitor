@@ -30,3 +30,6 @@ futures-util = "0.3"
 tempfile = "3"
 tokio.workspace = true
 tokio-tungstenite = "0.28"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

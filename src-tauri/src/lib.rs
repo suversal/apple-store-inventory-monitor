@@ -248,6 +248,7 @@ struct CategoryDto {
 
 struct AppState {
     watcher: Watcher,
+    fetcher: AppleChromiumFetcher,
     catalog: Catalog,
     http: reqwest::Client,
     /// 设置的内存副本。有可用的持久化存储时，只在新设置成功落盘后更新。
@@ -953,7 +954,19 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "show" => reveal_window(app),
-            "quit" => app.exit(0),
+            "quit" => {
+                // `app.exit()` 会立即结束事件循环，不能指望托管状态的析构顺序替
+                // Chromium 收尾。先停掉可能正在查询的一轮，再显式释放浏览器树。
+                let state = app.state::<AppState>();
+                let watcher = state.watcher.clone();
+                let fetcher = state.fetcher.clone();
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    watcher.stop().await;
+                    fetcher.shutdown().await;
+                    app.exit(0);
+                });
+            }
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -1074,8 +1087,8 @@ pub fn run() {
                 delivery_region: settings.delivery_region.clone(),
                 ..WatcherConfig::default()
             };
-            let (watcher, events, engine) =
-                Watcher::new(AppleChromiumFetcher::new(), watcher_config);
+            let fetcher = AppleChromiumFetcher::new();
+            let (watcher, events, engine) = Watcher::new(fetcher.clone(), watcher_config);
             tauri::async_runtime::spawn(engine);
 
             {
@@ -1090,6 +1103,7 @@ pub fn run() {
 
             app.manage(AppState {
                 watcher,
+                fetcher,
                 catalog,
                 http: reqwest::Client::new(),
                 settings: RwLock::new(settings),

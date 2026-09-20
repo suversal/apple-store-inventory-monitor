@@ -57,8 +57,22 @@ struct DebugTarget {
 }
 
 #[derive(Debug)]
-struct ChromiumSession {
+struct ChromiumProcess {
     child: Child,
+    /// Unix 下为 Chromium 独立进程组的 ID；退出时必须清理整个多进程树。
+    process_group_id: Option<u32>,
+}
+
+impl Drop for ChromiumProcess {
+    fn drop(&mut self) {
+        terminate_chromium(&mut self.child, self.process_group_id);
+    }
+}
+
+#[derive(Debug)]
+struct ChromiumSession {
+    /// 必须放在会话建立的最早阶段。DevTools 连接前任一错误返回，都要回收进程树。
+    _process: ChromiumProcess,
     _profile: TempDir,
     socket: Socket,
     next_command_id: u64,
@@ -66,11 +80,31 @@ struct ChromiumSession {
     delivery_cache: HashMap<String, (Instant, Option<String>)>,
 }
 
-impl Drop for ChromiumSession {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+fn terminate_chromium(child: &mut Child, process_group_id: Option<u32>) {
+    #[cfg(unix)]
+    if let Some(process_group_id) = process_group_id {
+        // Chromium 会再派生 renderer、GPU、utility 等子进程。只 kill 主进程会让
+        // 它们被 launchd/systemd 接管，最终表现为 Dock 认为 Chrome 仍在运行。
+        // 独立进程组让我们可以先温和终止整棵树，再用 SIGKILL 做有界兜底。
+        let group = -(process_group_id as i32);
+        unsafe {
+            libc::kill(group, libc::SIGTERM);
+        }
+        for _ in 0..10 {
+            if child.try_wait().ok().flatten().is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        unsafe {
+            libc::kill(group, libc::SIGKILL);
+        }
+        let _ = child.wait();
+        return;
     }
+
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 impl ChromiumSession {
@@ -92,7 +126,8 @@ impl ChromiumSession {
             .map_err(|e| ApiError::Transport(format!("无法创建 Chromium 临时目录：{e}")))?;
         let profile_arg = format!("--user-data-dir={}", profile.path().display());
         let user_agent_arg = format!("--user-agent={user_agent}");
-        let mut child = Command::new(chrome)
+        let mut command = Command::new(chrome);
+        command
             .args([
                 "--headless=new",
                 "--remote-debugging-port=0",
@@ -109,9 +144,24 @@ impl ChromiumSession {
             ])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        let child = command
             .spawn()
             .map_err(|e| ApiError::Transport(format!("无法启动 Chromium：{e}")))?;
+        #[cfg(unix)]
+        let process_group_id = Some(child.id());
+        #[cfg(not(unix))]
+        let process_group_id = None;
+        // 从 spawn 成功这一刻起就装进守卫；下面任何 `?` 提前返回都不会泄漏。
+        let mut process = ChromiumProcess {
+            child,
+            process_group_id,
+        };
 
         let port_file = profile.path().join("DevToolsActivePort");
         let deadline = Instant::now() + CHROME_START_TIMEOUT;
@@ -122,7 +172,8 @@ impl ChromiumSession {
             {
                 break port;
             }
-            if let Some(status) = child
+            if let Some(status) = process
+                .child
                 .try_wait()
                 .map_err(|e| ApiError::Transport(format!("无法检查 Chromium 状态：{e}")))?
             {
@@ -131,7 +182,6 @@ impl ChromiumSession {
                 )));
             }
             if Instant::now() >= deadline {
-                let _ = child.kill();
                 return Err(ApiError::Transport("等待 Chromium 启动超时".into()));
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
@@ -159,7 +209,7 @@ impl ChromiumSession {
             .map_err(|e| ApiError::Transport(format!("无法连接 Chromium 页面：{e}")))?;
 
         Ok(Self {
-            child,
+            _process: process,
             _profile: profile,
             socket,
             next_command_id: 1,
@@ -753,6 +803,14 @@ impl AppleChromiumFetcher {
         }
     }
 
+    /// 显式关闭共享浏览器会话。
+    ///
+    /// Tauri 的 `app.exit()` 不保证异步任务按持有顺序析构，所以不能只依赖
+    /// `ChromiumSession::drop` 在进程退出的最后一刻碰运气。
+    pub async fn shutdown(&self) {
+        self.state.lock().await.session = None;
+    }
+
     async fn pickup(
         &self,
         region: &'static Region,
@@ -1010,11 +1068,14 @@ mod tests {
         });
         let (socket, _) = connect_async(format!("ws://{address}")).await.unwrap();
         let session = ChromiumSession {
-            child: Command::new("rustc")
-                .arg("--version")
-                .stdout(Stdio::null())
-                .spawn()
-                .unwrap(),
+            _process: ChromiumProcess {
+                child: Command::new("rustc")
+                    .arg("--version")
+                    .stdout(Stdio::null())
+                    .spawn()
+                    .unwrap(),
+                process_group_id: None,
+            },
             _profile: tempfile::tempdir().unwrap(),
             socket,
             next_command_id: 1,
@@ -1048,6 +1109,33 @@ mod tests {
             "status": 200,
             "body": json!({"body":{"stores":stores}}).to_string()
         }}}})
+    }
+
+    #[tokio::test]
+    async fn 显式关闭会话会释放浏览器连接() {
+        let (fetcher, peer) = cdp_responses(Vec::new()).await;
+
+        fetcher.shutdown().await;
+
+        assert!(fetcher.state.lock().await.session.is_none());
+        assert!(peer.await.unwrap(), "关闭会话应同步关闭 DevTools 连接");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    #[ignore = "需要本机 Chromium"]
+    async fn 真实chromium会话析构后进程组消失() {
+        let session = ChromiumSession::start().await.unwrap();
+        let process_group_id = session._process.process_group_id.unwrap();
+
+        drop(session);
+
+        let result = unsafe { libc::kill(-(process_group_id as i32), 0) };
+        assert_eq!(result, -1, "Chromium 进程组不应在会话析构后残留");
+        assert_eq!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(libc::ESRCH)
+        );
     }
 
     #[tokio::test]
