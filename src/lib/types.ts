@@ -120,7 +120,7 @@ export interface Store {
 }
 
 /** 检测到有货时自动打开的页面，与 Rust 侧 `OpenOnHit` 一一对应。 */
-export type OpenOnHit = "none" | "bag" | "product";
+export type OpenOnHit = "none" | "bag" | "education_bag" | "product";
 
 export interface Settings {
   locale: string;

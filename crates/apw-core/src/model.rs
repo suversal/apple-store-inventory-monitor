@@ -270,6 +270,15 @@ impl Region {
         format!("{}/shop/bag", self.base_url)
     }
 
+    /// 对应地区的教育商店购物袋页面地址。
+    pub fn education_bag_url(&self) -> String {
+        if self.locale == "zh_CN" {
+            format!("{}/cn-edu/shop/bag", self.base_url)
+        } else {
+            format!("{}-edu/shop/bag", self.base_url)
+        }
+    }
+
     /// 某个购买页的地址，用于在线刷新商品目录。
     pub fn buy_page_url(&self, family: &Family<'_>) -> String {
         format!(
@@ -620,6 +629,23 @@ mod tests {
                 r.locale
             );
             assert!(!r.families.is_empty(), "{} 没有可抓取的购买页", r.locale);
+        }
+    }
+
+    #[test]
+    fn 各地区教育商店购物袋地址使用对应站点() {
+        let cases = [
+            ("zh_CN", "https://www.apple.com.cn/cn-edu/shop/bag"),
+            ("zh_HK", "https://www.apple.com/hk-zh-edu/shop/bag"),
+            ("zh_TW", "https://www.apple.com/tw-edu/shop/bag"),
+            ("ja_JP", "https://www.apple.com/jp-edu/shop/bag"),
+            ("en_SG", "https://www.apple.com/sg-edu/shop/bag"),
+            ("en_AU", "https://www.apple.com/au-edu/shop/bag"),
+            ("en_MY", "https://www.apple.com/my-edu/shop/bag"),
+        ];
+        for (locale, expected) in cases {
+            let region = region_by_locale(locale).expect("地区应当受支持");
+            assert_eq!(region.education_bag_url(), expected);
         }
     }
 

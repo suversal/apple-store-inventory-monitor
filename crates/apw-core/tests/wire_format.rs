@@ -23,6 +23,7 @@ fn 到货跳转方式的线上格式是稳定字符串() {
     for (destination, want) in [
         (OpenOnHit::None, "none"),
         (OpenOnHit::Bag, "bag"),
+        (OpenOnHit::EducationBag, "education_bag"),
         (OpenOnHit::Product, "product"),
     ] {
         assert_eq!(to_value(&destination), json!(want));

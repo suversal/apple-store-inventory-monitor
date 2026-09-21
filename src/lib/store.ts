@@ -487,9 +487,11 @@ export async function testNotify(): Promise<void> {
     const jump =
       state.settings.openOnHit === "bag"
         ? "，并打开购物袋"
-        : state.settings.openOnHit === "product" && state.settings.targets.length > 0
-          ? "，并打开第一个监控目标的商品详情"
-          : "";
+        : state.settings.openOnHit === "education_bag"
+          ? "，并打开教育商店购物袋"
+          : state.settings.openOnHit === "product" && state.settings.targets.length > 0
+            ? "，并打开第一个监控目标的商品详情"
+            : "";
     const firstTarget = state.settings.targets[0];
     const bark = firstTarget && state.settings.productBarkUrls[firstTarget.partNumber]
       ? "，并向第一个监控型号的专属 Bark 推送"

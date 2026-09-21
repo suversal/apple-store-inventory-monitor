@@ -6,12 +6,14 @@ import { cn } from "@/lib/utils"
 function ScrollArea({
   className,
   children,
+  horizontal = false,
   ...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
+}: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & { horizontal?: boolean }) {
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
       className={cn("relative", className)}
+      type={horizontal ? "always" : undefined}
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
@@ -21,6 +23,12 @@ function ScrollArea({
         {children}
       </ScrollAreaPrimitive.Viewport>
       <ScrollBar />
+      {horizontal ? (
+        <ScrollBar
+          orientation="horizontal"
+          className="h-3 bg-card/90 [&_[data-slot=scroll-area-thumb]]:bg-muted-foreground/60"
+        />
+      ) : null}
       <ScrollAreaPrimitive.Corner />
     </ScrollAreaPrimitive.Root>
   )

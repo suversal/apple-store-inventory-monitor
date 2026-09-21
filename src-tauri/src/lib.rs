@@ -709,6 +709,9 @@ fn target_open_url(app: &AppHandle, target: &Target, destination: OpenOnHit) -> 
     match destination {
         OpenOnHit::None => None,
         OpenOnHit::Bag => region_by_locale(&target.locale).map(|region| region.bag_url()),
+        OpenOnHit::EducationBag => {
+            region_by_locale(&target.locale).map(|region| region.education_bag_url())
+        }
         OpenOnHit::Product => target_purchase_url(app, target),
     }
 }
@@ -717,6 +720,7 @@ fn destination_title(destination: OpenOnHit) -> &'static str {
     match destination {
         OpenOnHit::None => "",
         OpenOnHit::Bag => "购物袋",
+        OpenOnHit::EducationBag => "教育商店购物袋",
         OpenOnHit::Product => "商品页",
     }
 }
@@ -758,12 +762,18 @@ async fn test_notify(app: AppHandle) -> Result<(), String> {
 
     let jump_url = match settings.open_on_hit {
         OpenOnHit::None => None,
-        OpenOnHit::Bag => {
+        destination @ (OpenOnHit::Bag | OpenOnHit::EducationBag) => {
             let locale = settings
                 .targets
                 .first()
                 .map_or(settings.locale.as_str(), |target| target.locale.as_str());
-            region_by_locale(locale).map(|region| region.bag_url())
+            region_by_locale(locale).map(|region| {
+                if destination == OpenOnHit::EducationBag {
+                    region.education_bag_url()
+                } else {
+                    region.bag_url()
+                }
+            })
         }
         OpenOnHit::Product => settings
             .targets
@@ -913,6 +923,7 @@ async fn pump_events(app: AppHandle, mut events: tokio::sync::mpsc::Receiver<Eve
                 if let Some(destination) = opened_destination {
                     match destination {
                         OpenOnHit::Bag => actions.push("已打开购物袋"),
+                        OpenOnHit::EducationBag => actions.push("已打开教育商店购物袋"),
                         OpenOnHit::Product => actions.push("已打开商品页"),
                         OpenOnHit::None => {}
                     }

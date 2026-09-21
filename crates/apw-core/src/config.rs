@@ -41,6 +41,7 @@ pub enum OpenOnHit {
     None,
     #[default]
     Bag,
+    EducationBag,
     Product,
 }
 
@@ -54,6 +55,7 @@ impl<'de> Deserialize<'de> for OpenOnHit {
         enum Current {
             None,
             Bag,
+            EducationBag,
             Product,
         }
 
@@ -67,6 +69,7 @@ impl<'de> Deserialize<'de> for OpenOnHit {
         Ok(match Wire::deserialize(deserializer)? {
             Wire::Legacy(true) | Wire::Current(Current::Bag) => Self::Bag,
             Wire::Legacy(false) | Wire::Current(Current::None) => Self::None,
+            Wire::Current(Current::EducationBag) => Self::EducationBag,
             Wire::Current(Current::Product) => Self::Product,
         })
     }

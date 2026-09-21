@@ -860,8 +860,8 @@ export default function App() {
             </Alert>
           )}
 
-          <div className="grid min-h-0 flex-1 gap-4 min-[980px]:grid-cols-[minmax(0,1fr)_22rem]">
-            <div className="flex min-h-0 flex-col gap-4">
+          <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] gap-4 min-[980px]:grid-cols-[minmax(0,1fr)_22rem]">
+            <div className="flex min-h-0 min-w-0 flex-col gap-4">
               <section className="surface-panel shrink-0 p-4" aria-labelledby="create-monitor-title">
                 <div className="mb-4 flex items-start justify-between gap-4">
                   <div>
@@ -1004,7 +1004,7 @@ export default function App() {
                 </div>
               </section>
 
-              <section className="surface-panel flex min-h-[280px] flex-1 flex-col overflow-hidden" aria-labelledby="monitor-list-title">
+              <section className="surface-panel flex min-h-[280px] min-w-0 flex-1 flex-col overflow-hidden" aria-labelledby="monitor-list-title">
                 <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-4 py-3.5">
                   <div className="flex items-center gap-3">
                     <div className="section-icon" aria-hidden="true">
@@ -1027,7 +1027,7 @@ export default function App() {
                   </div>
                 ) : null}
 
-                <ScrollArea className="min-h-0 flex-1">
+                <ScrollArea horizontal className="min-h-0 min-w-0 flex-1 [&_[data-slot=table-container]]:min-w-[1104px] [&_[data-slot=table-container]]:overflow-visible">
                   <Table className="min-w-[1104px] table-fixed">
                     <colgroup>
                       <col className="w-36" />
@@ -1320,7 +1320,7 @@ export default function App() {
                       onCheckedChange={(value) => void saveSettings({ soundEnabled: value })}
                     />
                   </div>
-                  <div className="setting-row gap-3">
+                  <div className="setting-row flex-wrap gap-2 py-1.5">
                     <Label htmlFor="open-on-hit" className="flex items-center gap-2 text-sm font-normal">
                       <ShoppingBag className="size-4 text-muted-foreground" aria-hidden="true" />到货后打开
                     </Label>
@@ -1330,12 +1330,13 @@ export default function App() {
                         void saveSettings({ openOnHit: value as OpenOnHit })
                       }
                     >
-                      <SelectTrigger id="open-on-hit" className="h-9 w-[8.5rem] bg-background/45" aria-label="到货后打开">
+                      <SelectTrigger id="open-on-hit" className="h-9 w-[13.5rem] max-w-full bg-background/45" aria-label="到货后打开">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent align="end">
                         <SelectItem value="none">不自动打开</SelectItem>
                         <SelectItem value="bag">购物袋</SelectItem>
+                        <SelectItem value="education_bag">跳转至教育商店购物袋</SelectItem>
                         <SelectItem value="product">商品详情</SelectItem>
                       </SelectContent>
                     </Select>
