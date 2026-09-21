@@ -244,13 +244,12 @@ jobs:
           # 四个作业传的是同一段文字，后跑完的作业会用它覆盖 Release 说明，
           # 内容一致所以结果是幂等的。改这里记得别引入 ${{ }}，会被当成表达式求值。
           releaseBody: |
-            ### v1.0.12 更新内容
+            ### v1.0.13 更新内容
 
-            - 退出果到雷达时先停止监控并关闭共享 Chromium 会话，避免后台浏览器进程残留。
-            - macOS 和 Linux 会清理 Chromium 的 renderer、GPU、utility 等完整子进程树。
-            - Chromium 启动或连接失败时也会自动回收已经启动的进程。
+            - 新增「跳转至教育商店购物袋」，到货提醒、Bark 链接和测试跳转使用当前地区对应的教育商店购物袋。
+            - 窄窗口下监控列表显示可拖动的横向滚动条，删除按钮保持在每行右侧。
 
-            完整逐项记录见 [CHANGELOG.md](https://github.com/suversal/apple-store-inventory-monitor/blob/v1.0.12/CHANGELOG.md)。
+            完整逐项记录见 [CHANGELOG.md](https://github.com/suversal/apple-store-inventory-monitor/blob/v1.0.13/CHANGELOG.md)。
 
             ### 下载哪一个
 
