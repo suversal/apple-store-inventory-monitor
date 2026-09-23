@@ -313,6 +313,31 @@ impl Catalog {
         }
     }
 
+    /// 按门店目录给监控目标补上取货接口的附近查询地点。
+    ///
+    /// 该字段只在本次进程中使用，不会改变设置文件格式。目录里找不到的旧门店
+    /// 保持为空，查询器会安全地退回按门店编号单独查询。
+    pub fn attach_pickup_locations(&self, targets: &mut [crate::model::Target]) {
+        let mut by_locale: HashMap<String, Option<Vec<Store>>> = HashMap::new();
+        for target in targets {
+            if target
+                .pickup_location
+                .as_deref()
+                .is_some_and(|location| !location.trim().is_empty())
+            {
+                continue;
+            }
+            let stores = by_locale
+                .entry(target.locale.clone())
+                .or_insert_with(|| self.stores(&target.locale).ok());
+            let Some(stores) = stores else { continue };
+            target.pickup_location = stores
+                .iter()
+                .find(|store| store.number == target.store_number)
+                .and_then(|store| store.pickup_location(&target.locale));
+        }
+    }
+
     /// 按门店编号查门店，语义同 [`Catalog::product_by_part`]。
     pub fn store_by_number(&self, locale: &str, number: &str) -> Option<Store> {
         self.stores(locale)
@@ -584,6 +609,8 @@ struct RawAddress {
     city: String,
     #[serde(default)]
     state_name: String,
+    #[serde(default)]
+    postal_code: String,
 }
 
 /// 解析内嵌门店快照，返回按地区分组的门店表。
@@ -657,6 +684,17 @@ fn push_store(
         }
     }
 
+    let state = {
+        let from_store = raw.address.state_name.trim();
+        if !from_store.is_empty() {
+            from_store
+        } else if has_states {
+            state_name.trim()
+        } else {
+            ""
+        }
+    };
+
     out.push(Store {
         number: number.to_string(),
         name: name.to_string(),
@@ -665,6 +703,9 @@ fn push_store(
         } else {
             format!("{city}-{name}")
         },
+        city: raw.address.city.trim().to_string(),
+        state: state.to_string(),
+        postal_code: raw.address.postal_code.trim().to_string(),
     });
 }
 
@@ -727,6 +768,45 @@ mod tests {
             .into_iter()
             .map(|p| p.part_number)
             .collect()
+    }
+
+    #[test]
+    fn 成都两店共享符合新取货接口格式的地点() {
+        let catalog = Catalog::new();
+        for number in ["R502", "R580"] {
+            let store = catalog
+                .store_by_number("zh_CN", number)
+                .unwrap_or_else(|| panic!("目录缺少成都门店 {number}"));
+            assert_eq!(store.pickup_location("zh_CN").as_deref(), Some("四川 成都"));
+        }
+    }
+
+    #[test]
+    fn 已保存目标会在运行时补齐附近查询地点() {
+        let catalog = Catalog::new();
+        let mut targets = vec![crate::model::Target {
+            locale: "zh_CN".into(),
+            store_number: "R502".into(),
+            store_title: "四川-成都万象城".into(),
+            part_number: "MJYN4CH/A".into(),
+            product_name: "iPhone 18 Pro Max 2TB 冰川蓝色".into(),
+            companion_part: None,
+            companion_name: None,
+            kit_part: None,
+            pickup_location: None,
+        }];
+
+        catalog.attach_pickup_locations(&mut targets);
+
+        assert_eq!(targets[0].pickup_location.as_deref(), Some("四川 成都"));
+        assert!(
+            !serde_json::to_value(&targets[0])
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .contains_key("pickupLocation"),
+            "运行时地点不应写进设置或跨前端边界"
+        );
     }
 
     #[test]
@@ -1013,6 +1093,7 @@ mod tests {
             companion_part: Some("MJUY4FE/A".into()),
             companion_name: None,
             kit_part: Some("Z0YQ".into()),
+            pickup_location: None,
         }];
 
         catalog.hydrate_watch_targets(&mut targets);

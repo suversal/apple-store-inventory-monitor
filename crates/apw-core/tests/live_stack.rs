@@ -49,6 +49,7 @@ async fn 全栈跑通一轮真实监控() {
                 companion_part: None,
                 companion_name: None,
                 kit_part: None,
+                pickup_location: store.pickup_location("zh_CN"),
             });
         }
     }
@@ -150,6 +151,7 @@ async fn 同店一个候选有货后仍会继续检查全部候选() {
             companion_part: None,
             companion_name: None,
             kit_part: None,
+            pickup_location: None,
         })
         .collect();
 

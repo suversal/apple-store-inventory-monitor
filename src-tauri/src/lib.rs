@@ -509,6 +509,7 @@ async fn refresh_products(
     let mut next = state.settings_snapshot();
     let before = next.targets.clone();
     state.catalog.hydrate_watch_targets(&mut next.targets);
+    state.catalog.attach_pickup_locations(&mut next.targets);
     if next.targets != before {
         state.put_settings(next.clone())?;
         state.watcher.set_targets(next.targets).await;
@@ -529,6 +530,7 @@ async fn save_settings(
     let mut next = settings;
     next.normalize();
     state.catalog.hydrate_watch_targets(&mut next.targets);
+    state.catalog.attach_pickup_locations(&mut next.targets);
 
     // 先成功落盘，再把同一份设置同步给引擎，避免三者分叉。
     state.put_settings(next.clone())?;
@@ -556,6 +558,7 @@ async fn set_targets(
     next.targets = targets;
     next.normalize();
     state.catalog.hydrate_watch_targets(&mut next.targets);
+    state.catalog.attach_pickup_locations(&mut next.targets);
     state.put_settings(next.clone())?;
     state.watcher.set_targets(next.targets).await;
     Ok(state.watcher.snapshot().await)
@@ -1089,6 +1092,7 @@ pub fn run() {
                     "Watch 型号名称已在本次运行修复，但暂时无法保存：{error}"
                 ));
             }
+            catalog.attach_pickup_locations(&mut settings.targets);
 
             // 用 Watcher::new 而不是 Watcher::spawn：setup 回调跑在主线程上，
             // 并不处在 tokio 运行时上下文里，在这里 tokio::spawn 会 panic，
@@ -1212,6 +1216,7 @@ mod tests {
             companion_part: Some("MKDY4FE/A".into()),
             companion_name: None,
             kit_part: Some("Z0YQ".into()),
+            pickup_location: None,
         };
         let body = in_stock_notification_body(&target);
         assert!(body.contains("Apple Watch Ultra 4"));

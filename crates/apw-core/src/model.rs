@@ -260,8 +260,15 @@ pub struct Region {
 impl Region {
     /// 取货状态查询接口地址。
     pub fn pickup_message_url(&self) -> String {
-        // Apple 当前商品页的 fulfillmentBootstrap.pickupURL 明确指向这里。
-        // 这个端点必须在真实网页会话完成 shld 握手后访问；具体传输由宿主负责。
+        format!("{}/shop/retail/pickup-message", self.base_url)
+    }
+
+    /// 送货说明查询仍使用购买页的 fulfillment 接口。
+    ///
+    /// 取货与送货必须分开：旧 fulfillment 接口会按地区或边缘节点返回空门店
+    /// 数据甚至 HTTP 541，不能再让它决定门店库存；但它返回的配送文案仍可作为
+    /// 尽力而为的附加信息，失败时不影响取货结论。
+    pub fn delivery_message_url(&self) -> String {
         format!("{}/shop/fulfillment-messages", self.base_url)
     }
 
@@ -491,6 +498,31 @@ pub struct Store {
     pub name: String,
     /// 界面展示名，如「上海-环球港」。
     pub title: String,
+    /// 只用于拼取货接口的 `location` 参数，不暴露给前端。
+    #[serde(skip)]
+    pub city: String,
+    /// 只用于拼取货接口的 `location` 参数，不暴露给前端。
+    #[serde(skip)]
+    pub state: String,
+    /// 日本等站点优先使用邮编查询附近门店。
+    #[serde(skip)]
+    pub postal_code: String,
+}
+
+impl Store {
+    /// 返回 Apple 取货接口可接受的附近门店查询地点。
+    pub fn pickup_location(&self, locale: &str) -> Option<String> {
+        let city = self.city.trim();
+        let state = self.state.trim();
+        let postal = self.postal_code.trim();
+        let pick = |value: &str| (!value.is_empty()).then(|| value.to_string());
+        match locale {
+            // 大陆站只写城市会被拒绝，必须使用「省 市」。
+            "zh_CN" => (!state.is_empty() && !city.is_empty()).then(|| format!("{state} {city}")),
+            "ja_JP" => pick(postal).or_else(|| pick(city)),
+            _ => pick(city).or_else(|| pick(postal)),
+        }
+    }
 }
 
 /// 一条监控目标：在某地区的某门店盯某个型号。
@@ -509,6 +541,11 @@ pub struct Target {
     pub companion_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kit_part: Option<String>,
+    /// 运行时由门店目录补齐，用于把同城门店合并成一次附近查询。
+    ///
+    /// 不写入配置，也不传给前端；旧设置读入后会重新从内置门店表补齐。
+    #[serde(skip)]
+    pub pickup_location: Option<String>,
 }
 
 impl Target {
@@ -611,6 +648,10 @@ mod tests {
         let cn = region_by_locale("zh_CN").expect("地区表里应当有中国大陆");
         assert_eq!(
             cn.pickup_message_url(),
+            "https://www.apple.com.cn/shop/retail/pickup-message"
+        );
+        assert_eq!(
+            cn.delivery_message_url(),
             "https://www.apple.com.cn/shop/fulfillment-messages"
         );
         // 中国大陆用独立域名，不能是 apple.com/cn —— 那正是上游拼错的地方。
@@ -660,6 +701,7 @@ mod tests {
             companion_part: None,
             companion_name: None,
             kit_part: None,
+            pickup_location: None,
         };
         assert_ne!(mk("MG724CH/A").key(), mk("MG0A4CH/A").key());
         assert_eq!(mk("MG724CH/A").key(), mk("MG724CH/A").key());
