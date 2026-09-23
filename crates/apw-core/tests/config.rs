@@ -82,6 +82,7 @@ fn 目标(store: &str, part: &str) -> Target {
         companion_part: None,
         companion_name: None,
         kit_part: None,
+        pickup_location: None,
     }
 }
 

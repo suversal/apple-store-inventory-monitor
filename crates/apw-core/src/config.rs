@@ -671,6 +671,7 @@ impl LegacyTarget {
             companion_part: None,
             companion_name: None,
             kit_part: None,
+            pickup_location: None,
         }
     }
 }
@@ -720,6 +721,7 @@ mod tests {
             companion_part: None,
             companion_name: None,
             kit_part: None,
+            pickup_location: None,
         }
     }
 

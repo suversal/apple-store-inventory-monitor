@@ -259,7 +259,6 @@ impl AppleClient {
         }
 
         let mut query: Vec<(String, String)> = vec![
-            ("fae".into(), "true".into()),
             ("pl".into(), "true".into()),
             ("mts.0".into(), "regular".into()),
         ];
