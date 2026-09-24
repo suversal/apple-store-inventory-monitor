@@ -81,6 +81,12 @@ fn 未知状态会扁平成两层判别字段() {
             json!({"kind": "unknown", "reason": "schema_drift", "field": "pickupDisplay", "raw": "weird"}),
         ),
         (
+            UnknownReason::StorePickupUnavailable {
+                store_number: "R384".into(),
+            },
+            json!({"kind": "unknown", "reason": "store_pickup_unavailable", "store_number": "R384"}),
+        ),
+        (
             UnknownReason::AppleError {
                 message: "boom".into(),
             },

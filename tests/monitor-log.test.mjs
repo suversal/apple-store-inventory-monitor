@@ -11,6 +11,8 @@ test("缺失 SKU 与空取货节点分别解释，不误报结构错误或无货
   assert.match(describeCycleRow(3,missing), /未返回型号.*R359.*MJTJ4CH\/A.*暂无库存结论/);
   assert.doesNotMatch(describeCycleRow(3,missing), /接口.*异常|停售/);
   assert.equal(describeMonitorStatus(empty).label,"暂无取货数据");
+  const paused = row({kind:"unknown",reason:"store_pickup_unavailable",store_number:"R384"});
+  assert.equal(describeMonitorStatus(paused).label,"暂停取货");
 });
 test("明确未发售与不支持取货分别显示，单凭 NOT_FOR_SALE 不推断预售", () => {
   assert.equal(describeMonitorStatus(row(unavailable,details)).label,"暂未开售");

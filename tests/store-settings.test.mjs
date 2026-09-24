@@ -58,6 +58,20 @@ async function setup() {
 }
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
+test("送货地区固定读取中国大陆官网且不跟随当前监控地区", async () => {
+  let received;
+  invoke = async (command, args) => {
+    received = { command, args };
+    return { states: [], cities: [], districts: [] };
+  };
+  const store = await import(`../src/lib/store.ts?delivery=${++generation}`);
+  await store.loadDeliveryLocalities("四川", "成都");
+  assert.deepEqual(received, {
+    command: "list_delivery_localities",
+    args: { locale: "zh_CN", stateName: "四川", cityName: "成都" },
+  });
+});
+
 test("overlapping edits merge with the last saved settings", async () => {
   const ctx = await setup();
   ctx.block();

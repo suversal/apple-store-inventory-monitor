@@ -18,6 +18,7 @@ export type UnknownReason =
   | { reason: "cooling_down"; remaining_seconds: number; detail: string }
   | { reason: "schema_drift"; field: string; raw: string }
   | { reason: "no_pickup_data"; store_number: string }
+  | { reason: "store_pickup_unavailable"; store_number: string }
   | { reason: "product_not_returned"; part_number: string }
   | { reason: "apple_error"; message: string }
   | { reason: "transport"; detail: string };
@@ -270,6 +271,8 @@ function describeUnknown(a: { kind: "unknown" } & UnknownReason): {
       return { label: "未返回型号", tone: "unknown", detail: "Apple 本次门店响应未包含该 SKU；暂无库存结论，不能视为无货。" };
     case "no_pickup_data":
       return { label: "暂无数据", tone: "unknown", detail: "Apple 暂未返回该门店的取货数据；型号可能已下架、尚未开放取货或暂时不可查询，请刷新型号目录并核对官网。" };
+    case "store_pickup_unavailable":
+      return { label: "暂停取货", tone: "comingSoon", detail: "Apple 当前未将该门店接入在线取货；门店可能临时关闭或暂停取货，不能据此判断库存。" };
     case "apple_error":
       return { label: "未知", tone: "unknown", detail: `Apple 返回错误：${compactDiagnostic(a.message)}` };
     case "transport":
@@ -317,7 +320,10 @@ function describeTransportFailure(raw: string): string {
 
 /** 这一行的数据是否已经不可信。 */
 export function isUntrusted(a: Availability): boolean {
-  return a.kind === "unknown" && a.reason !== "not_yet_checked" && a.reason !== "pickup_pending";
+  return a.kind === "unknown"
+    && a.reason !== "not_yet_checked"
+    && a.reason !== "pickup_pending"
+    && a.reason !== "store_pickup_unavailable";
 }
 
 export function formatTime(ms: number | null): string {

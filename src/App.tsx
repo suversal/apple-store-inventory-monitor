@@ -510,17 +510,10 @@ export default function App() {
 
   useEffect(() => {
     if (!ui.ready) return;
-    if (ui.settings.locale !== "zh_CN") {
-      setDeliveryOptions(EMPTY_DELIVERY_LOCALITIES);
-      setDeliveryOptionsLoading(false);
-      setDeliveryError("Apple 官网当前仅在中国大陆站提供省、市、区三级选择。");
-      return;
-    }
-
     const selected = ui.settings.deliveryRegion;
     const requestId = ++deliveryRequestId.current;
     setDeliveryOptionsLoading(true);
-    void loadDeliveryLocalities(ui.settings.locale, selected?.state, selected?.city)
+    void loadDeliveryLocalities(selected?.state, selected?.city)
       .then((options) => {
         if (deliveryRequestId.current !== requestId) return;
         setDeliveryOptions(options);
@@ -544,14 +537,14 @@ export default function App() {
       .finally(() => {
         if (deliveryRequestId.current === requestId) setDeliveryOptionsLoading(false);
       });
-  }, [ui.ready, ui.settings.deliveryRegion, ui.settings.locale]);
+  }, [ui.ready, ui.settings.deliveryRegion]);
 
   async function refreshDeliveryOptions(stateName: string, cityName = "") {
     const requestId = ++deliveryRequestId.current;
     setDeliveryOptionsLoading(true);
     setDeliveryError(null);
     try {
-      const options = await loadDeliveryLocalities(ui.settings.locale, stateName, cityName);
+      const options = await loadDeliveryLocalities(stateName, cityName);
       if (deliveryRequestId.current === requestId) setDeliveryOptions(options);
     } catch (error) {
       if (deliveryRequestId.current === requestId) {
@@ -1187,7 +1180,7 @@ export default function App() {
                 <div className="mt-3 field-group">
                   <div className="flex items-center justify-between gap-3">
                     <Label className="control-label">
-                      <MapPin className="size-3.5" aria-hidden="true" /> 送货地区
+                      <MapPin className="size-3.5" aria-hidden="true" /> 中国大陆送货地区
                     </Label>
                     <span className="text-[10px] text-muted-foreground" role="status" aria-live="polite">
                       {deliverySaving
@@ -1261,7 +1254,7 @@ export default function App() {
                   </div>
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-[11px] leading-4 text-muted-foreground">
-                      选完“区”后自动保存；{ui.running ? "下轮监控会更新送货日期。" : "启动监控后会查询送货日期。"}
+                      与上方当前地区无关，仅用于中国大陆监控；选完“区”后自动保存。{ui.running ? "下轮会更新送货日期。" : "启动监控后会查询送货日期。"}
                     </p>
                     <Button
                       type="button"
