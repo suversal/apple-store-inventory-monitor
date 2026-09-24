@@ -272,14 +272,17 @@ export async function loadCatalog(locale: string): Promise<void> {
   }
 }
 
-/** 从 Apple 官网读取送货地区的三级联动选项。 */
+/**
+ * 从 Apple 中国大陆官网读取送货地区的三级联动选项。
+ *
+ * 送货地址是中国大陆监控的全局设置，不应跟随“新建监控”里当前浏览的地区切换。
+ */
 export function loadDeliveryLocalities(
-  locale: string,
   selectedState = "",
   selectedCity = "",
 ): Promise<DeliveryLocalities> {
   return invoke<DeliveryLocalities>("list_delivery_localities", {
-    locale,
+    locale: "zh_CN",
     stateName: selectedState,
     cityName: selectedCity,
   });

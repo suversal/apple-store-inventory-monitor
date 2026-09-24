@@ -52,6 +52,10 @@ pub enum ApiError {
     )]
     NoPickupData { store_number: String },
 
+    /// Apple 明确表示当前搜索没有关联的在线取货门店。
+    #[error("Apple 当前未将门店 {store_number} 接入在线取货")]
+    StorePickupUnavailable { store_number: String },
+
     /// Apple 明确返回了一条业务错误信息。
     #[error("Apple 返回错误：{0}")]
     Apple(String),
@@ -80,6 +84,9 @@ impl ApiError {
             },
             Self::SchemaDrift { field, raw } => UnknownReason::SchemaDrift { field, raw },
             Self::NoPickupData { store_number } => UnknownReason::NoPickupData { store_number },
+            Self::StorePickupUnavailable { store_number } => {
+                UnknownReason::StorePickupUnavailable { store_number }
+            }
             Self::Apple(message) => UnknownReason::AppleError { message },
             Self::Transport(detail) => UnknownReason::Transport { detail },
         }
@@ -648,6 +655,20 @@ pub fn parse_pickup_message(raw: &[u8], want_store: &str) -> Result<StoreAvailab
         raw: format!("无法解析成 JSON：{e}"),
     })?;
 
+    // Apple 澳洲站会为仍存在于官方零售店目录、但当前未接入在线取货搜索的门店
+    // 返回 HTTP 200 + 这条业务文案。它表示“没有这家店的取货数据”，不是网络
+    // 故障，也不是无货；继续按普通 AppleError 展示成“查询失败”会误导用户。
+    if resp
+        .body
+        .error_message
+        .as_deref()
+        .is_some_and(is_no_store_search_error)
+    {
+        return Err(ApiError::StorePickupUnavailable {
+            store_number: want_store.to_string(),
+        });
+    }
+
     check_envelope(&resp)?;
 
     let stores = resp
@@ -745,6 +766,13 @@ pub fn parse_pickup_message(raw: &[u8], want_store: &str) -> Result<StoreAvailab
         store_name: matched.store_name.clone(),
         parts,
     })
+}
+
+fn is_no_store_search_error(message: &str) -> bool {
+    message
+        .trim()
+        .to_ascii_lowercase()
+        .contains("no store associated with this search")
 }
 
 /// 在读取门店数据之前先校验响应信封。

@@ -412,6 +412,37 @@ async fn 查询失败必须落到未知而不是无货() {
 }
 
 #[tokio::test]
+async fn 门店暂停在线取货不算查询故障也不弹全局告警() {
+    let fake = FakeFetcher::new(|_, store, _| {
+        Err(ApiError::StorePickupUnavailable {
+            store_number: store.into(),
+        })
+    });
+    let (watcher, mut rx) = Watcher::spawn(fake, fast_config());
+    watcher.set_targets(vec![target("R384", "MJXT4X/A")]).await;
+    watcher.start().await;
+
+    let events = wait_cycle(&mut rx).await;
+    watcher.stop().await;
+
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, Event::CycleComplete { healthy: true, .. }))
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, Event::Trouble { .. }))
+    );
+    assert!(matches!(
+        watcher.snapshot().await[0].availability,
+        Availability::Unknown(UnknownReason::StorePickupUnavailable { ref store_number })
+            if store_number == "R384"
+    ));
+}
+
+#[tokio::test]
 async fn 每轮确认有货都会提醒() {
     // 持续有货也要每轮提醒；离开有货的轮次不提醒。
     let fake = FakeFetcher::new(|nth, store, parts| {

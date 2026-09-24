@@ -59,6 +59,7 @@ impl Availability {
             Self::Unknown(UnknownReason::NotYetChecked) => "待查询",
             Self::Unknown(UnknownReason::PickupPending) => "待开放取货",
             Self::Unknown(UnknownReason::NoPickupData { .. }) => "暂无数据",
+            Self::Unknown(UnknownReason::StorePickupUnavailable { .. }) => "暂停取货",
             Self::Unknown(UnknownReason::ProductNotReturned { .. }) => "未返回型号",
             Self::Unknown(UnknownReason::CoolingDown { .. }) => "冷却中",
             Self::Unknown(_) => "未知",
@@ -106,6 +107,8 @@ pub enum UnknownReason {
     SchemaDrift { field: String, raw: String },
     /// 已知取货节点为空，不代表无货，也不代表接口结构变化。
     NoPickupData { store_number: String },
+    /// Apple 明确表示该门店当前没有关联在线取货搜索。
+    StorePickupUnavailable { store_number: String },
     /// 门店返回了其他商品，但没有返回请求的零件号。
     ProductNotReturned { part_number: String },
     /// Apple 明确返回了一条业务错误信息。
@@ -134,6 +137,9 @@ impl UnknownReason {
             Self::NoPickupData { store_number } => format!(
                 "Apple 暂未提供门店 {store_number} 的取货数据；请刷新型号目录并核对官网是否仍销售该型号、是否已开放取货，暂无数据不等于无货"
             ),
+            Self::StorePickupUnavailable { store_number } => format!(
+                "Apple 当前未将门店 {store_number} 接入在线取货；门店可能临时关闭或暂停取货，不能据此判断库存"
+            ),
             Self::ProductNotReturned { part_number } => {
                 format!("Apple 本次门店响应未包含型号 {part_number}；暂无库存结论，不能视为无货")
             }
@@ -147,7 +153,10 @@ impl UnknownReason {
     /// `NotYetChecked` 只是还没轮到，`PickupPending` 是 Apple 尚未开放取货；
     /// 两者都不该被算进失败数，也不该触发告警或退避。
     pub fn is_failure(&self) -> bool {
-        !matches!(self, Self::NotYetChecked | Self::PickupPending)
+        !matches!(
+            self,
+            Self::NotYetChecked | Self::PickupPending | Self::StorePickupUnavailable { .. }
+        )
     }
 }
 
@@ -258,6 +267,23 @@ pub struct Region {
 }
 
 impl Region {
+    /// 用于建立在线商店浏览器会话的页面。
+    ///
+    /// 中国大陆的送货接口仍依赖购买页建立的在线商店会话；只访问地区首页会让
+    /// `/shop/fulfillment-messages` 返回 HTTP 541。部分海外站点则会直接拒绝
+    /// 自动化浏览器打开 `/shop/buy-*`，但地区首页与取货接口可以正常使用。
+    /// 因此中国大陆保留购买页暖场，海外站点使用地区首页。
+    pub fn session_page_url(&self) -> String {
+        if self.locale == "zh_CN" {
+            self.families.first().map_or_else(
+                || format!("{}/", self.base_url),
+                |family| self.buy_page_url(family),
+            )
+        } else {
+            format!("{}/", self.base_url)
+        }
+    }
+
     /// 取货状态查询接口地址。
     pub fn pickup_message_url(&self) -> String {
         format!("{}/shop/retail/pickup-message", self.base_url)

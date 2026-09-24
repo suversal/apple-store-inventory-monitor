@@ -451,6 +451,7 @@ async fn query_one_store<F: Fetcher>(
         .await
     {
         Err(err) => {
+            let pickup_unavailable = matches!(&err, ApiError::StorePickupUnavailable { .. });
             // 只有这两类值得打断用户：被拦截是他能动手解决的，结构漂移是他
             // 必须知道「现在看到的一切都不作数」的。网络超时之类的过一会儿
             // 自己就好了，弹出来只是噪音。
@@ -489,8 +490,10 @@ async fn query_one_store<F: Fetcher>(
                     .collect(),
                 locale: group.locale,
                 store_number: group.store_number,
-                ok: false,
-                problems: n,
+                // Apple 的业务响应已明确说明该门店当前不参与在线取货。这是可解释的
+                // 暂停状态，不是查询器故障；仍保留 Unknown，绝不伪装成“无货”。
+                ok: pickup_unavailable,
+                problems: if pickup_unavailable { 0 } else { n },
                 trouble,
             }
         }

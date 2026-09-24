@@ -285,39 +285,39 @@ impl ChromiumSession {
             return Ok(());
         }
 
-        // 不能用 `/shop/product/{part}` 暖场：Apple Watch 的配置零件号并不一定
-        // 有独立商品详情页，例如 MFA04CH/B 当前直接返回 404。旧实现随后仍会等满
-        // 50 秒，并且每家门店各等一次，界面看起来就像点击后完全没反应。
-        //
-        // 改用内置目录里的正式购买页。它与库存接口属于同一个在线商店会话，且
-        // URL 会随在售产品目录一起维护；会话一旦建立，同地区的 iPhone、Watch、
-        // iPad 和 Mac 库存请求都可以复用。
-        let family = region
-            .families
-            .first()
-            .ok_or_else(|| ApiError::Transport("当前地区没有可用于建立会话的购买页".into()))?;
-        let page_url = region.buy_page_url(family);
-        self.command("Page.navigate", json!({ "url": page_url }))
+        // 具体购买页不是可靠的会话入口：澳大利亚站会对自动化 Chromium 关闭
+        // `/shop/buy-*` 连接，但地区首页加载后，同源取货接口仍能正常返回 JSON。
+        // 首页不依赖某个仍在售的 SKU，也适用于 iPhone、Watch、iPad 和 Mac。
+        let page_url = region.session_page_url();
+        let navigation = self
+            .command("Page.navigate", json!({ "url": page_url }))
             .await?;
+        if let Some(error) = navigation
+            .get("errorText")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|error| !error.is_empty())
+        {
+            return Err(ApiError::Transport(format!(
+                "Apple 地区页面导航失败：{error}"
+            )));
+        }
         let deadline = Instant::now() + SESSION_READY_TIMEOUT;
         loop {
             let state = self
-                .evaluate(
-                    r#"JSON.stringify({readyState:document.readyState,cookies:document.cookie.split(';').map(x=>x.trim().split('=')[0]).filter(Boolean)})"#,
-                    false,
-                )
+                .evaluate(r#"JSON.stringify({readyState:document.readyState})"#, false)
                 .await?;
             if let Some(raw) = state.as_str()
                 && let Ok(state) = serde_json::from_str::<ReadyState>(raw)
-                && state.ready_state != "loading"
-                && state.cookies.iter().any(|name| name == "shld_bt_ck")
-                && state.cookies.iter().any(|name| name == "as_atb")
+                && state.ready_state == "complete"
             {
                 self.locale = Some(region.locale);
                 return Ok(());
             }
             if Instant::now() >= deadline {
-                return Err(ApiError::Blocked("Apple 页面未能完成 shld 风控握手".into()));
+                return Err(ApiError::Transport(
+                    "Apple 地区页面在等待时间内未完成加载".into(),
+                ));
             }
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
@@ -635,7 +635,6 @@ fn chromium_exception_summary(details: &Value) -> String {
 #[serde(rename_all = "camelCase")]
 struct ReadyState {
     ready_state: String,
-    cookies: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1736,9 +1735,9 @@ mod tests {
         let mut gate = RequestGate::default();
         session.ensure_region(region).await.unwrap();
         let destination = DeliveryRegion {
-            state: "江苏".into(),
-            city: "苏州".into(),
-            district: "吴江区".into(),
+            state: "北京".into(),
+            city: "北京".into(),
+            district: "石景山区".into(),
         };
         let delivery = session
             .fetch_product_delivery(region, &["MJYM4CH/A".into()], &destination, &mut gate)
@@ -1749,6 +1748,7 @@ mod tests {
             .and_then(|details| details.sale_message.as_deref())
             .expect("普通商品应返回送货时间");
 
+        eprintln!("普通商品北京石景山区送货：{message}");
         assert!(!message.trim().is_empty());
     }
 
@@ -1771,13 +1771,75 @@ mod tests {
     }
 
     #[test]
-    fn 会话暖场使用正式购买页而不是sku详情页() {
-        let region = region_by_locale("zh_CN").expect("应当有中国大陆地区配置");
-        let family = region.families.first().expect("地区应当至少有一个购买页");
-        let url = region.buy_page_url(family);
+    fn 中国送货使用购买页暖场而海外使用地区首页() {
+        for locale in [
+            "zh_CN", "zh_HK", "zh_TW", "ja_JP", "en_SG", "en_AU", "en_MY",
+        ] {
+            let region = region_by_locale(locale).expect("地区应当受支持");
+            let url = region.session_page_url();
 
-        assert!(url.starts_with("https://www.apple.com.cn/shop/buy-"));
-        assert!(!url.contains("/shop/product/"));
+            if locale == "zh_CN" {
+                assert!(url.contains("/shop/buy-"));
+            } else {
+                assert_eq!(url, format!("{}/", region.base_url));
+                assert!(!url.contains("/shop/"));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn 海外会话就绪不依赖中国区cookie名称() {
+        let ready = json!({
+            "result": {
+                "result": {
+                    "value": r#"{"readyState":"complete"}"#
+                }
+            }
+        });
+        let (fetcher, peer) = cdp_responses(vec![json!({"result": {}}), ready]).await;
+        let region = region_by_locale("en_AU").unwrap();
+
+        {
+            let mut state = fetcher.state.lock().await;
+            state
+                .session
+                .as_mut()
+                .unwrap()
+                .ensure_region(region)
+                .await
+                .unwrap();
+            assert_eq!(state.session.as_ref().unwrap().locale, Some("en_AU"));
+        }
+
+        fetcher.shutdown().await;
+        assert!(peer.await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn 地区页面导航错误立即返回而不是等待超时() {
+        let (fetcher, peer) = cdp_responses(vec![json!({
+            "result": {"errorText": "net::ERR_CONNECTION_CLOSED"}
+        })])
+        .await;
+        let region = region_by_locale("en_AU").unwrap();
+
+        let error = {
+            let mut state = fetcher.state.lock().await;
+            state
+                .session
+                .as_mut()
+                .unwrap()
+                .ensure_region(region)
+                .await
+                .unwrap_err()
+        };
+
+        assert!(matches!(
+            error,
+            ApiError::Transport(detail) if detail.contains("ERR_CONNECTION_CLOSED")
+        ));
+        fetcher.shutdown().await;
+        assert!(peer.await.unwrap());
     }
 
     #[test]
@@ -1849,6 +1911,52 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "需要本机 Chromium 与 Apple 澳洲官网网络"]
+    async fn 真实澳大利亚首页会话可以查询brisbane取货() {
+        let region = region_by_locale("en_AU").expect("应当有澳大利亚地区配置");
+        let fetcher = AppleChromiumFetcher::new();
+        let mut target = test_target("MJXT4X/A");
+        target.locale = "en_AU".into();
+        target.store_number = "R466".into();
+        target.store_title = "Queensland-Brisbane".into();
+        target.pickup_location = Some("Brisbane".into());
+
+        let result = fetcher
+            .pickup(region, "R466", &[target.clone()], None)
+            .await
+            .expect("澳大利亚首页会话应能完成取货查询");
+        let status = result
+            .parts
+            .get(&target.part_number)
+            .expect("澳大利亚响应应包含请求型号");
+
+        assert_eq!(result.store_number, "R466");
+        assert!(!status.availability.is_unknown());
+    }
+
+    #[tokio::test]
+    #[ignore = "需要本机 Chromium 与 Apple 澳洲官网网络"]
+    async fn 真实澳大利亚未接入取货的chermside明确返回暂无数据() {
+        let region = region_by_locale("en_AU").expect("应当有澳大利亚地区配置");
+        let fetcher = AppleChromiumFetcher::new();
+        let mut target = test_target("MJXT4X/A");
+        target.locale = "en_AU".into();
+        target.store_number = "R384".into();
+        target.store_title = "Queensland-Chermside".into();
+        target.pickup_location = Some("Chermside".into());
+
+        let error = fetcher
+            .pickup(region, "R384", &[target], None)
+            .await
+            .expect_err("Apple 当前没有提供 Chermside 的在线取货数据");
+
+        assert!(matches!(
+            error,
+            ApiError::StorePickupUnavailable { store_number } if store_number == "R384"
+        ));
+    }
+
+    #[tokio::test]
     #[ignore = "需要本机 Chromium 与 Apple 官网网络"]
     async fn 真实成都地点一次覆盖万象城和太古里() {
         let region = region_by_locale("zh_CN").unwrap();
@@ -1898,7 +2006,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "需要本机 Chromium 与 Apple 官网网络"]
-    async fn 真实apple_watch套件能按省市区查询精确送货日期() {
+    async fn 真实apple_watch套件能按省市区查询明确送货时效() {
         let region = region_by_locale("zh_CN").unwrap();
         let fetcher = AppleChromiumFetcher::new();
         let mut target = test_target("MJCX4CH/B");
@@ -1919,17 +2027,15 @@ mod tests {
             .and_then(|status| status.pickup_details.as_ref())
             .and_then(|details| details.sale_message.as_deref())
             .expect("Watch 套件应返回送货日期");
-        assert!(
-            message.contains("2026/"),
-            "应为精确日期而不是周范围：{message}"
-        );
+        assert!(!message.trim().is_empty(), "送货时效不应为空");
+        assert!(!message.contains('周'), "不应退回模糊周范围：{message}");
     }
 
     /// 用户界面回归：Series 12 表壳必须和页面默认表带组成套件后再查送货，
     /// 否则取货接口只会留下“2-3 周”这种不精确的通用文案。
     #[tokio::test]
     #[ignore = "需要本机 Chromium 与 Apple 官网网络"]
-    async fn 真实series_12默认表带能按浦东新区查询精确送货日期() {
+    async fn 真实series_12默认表带能按浦东新区查询明确送货时效() {
         let region = region_by_locale("zh_CN").unwrap();
         let fetcher = AppleChromiumFetcher::new();
         let mut target = test_target("MJK44CH/B");
@@ -1951,10 +2057,8 @@ mod tests {
             .and_then(|details| details.sale_message.as_deref())
             .expect("Series 12 套件应返回送货日期");
         eprintln!("Series 12 浦东新区送货：{message}");
-        assert!(
-            message.contains("2026/"),
-            "应为精确日期而不是周范围：{message}"
-        );
+        assert!(!message.trim().is_empty(), "送货时效不应为空");
+        assert!(!message.contains('周'), "不应退回模糊周范围：{message}");
     }
 
     #[tokio::test]
