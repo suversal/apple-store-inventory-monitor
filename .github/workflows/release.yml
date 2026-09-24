@@ -244,13 +244,13 @@ jobs:
           # 四个作业传的是同一段文字，后跑完的作业会用它覆盖 Release 说明，
           # 内容一致所以结果是幂等的。改这里记得别引入 ${{ }}，会被当成表达式求值。
           releaseBody: |
-            ### v1.0.14 更新内容
+            ### v1.0.15 更新内容
 
-            - 切换到 Apple 当前的门店取货接口，恢复成都等门店的取货状态；「明天可取货」仍按有货提醒。
-            - 恢复预计送货时间，按官网当前的省、市、区地点参数查询配送说明。
-            - 送货接口暂时失败时，不再覆盖已经确认的门店取货结果。
+            - 修复澳大利亚等海外地区的查询会话，恢复海外门店取货状态。
+            - 门店未接入在线取货时显示「暂停取货」，不再误报为查询失败或无货。
+            - 中国大陆送货地区不再受当前浏览地区影响，并恢复预计送货时间。
 
-            完整逐项记录见 [CHANGELOG.md](https://github.com/suversal/apple-store-inventory-monitor/blob/v1.0.14/CHANGELOG.md)。
+            完整逐项记录见 [CHANGELOG.md](https://github.com/suversal/apple-store-inventory-monitor/blob/v1.0.15/CHANGELOG.md)。
 
             ### 下载哪一个
 
