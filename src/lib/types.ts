@@ -187,8 +187,9 @@ export function describeAdvice(advice: TroubleAdvice): string {
   switch (advice) {
     case "try_another_network":
       return (
-        "Apple 拒绝了这次查询，尚不能确定是会话、请求频率还是网络原因。" +
-        "程序会延长重试间隔；若持续失败，可重启应用后重试，并对照官网或其他网络检查。"
+        "Apple 拒绝了这次查询。程序会保留专属后台浏览器会话，且不会自动弹出页面；" +
+        "随后会复用同一会话，按你设置的查询间隔重试，" +
+        "直到手动暂停，不会延长等待；若仍持续失败，再对照官网或切换网络检查。"
       );
     case "wait_for_retry":
       return "程序已暂停当前地区的真实请求，冷却结束后会自动进行一次恢复探测，无需手动重启。";
@@ -310,10 +311,13 @@ function describeTransportFailure(raw: string): string {
     return "浏览器安全限制阻止了本次 Apple 页面访问，程序将在下一轮自动重试";
   }
   if (lower.includes("chromium") && lower.includes("超时")) {
-    return "等待 Apple 页面响应超时，程序将在下一轮自动重试";
+    return `${detail || "等待 Apple 页面响应超时"}，程序将在下一轮按设置的间隔自动重试`;
   }
   if (lower.includes("chromium") || lower.includes("浏览器")) {
-    return "浏览器会话未能完成本次 Apple 查询，程序将在下一轮自动重试";
+    return `${detail || "浏览器会话未能完成本次 Apple 查询"}，程序将在下一轮按设置的间隔自动重试`;
+  }
+  if (detail.includes("Apple 页面请求失败")) {
+    return `${detail}，本轮不更新该门店；程序将在下一轮按设置的间隔自动重试`;
   }
   return `网络请求失败：${detail || "暂时无法连接 Apple"}，程序将在下一轮自动重试`;
 }

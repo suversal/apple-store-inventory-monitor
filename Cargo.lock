@@ -74,6 +74,7 @@ name = "apple-store-inventory-monitor"
 version = "1.0.15"
 dependencies = [
  "apw-core",
+ "dirs",
  "futures-util",
  "libc",
  "reqwest 0.12.28",

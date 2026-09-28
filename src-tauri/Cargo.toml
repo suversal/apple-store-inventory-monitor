@@ -26,6 +26,7 @@ tauri-plugin-opener = "2"
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+dirs.workspace = true
 futures-util = "0.3"
 tempfile = "3"
 tokio.workspace = true

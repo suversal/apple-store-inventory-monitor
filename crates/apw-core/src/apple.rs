@@ -95,8 +95,8 @@ impl ApiError {
     /// 是否适合在同一次调用里快速重试。
     ///
     /// 541/403 表示当前请求特征或会话已被拒绝。原样重放只会在几秒内连续制造
-    /// 更多拦截，因此交给监控层退避并在下一轮重建会话。网络瞬断、429 和服务端
-    /// 临时错误才适合在这里重试。
+    /// 更多拦截，因此由监控层在下一轮按用户设置的间隔重试。网络瞬断、429 和
+    /// 服务端临时错误才适合在同一次调用内快速重试。
     pub fn is_retryable(&self) -> bool {
         matches!(self, Self::RateLimited(_) | Self::Transport(_))
     }
@@ -655,9 +655,9 @@ pub fn parse_pickup_message(raw: &[u8], want_store: &str) -> Result<StoreAvailab
         raw: format!("无法解析成 JSON：{e}"),
     })?;
 
-    // Apple 澳洲站会为仍存在于官方零售店目录、但当前未接入在线取货搜索的门店
-    // 返回 HTTP 200 + 这条业务文案。它表示“没有这家店的取货数据”，不是网络
-    // 故障，也不是无货；继续按普通 AppleError 展示成“查询失败”会误导用户。
+    // Apple 会用中英文业务文案表示当前搜索没有关联门店：澳洲站可能针对单店
+    // 返回，中国大陆站也可能针对地点搜索返回。它不是网络故障或无货；具体应该
+    // 回退单店还是显示暂停取货，由知道本次查询范围的 Chromium 层决定。
     if resp
         .body
         .error_message
@@ -769,10 +769,9 @@ pub fn parse_pickup_message(raw: &[u8], want_store: &str) -> Result<StoreAvailab
 }
 
 fn is_no_store_search_error(message: &str) -> bool {
-    message
-        .trim()
-        .to_ascii_lowercase()
-        .contains("no store associated with this search")
+    let normalized = message.trim().to_ascii_lowercase();
+    normalized.contains("no store associated with this search")
+        || normalized.contains("没有与此搜索相关的零售店")
 }
 
 /// 在读取门店数据之前先校验响应信封。
