@@ -359,6 +359,8 @@ async fn run_queries<F: Fetcher>(
     delivery_region: Option<DeliveryRegion>,
 ) -> Vec<StoreOutcome> {
     client.begin_cycle().await;
+    let query_targets: Vec<_> = groups.iter().map(|group| group.targets.clone()).collect();
+    client.plan_cycle(&query_targets).await;
     let sem = Arc::new(Semaphore::new(concurrency.max(1)));
     let mut set = JoinSet::new();
 
@@ -634,6 +636,7 @@ impl<F: Fetcher> Engine<F> {
                 store_count,
                 target_count: expected.len(),
             });
+            let queried_delivery_region = self.config.delivery_region.clone();
             let queries = run_queries(
                 self.client.clone(),
                 groups,
@@ -660,7 +663,9 @@ impl<F: Fetcher> Engine<F> {
                 }
             };
 
-            let Some(outcomes) = outcomes else { continue };
+            let Some(mut outcomes) = outcomes else {
+                continue;
+            };
 
             let stats = self.client.cycle_stats().await;
             let schedule_hint = self.client.schedule_hint(&locales).await;
@@ -680,6 +685,16 @@ impl<F: Fetcher> Engine<F> {
                         aborted = true;
                     }
                     other => self.handle_command(other).await,
+                }
+            }
+            if queried_delivery_region != self.config.delivery_region {
+                for outcome in &mut outcomes {
+                    for (_, _, details) in &mut outcome.parts {
+                        if let Some(details) = details {
+                            details.sale_reason = None;
+                            details.sale_message = None;
+                        }
+                    }
                 }
             }
             if aborted {
@@ -719,7 +734,17 @@ impl<F: Fetcher> Engine<F> {
                     self.config.interval = d;
                 }
             }
-            Command::SetDeliveryRegion(region) => self.config.delivery_region = region,
+            Command::SetDeliveryRegion(region) => {
+                if region != self.config.delivery_region {
+                    for state in self.states.values_mut() {
+                        if let Some(details) = &mut state.pickup_details {
+                            details.sale_reason = None;
+                            details.sale_message = None;
+                        }
+                    }
+                }
+                self.config.delivery_region = region;
+            }
             Command::Start(reply) => {
                 self.set_running(true).await;
                 let _ = reply.send(());
@@ -869,7 +894,7 @@ impl<F: Fetcher> Engine<F> {
                 });
             }
 
-            for (part, availability, pickup_details) in outcome.parts {
+            for (part, availability, mut pickup_details) in outcome.parts {
                 let key = TargetKey(format!(
                     "{}|{}|{}",
                     outcome.locale, outcome.store_number, part
@@ -879,6 +904,14 @@ impl<F: Fetcher> Engine<F> {
                 let Some(state) = self.states.get_mut(&key) else {
                     continue;
                 };
+
+                if let Some(delivery) = self
+                    .client
+                    .cached_delivery(&state.target, self.config.delivery_region.as_ref())
+                    .await
+                {
+                    delivery.merge_into(&mut pickup_details);
+                }
 
                 let previous = std::mem::replace(&mut state.availability, availability);
                 let previous_details = std::mem::replace(&mut state.pickup_details, pickup_details);
@@ -916,6 +949,13 @@ impl<F: Fetcher> Engine<F> {
                 });
                 let previous = std::mem::replace(&mut state.availability, unknown);
                 state.pickup_details = None;
+                if let Some(delivery) = self
+                    .client
+                    .cached_delivery(&state.target, self.config.delivery_region.as_ref())
+                    .await
+                {
+                    delivery.merge_into(&mut state.pickup_details);
+                }
                 state.last_checked_ms = Some(now);
                 state.consecutive_failures = state.consecutive_failures.saturating_add(1);
                 (previous != state.availability).then(|| state.clone())

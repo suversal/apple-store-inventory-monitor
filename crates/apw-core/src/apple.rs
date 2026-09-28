@@ -485,6 +485,21 @@ pub trait Fetcher: Clone + Send + Sync + 'static {
         async {}
     }
 
+    /// 在并发查询开始前提供本轮的门店批次，供支持地点查询的实现合并型号。
+    /// 每个批次已满足单次型号数量上限；这里只规划，不发出网络请求。
+    fn plan_cycle(&self, _groups: &[Vec<Target>]) -> impl std::future::Future<Output = ()> + Send {
+        async {}
+    }
+
+    /// 读取上次送货结果，不发请求。缓存到期后刷新失败时仍可保留已有信息。
+    fn cached_delivery(
+        &self,
+        _target: &Target,
+        _location: Option<&DeliveryRegion>,
+    ) -> impl std::future::Future<Output = Option<DeliveryInfo>> + Send {
+        async { None }
+    }
+
     /// 当前轮次实际发出的请求数与响应复用次数。
     fn cycle_stats(&self) -> impl std::future::Future<Output = CycleStats> + Send {
         async { CycleStats::default() }
@@ -520,6 +535,28 @@ pub trait Fetcher: Clone + Send + Sync + 'static {
 pub struct CycleStats {
     pub request_count: u32,
     pub reused_response_count: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DeliveryInfo {
+    pub sale_reason: Option<String>,
+    pub sale_message: Option<String>,
+}
+
+impl DeliveryInfo {
+    /// 只补充配送字段，不保留过期的门店取货结论或文案。
+    pub fn merge_into(self, details: &mut Option<PickupDetails>) {
+        let details = details.get_or_insert_with(|| PickupDetails {
+            pickup_display: String::new(),
+            pickup_quote: None,
+            sale_reason: None,
+            sale_message: None,
+        });
+        if self.sale_reason.is_some() {
+            details.sale_reason = self.sale_reason;
+        }
+        details.sale_message = self.sale_message;
+    }
 }
 
 /// 查询器对下一轮开始时间的最低要求。

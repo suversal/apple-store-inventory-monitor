@@ -54,7 +54,7 @@ test("送货日期按速度分色，并同时给出非颜色文字提示", () =>
   assert.equal(describeDelivery({saleMessage:"2026/09/20 — 免费"},checkedAt).tone,"standard");
   assert.equal(describeDelivery({saleMessage:"明天 — 免费"},checkedAt).tone,"fast");
   assert.deepEqual(describeDelivery({saleMessage:"2-3 周 — 免费"},checkedAt),{
-    label:"2-3 周",timing:"未选地址或其他原因，Apple 未给出准确日期",tone:"unknown",detail:"2-3 周 — 免费"
+    label:"2-3 周",timing:"以 Apple 返回的送货说明为准",tone:"unknown",detail:"2-3 周 — 免费"
   });
   assert.equal(describePickupDate("星期六 2026/09/19；Apple 香港广场"),"9/19");
 });
@@ -63,7 +63,7 @@ test("送货文案缺失、暂无供应与未知地区格式不会互相误判",
   assert.equal(describeDelivery({saleMessage:null}),null);
   assert.equal(describeDelivery({saleMessage:"暂无供应 — 免费"}).tone,"unavailable");
   assert.deepEqual(describeDelivery({saleMessage:"Arrives 14 Oct — Free"},0),{
-    label:"Arrives 14 Oct",timing:"未选地址或其他原因，Apple 未给出准确日期",tone:"unknown",detail:"Arrives 14 Oct — Free"
+    label:"Arrives 14 Oct",timing:"以 Apple 返回的送货说明为准",tone:"unknown",detail:"Arrives 14 Oct — Free"
   });
 });
 

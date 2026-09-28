@@ -160,7 +160,8 @@ impl UnknownReason {
     }
 }
 
-/// 本轮 Apple 返回的商品业务说明，不包含请求头、会话或完整响应。
+/// 商品业务说明：取货字段来自本轮查询，送货字段可来自有效缓存。
+/// 不包含请求头、会话或完整响应。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PickupDetails {
