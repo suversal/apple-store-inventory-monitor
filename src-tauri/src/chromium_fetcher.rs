@@ -8,16 +8,18 @@
 //! 这个实现不会读取用户现有 Chrome 的个人资料、Cookie 或浏览记录。专属会话
 //! 始终在后台启动，不会因查询失败自动弹出页面；浏览器进程由应用持有并在退出时终止。
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use apw_core::apple::{
-    ApiError, CycleStats, Fetcher, ScheduleHint, StoreAvailability, parse_pickup_message,
+    ApiError, CycleStats, DeliveryInfo as ProductDelivery, Fetcher, ScheduleHint,
+    StoreAvailability, parse_pickup_message,
 };
 use apw_core::model::{DeliveryRegion, Region, Target};
+use apw_core::watcher::MAX_PARTS_PER_REQUEST;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -30,9 +32,10 @@ const DEVTOOLS_SOCKET_TIMEOUT: Duration = Duration::from_secs(10);
 const SESSION_READY_TIMEOUT: Duration = Duration::from_secs(50);
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(25);
 const MIN_REQUEST_INTERVAL: Duration = Duration::from_secs(2);
+const DELIVERY_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
+const EMPTY_DELIVERY_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 const MAX_RESPONSE_BYTES: usize = 4 << 20;
 const MAX_EXCEPTION_SUMMARY_CHARS: usize = 160;
-const DELIVERY_CACHE_TTL: Duration = Duration::from_secs(60);
 const CHROMIUM_PROFILE_DIR: &str = "chromium-profile-v1";
 const SESSION_ESTABLISHED_MARKER: &str = ".apple-session-established";
 const PAGE_FETCH_FAILURE_MARKER: &str = "__APW_PAGE_FETCH_FAILED__:";
@@ -69,7 +72,6 @@ struct ChromiumSession {
     socket: Socket,
     next_command_id: u64,
     locale: Option<&'static str>,
-    delivery_cache: HashMap<String, (Instant, Option<String>)>,
     established: bool,
 }
 
@@ -291,7 +293,6 @@ impl ChromiumSession {
             socket,
             next_command_id: 1,
             locale: None,
-            delivery_cache: HashMap::new(),
             established,
         };
         if let Ok(version) = session.command("Browser.getVersion", json!({})).await {
@@ -552,22 +553,6 @@ impl ChromiumSession {
         ) else {
             return Ok(None);
         };
-        let key = format!(
-            "{}|{}|{}|{}|{}|{}|{}",
-            region.locale,
-            kit,
-            target.part_number,
-            companion,
-            location.state,
-            location.city,
-            location.district
-        );
-        if let Some((at, message)) = self.delivery_cache.get(&key)
-            && at.elapsed() < DELIVERY_CACHE_TTL
-        {
-            return Ok(message.clone());
-        }
-
         gate.acquire().await;
 
         let pairs = vec![
@@ -628,8 +613,6 @@ impl ChromiumSession {
             0 => return Err(browser_payload_transport_error(&payload.body)),
             status => return Err(ApiError::Transport(format!("HTTP {status}"))),
         };
-        self.delivery_cache
-            .insert(key, (Instant::now(), message.clone()));
         Ok(message)
     }
 }
@@ -826,10 +809,13 @@ fn delivery_query_pairs(parts: &[String], location: &DeliveryRegion) -> Vec<(Str
             .enumerate()
             .map(|(index, part)| (format!("parts.{index}"), part.clone())),
     );
-    pairs.push((
-        "location".to_string(),
-        format!("{} {} {}", location.state, location.city, location.district),
-    ));
+    // 大陆送货使用独立省市区。location 是取货地点搜索参数，送货接口可能
+    // 忽略它并返回 messageType=Ship 的发货时长，不能当作所选地址的送达日期。
+    pairs.extend([
+        ("state".to_string(), location.state.clone()),
+        ("city".to_string(), location.city.clone()),
+        ("district".to_string(), location.district.clone()),
+    ]);
     pairs
 }
 
@@ -899,12 +885,93 @@ pub struct AppleChromiumFetcher {
 }
 
 type PickupCacheKey = (&'static str, Vec<String>, String);
-type DeliveryCacheKey = (&'static str, Vec<String>, DeliveryRegion);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct DeliveryCacheKey {
+    locale: String,
+    part: String,
+    kit: Option<String>,
+    companion: Option<String>,
+    location: DeliveryRegion,
+}
 
-#[derive(Debug, Clone, Default)]
-struct ProductDelivery {
-    sale_reason: Option<String>,
-    sale_message: Option<String>,
+impl DeliveryCacheKey {
+    fn new(target: &Target, location: &DeliveryRegion) -> Self {
+        Self {
+            locale: target.locale.clone(),
+            part: target.part_number.clone(),
+            kit: target.kit_part.clone(),
+            companion: target.companion_part.clone(),
+            location: location.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CachedDelivery {
+    fetched_at: Instant,
+    info: ProductDelivery,
+}
+
+/// 按地区和地点合并普通商品型号。整组装入，避免把同一门店的原始批次拆散；
+/// 每个合并请求最多 20 个型号，Watch 组合商品继续走原查询路径。
+fn plan_nearby_parts(groups: &[Vec<Target>]) -> HashMap<PickupCacheKey, Vec<String>> {
+    type Batch = (BTreeSet<String>, Vec<PickupCacheKey>);
+    let mut batches: BTreeMap<(&'static str, String), Vec<Batch>> = BTreeMap::new();
+    for targets in groups {
+        let Some(first) = targets.first() else {
+            continue;
+        };
+        let Some(region) = apw_core::model::region_by_locale(&first.locale) else {
+            continue;
+        };
+        if targets.iter().any(|target| {
+            target.locale != first.locale
+                || target.companion_part.is_some()
+                || target.kit_part.is_some()
+        }) {
+            continue;
+        }
+        let Some(location) = targets
+            .iter()
+            .filter_map(|target| target.pickup_location.as_deref())
+            .map(str::trim)
+            .find(|location| !location.is_empty())
+        else {
+            continue;
+        };
+        let parts: BTreeSet<_> = targets
+            .iter()
+            .map(|target| target.part_number.clone())
+            .collect();
+        if parts.len() > MAX_PARTS_PER_REQUEST {
+            continue;
+        }
+        let key = (
+            region.locale,
+            parts.iter().cloned().collect(),
+            location.to_string(),
+        );
+        let city_batches = batches
+            .entry((region.locale, location.to_string()))
+            .or_default();
+        if let Some((merged, members)) = city_batches
+            .iter_mut()
+            .find(|(merged, _)| merged.union(&parts).count() <= MAX_PARTS_PER_REQUEST)
+        {
+            merged.extend(parts);
+            members.push(key);
+        } else {
+            city_batches.push((parts, vec![key]));
+        }
+    }
+    batches
+        .into_values()
+        .flatten()
+        .flat_map(|(parts, members)| {
+            let parts: Vec<_> = parts.into_iter().collect();
+            members.into_iter().map(move |key| (key, parts.clone()))
+        })
+        .collect()
 }
 
 #[derive(Debug, Default)]
@@ -959,6 +1026,7 @@ struct QueryState {
     /// 新一轮会清空并再次尝试，重试节奏仍由用户设置决定。
     session_start_failure: Option<String>,
     pickup_cache: HashMap<PickupCacheKey, String>,
+    nearby_parts: HashMap<PickupCacheKey, Vec<String>>,
     /// 本轮已经证实无法用于批量查询的地点。后续同地点门店直接按编号查询，
     /// 避免每家店都重复一次必然失败的地点请求；下一轮仍会重新探测。
     unavailable_nearby: HashSet<PickupCacheKey>,
@@ -973,7 +1041,11 @@ struct QueryState {
     /// 同轮不再重复请求，避免一轮里连续触发 541；新一轮立即清空，继续按用户设置
     /// 的频率查询，不建立跨轮次冷却。它也不能阻断门店取货查询。
     delivery_rejections: HashSet<&'static str>,
-    delivery_cache: HashMap<DeliveryCacheKey, BTreeMap<String, ProductDelivery>>,
+    delivery_cache: HashMap<DeliveryCacheKey, CachedDelivery>,
+    /// 成功响应中的空文案、仅购买状态和缺失型号短暂复用，避免逐店重查。
+    empty_delivery_cache: HashMap<DeliveryCacheKey, CachedDelivery>,
+    /// 包括失败在内，每个型号和地址一轮最多尝试一次。
+    delivery_attempts: HashSet<DeliveryCacheKey>,
     gate: RequestGate,
     cycle_reused_response_count: u32,
 }
@@ -982,12 +1054,78 @@ impl QueryState {
     fn begin_cycle(&mut self) {
         self.session_start_failure = None;
         self.pickup_cache.clear();
+        self.nearby_parts.clear();
         self.unavailable_nearby.clear();
         self.pickup_rejections.clear();
         self.delivery_rejections.clear();
-        self.delivery_cache.clear();
+        self.delivery_attempts.clear();
+        self.empty_delivery_cache
+            .retain(|_, entry| entry.fetched_at.elapsed() < EMPTY_DELIVERY_CACHE_TTL);
         self.gate.cycle_request_count = 0;
         self.cycle_reused_response_count = 0;
+    }
+
+    fn cached_delivery(
+        &self,
+        target: &Target,
+        location: &DeliveryRegion,
+    ) -> Option<ProductDelivery> {
+        let key = DeliveryCacheKey::new(target, location);
+        // 到期仅触发刷新，不删除上次成功结果；空响应或刷新失败不能清空日期。
+        self.delivery_cache
+            .get(&key)
+            .or_else(|| {
+                self.empty_delivery_cache
+                    .get(&key)
+                    .filter(|entry| entry.fetched_at.elapsed() < EMPTY_DELIVERY_CACHE_TTL)
+            })
+            .map(|entry| entry.info.clone())
+    }
+
+    fn needs_delivery(&self, target: &Target, location: &DeliveryRegion) -> bool {
+        let key = DeliveryCacheKey::new(target, location);
+        !self.delivery_attempts.contains(&key)
+            && !self
+                .delivery_cache
+                .get(&key)
+                .is_some_and(|entry| entry.fetched_at.elapsed() < DELIVERY_CACHE_TTL)
+            && !self
+                .empty_delivery_cache
+                .get(&key)
+                .is_some_and(|entry| entry.fetched_at.elapsed() < EMPTY_DELIVERY_CACHE_TTL)
+    }
+
+    fn cache_delivery(
+        &mut self,
+        target: &Target,
+        location: &DeliveryRegion,
+        info: ProductDelivery,
+    ) {
+        let key = DeliveryCacheKey::new(target, location);
+        // 空响应只延后五分钟重试，不覆盖已有日期，也不延长已有日期的有效期。
+        // 明确的“暂无供应”有送货文案，正常替换旧日期并缓存一小时。
+        if !info
+            .sale_message
+            .as_deref()
+            .is_some_and(|message| !message.trim().is_empty())
+        {
+            self.empty_delivery_cache.insert(
+                key,
+                CachedDelivery {
+                    fetched_at: Instant::now(),
+                    info,
+                },
+            );
+            return;
+        }
+        self.empty_delivery_cache.remove(&key);
+        self.delivery_cache.insert(
+            key,
+            CachedDelivery {
+                fetched_at: Instant::now(),
+                info,
+            },
+        );
     }
 
     fn schedule_hint(&mut self, _locales: &[String]) -> ScheduleHint {
@@ -1000,6 +1138,7 @@ impl QueryState {
         self.unavailable_nearby.clear();
         self.pickup_rejections.clear();
         self.delivery_rejections.clear();
+        self.delivery_attempts.clear();
     }
 
     fn pickup_rejection(&self, region: &'static Region) -> Option<ApiError> {
@@ -1083,7 +1222,7 @@ impl AppleChromiumFetcher {
             && targets
                 .iter()
                 .all(|target| target.companion_part.is_none() && target.kit_part.is_none());
-        let cache_key = pickup_location
+        let original_key = pickup_location
             .as_ref()
             .filter(|_| can_reuse_nearby)
             .map(|location| (region.locale, parts.clone(), location.clone()));
@@ -1091,6 +1230,13 @@ impl AppleChromiumFetcher {
         // 一把锁覆盖整个浏览器命令往返。监控引擎可以并发调多个门店，但同一个
         // DevTools 连接与 Apple 会话必须串行使用，避免请求突发再次触发 541。
         let mut guard = self.state.lock().await;
+        let nearby_parts = original_key
+            .as_ref()
+            .and_then(|key| guard.nearby_parts.get(key))
+            .cloned()
+            .unwrap_or_else(|| parts.clone());
+        let cache_key =
+            original_key.map(|(locale, _, location)| (locale, nearby_parts.clone(), location));
         if let Some(error) = guard.pickup_rejection(region) {
             return Err(error);
         }
@@ -1100,18 +1246,17 @@ impl AppleChromiumFetcher {
         let nearby_unavailable = cache_key
             .as_ref()
             .is_some_and(|cache_key| guard.unavailable_nearby.contains(cache_key));
-        let cached_body = cache_key.as_ref().and_then(|cache_key| {
-            let body = guard.pickup_cache.get(cache_key)?;
-            let availability = parse_pickup_message(body.as_bytes(), store_number).ok()?;
-            parts
-                .iter()
-                .all(|part| availability.parts.contains_key(part))
-                .then(|| body.clone())
-        });
+        let cached_body = cache_key
+            .as_ref()
+            .and_then(|key| guard.pickup_cache.get(key))
+            .cloned();
         let (mut payload, mut used_nearby_response) = if let Some(body) = cached_body {
             // 缓存只保存取货接口原文。命中后仍要继续执行下方的配送合并，不能
             // 提前返回，否则同城第二家门店会把预计送货显示成“未返回”。
-            guard.cycle_reused_response_count = guard.cycle_reused_response_count.saturating_add(1);
+            if parse_pickup_message(body.as_bytes(), store_number).is_ok() {
+                guard.cycle_reused_response_count =
+                    guard.cycle_reused_response_count.saturating_add(1);
+            }
             (BrowserPayload { status: 200, body }, true)
         } else {
             if guard.session.is_none() {
@@ -1137,7 +1282,16 @@ impl AppleChromiumFetcher {
                 session
                     .as_mut()
                     .expect("刚初始化的 Chromium 会话应当存在")
-                    .fetch(region, &scope, &parts, gate)
+                    .fetch(
+                        region,
+                        &scope,
+                        if matches!(scope, PickupScope::Nearby(_)) {
+                            &nearby_parts
+                        } else {
+                            &parts
+                        },
+                        gate,
+                    )
                     .await
             };
             let payload = match fetched {
@@ -1164,6 +1318,14 @@ impl AppleChromiumFetcher {
                 }
             };
             let used_nearby_response = matches!(scope, PickupScope::Nearby(_));
+            // 先保存整份地点响应，即使首家店不在其中，也能让后续门店复用。
+            // 缺门店时直接补查该店，不再重复发送同样的地点请求。
+            if used_nearby_response
+                && payload.status == 200
+                && let Some(key) = cache_key.as_ref()
+            {
+                guard.pickup_cache.insert(key.clone(), payload.body.clone());
+            }
             (payload, used_nearby_response)
         };
         if used_nearby_response && nearby_response_needs_store_fallback(&payload, store_number) {
@@ -1243,62 +1405,46 @@ impl AppleChromiumFetcher {
                 if used_nearby_response && let Some(cache_key) = cache_key {
                     guard.pickup_cache.insert(cache_key, payload.body.clone());
                 }
-                if let Some(location) = delivery_region
-                    && !guard.delivery_rejected_this_cycle(region)
-                {
-                    let mut regular_parts: Vec<String> = targets
+                if let Some(location) = delivery_region {
+                    let mut missing_parts: Vec<_> = targets
                         .iter()
-                        .filter(|target| target.kit_part.is_none())
+                        .filter(|target| {
+                            target.kit_part.is_none() && guard.needs_delivery(target, location)
+                        })
                         .map(|target| target.part_number.clone())
                         .collect();
-                    regular_parts.sort_unstable();
-                    regular_parts.dedup();
-                    if !regular_parts.is_empty() {
-                        let delivery_key = (region.locale, regular_parts.clone(), location.clone());
-                        let cached = guard.delivery_cache.get(&delivery_key).cloned();
-                        let delivery = match cached {
-                            Some(delivery) => Ok(delivery),
-                            None => {
-                                if guard.session.is_none() {
-                                    guard.session = Some(
-                                        ChromiumSession::start(self.profile_dir.clone()).await?,
-                                    );
-                                }
-                                let fetched = {
-                                    let QueryState { session, gate, .. } = &mut *guard;
-                                    session
-                                        .as_mut()
-                                        .expect("查询期间 Chromium 会话应当存在")
-                                        .fetch_product_delivery(
-                                            region,
-                                            &regular_parts,
-                                            location,
-                                            gate,
-                                        )
-                                        .await
-                                };
-                                if let Ok(ref delivery) = fetched {
-                                    guard.delivery_cache.insert(delivery_key, delivery.clone());
-                                }
-                                fetched
-                            }
+                    missing_parts.sort_unstable();
+                    missing_parts.dedup();
+                    if !missing_parts.is_empty() && !guard.delivery_rejected_this_cycle(region) {
+                        for target in targets.iter().filter(|target| {
+                            target.kit_part.is_none() && missing_parts.contains(&target.part_number)
+                        }) {
+                            guard
+                                .delivery_attempts
+                                .insert(DeliveryCacheKey::new(target, location));
+                        }
+                        let fetched = {
+                            let QueryState { session, gate, .. } = &mut *guard;
+                            session
+                                .as_mut()
+                                .expect("查询期间 Chromium 会话应当存在")
+                                .fetch_product_delivery(region, &missing_parts, location, gate)
+                                .await
                         };
-                        match delivery {
+                        match fetched {
                             Ok(delivery) => {
-                                for (part, delivery) in delivery {
-                                    if let Some(details) = availability
-                                        .parts
-                                        .get_mut(&part)
-                                        .and_then(|status| status.pickup_details.as_mut())
-                                    {
-                                        details.sale_reason = delivery.sale_reason;
-                                        details.sale_message = delivery.sale_message;
-                                    }
+                                for target in targets.iter().filter(|target| {
+                                    target.kit_part.is_none()
+                                        && missing_parts.contains(&target.part_number)
+                                }) {
+                                    let info = delivery
+                                        .get(&target.part_number)
+                                        .cloned()
+                                        .unwrap_or_default();
+                                    guard.cache_delivery(target, location, info);
                                 }
                             }
                             Err(error) => {
-                                // 配送是辅助信息。旧 fulfillment 接口失败时，保留
-                                // 已由 retail 接口确认的取货状态，只让本轮配送留空。
                                 eprintln!("普通商品送货查询失败：{error}");
                                 if matches!(error, ApiError::Blocked(_) | ApiError::RateLimited(_))
                                 {
@@ -1311,7 +1457,13 @@ impl AppleChromiumFetcher {
                         if guard.delivery_rejected_this_cycle(region) {
                             break;
                         }
-                        let delivery = {
+                        if !guard.needs_delivery(target, location) {
+                            continue;
+                        }
+                        guard
+                            .delivery_attempts
+                            .insert(DeliveryCacheKey::new(target, location));
+                        let fetched = {
                             let QueryState { session, gate, .. } = &mut *guard;
                             session
                                 .as_mut()
@@ -1319,26 +1471,33 @@ impl AppleChromiumFetcher {
                                 .fetch_watch_delivery(region, target, location, gate)
                                 .await
                         };
-                        match delivery {
-                            Ok(Some(message)) => {
-                                if let Some(status) =
-                                    availability.parts.get_mut(&target.part_number)
-                                    && let Some(details) = status.pickup_details.as_mut()
-                                {
-                                    details.sale_message = Some(message);
-                                }
+                        match fetched {
+                            Ok(Some(message)) => guard.cache_delivery(
+                                target,
+                                location,
+                                ProductDelivery {
+                                    sale_reason: None,
+                                    sale_message: Some(message),
+                                },
+                            ),
+                            Ok(None) => {
+                                guard.cache_delivery(target, location, ProductDelivery::default())
                             }
-                            Ok(None) => {}
                             Err(error) => {
-                                // 送货是附加信息，失败不能抹掉已经拿到的门店库存结论。
-                                // 保留取货响应里的粗略文案，下轮自动重试精确送货。
                                 eprintln!("Watch 送货查询失败（{}）：{error}", target.part_number);
                                 if matches!(error, ApiError::Blocked(_) | ApiError::RateLimited(_))
                                 {
                                     guard.reject_delivery_for_cycle(region);
                                 }
-                                break;
                             }
+                        }
+                    }
+                    // 即使刷新失败或其他型号配送被拦，也继续显示上次成功取得的送货信息。
+                    for target in targets {
+                        if let Some(info) = guard.cached_delivery(target, location)
+                            && let Some(status) = availability.parts.get_mut(&target.part_number)
+                        {
+                            info.merge_into(&mut status.pickup_details);
                         }
                     }
                 }
@@ -1381,6 +1540,19 @@ impl AppleChromiumFetcher {
 impl Fetcher for AppleChromiumFetcher {
     async fn begin_cycle(&self) {
         self.state.lock().await.begin_cycle();
+    }
+
+    async fn plan_cycle(&self, groups: &[Vec<Target>]) {
+        self.state.lock().await.nearby_parts = plan_nearby_parts(groups);
+    }
+
+    async fn cached_delivery(
+        &self,
+        target: &Target,
+        location: Option<&DeliveryRegion>,
+    ) -> Option<ProductDelivery> {
+        let location = location?;
+        self.state.lock().await.cached_delivery(target, location)
     }
 
     async fn cycle_stats(&self) -> CycleStats {
@@ -1438,6 +1610,19 @@ mod tests {
     async fn cdp_responses(
         responses: Vec<Value>,
     ) -> (AppleChromiumFetcher, tokio::task::JoinHandle<bool>) {
+        let (fetcher, peer, _) = cdp_recorded_responses(responses).await;
+        (fetcher, peer)
+    }
+
+    async fn cdp_recorded_responses(
+        responses: Vec<Value>,
+    ) -> (
+        AppleChromiumFetcher,
+        tokio::task::JoinHandle<bool>,
+        Arc<Mutex<Vec<Value>>>,
+    ) {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let recorded = requests.clone();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let peer = tokio::spawn(async move {
@@ -1450,6 +1635,7 @@ mod tests {
                     .unwrap()
                     .unwrap();
                 let request: Value = serde_json::from_str(request.to_text().unwrap()).unwrap();
+                recorded.lock().await.push(request.clone());
                 response["id"] = request["id"].clone();
                 socket
                     .send(Message::Text(response.to_string().into()))
@@ -1476,7 +1662,6 @@ mod tests {
             socket,
             next_command_id: 1,
             locale: Some("zh_CN"),
-            delivery_cache: HashMap::new(),
             established: true,
         };
         (
@@ -1488,7 +1673,202 @@ mod tests {
                 profile_dir: std::env::temp_dir(),
             },
             peer,
+            requests,
         )
+    }
+
+    fn nearby_target(store: &str, part: &str) -> Target {
+        let mut target = test_target(part);
+        target.store_number = store.into();
+        target.pickup_location = Some("上海 上海".into());
+        target
+    }
+
+    fn multi_pickup_response(entries: &[(&str, &[(&str, &str)])]) -> Value {
+        let stores: Vec<_> = entries
+            .iter()
+            .map(|(store, parts)| {
+                let parts: serde_json::Map<_, _> = parts
+                    .iter()
+                    .map(|(part, display)| {
+                        (
+                            part.to_string(),
+                            json!({"partNumber":part, "pickupDisplay":display}),
+                        )
+                    })
+                    .collect();
+                json!({"storeNumber":store, "partsAvailability":parts})
+            })
+            .collect();
+        json!({"result":{"result":{"value":{
+            "status":200, "body":json!({"body":{"stores":stores}}).to_string()
+        }}}})
+    }
+
+    fn sent_pairs(request: &Value) -> Vec<(String, String)> {
+        let expression = request["params"]["expression"].as_str().unwrap();
+        let raw = expression.split_once("const request=").unwrap().1;
+        let value = serde_json::Deserializer::from_str(raw)
+            .into_iter::<Value>()
+            .next()
+            .unwrap()
+            .unwrap();
+        serde_json::from_value(value["pairs"].clone()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn 调度同城不同型号仅发一次请求且库存不串店() {
+        use apw_core::watcher::{Event, Watcher, WatcherConfig};
+        let response = multi_pickup_response(&[
+            ("R678", &[("A", "available"), ("B", "available")]),
+            (
+                "R683",
+                &[
+                    ("A", "unavailable"),
+                    ("B", "unavailable"),
+                    ("C", "available"),
+                ],
+            ),
+            ("R390", &[("D", "unavailable")]),
+        ]);
+        let (fetcher, peer, requests) = cdp_recorded_responses(vec![response]).await;
+        let (watcher, mut events, engine) = Watcher::new(fetcher.clone(), WatcherConfig::default());
+        let task = tokio::spawn(engine);
+        watcher
+            .set_targets(vec![
+                nearby_target("R678", "A"),
+                nearby_target("R683", "B"),
+                nearby_target("R683", "C"),
+                nearby_target("R390", "D"),
+            ])
+            .await;
+        watcher.start().await;
+        let snapshot = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if let Event::CycleComplete {
+                    request_count,
+                    reused_response_count,
+                    healthy,
+                    next_check_in_secs,
+                    snapshot,
+                    ..
+                } = events.recv().await.unwrap()
+                {
+                    assert_eq!(request_count, 1);
+                    assert_eq!(reused_response_count, 2);
+                    assert_eq!(next_check_in_secs, 30);
+                    assert!(healthy);
+                    break snapshot;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(snapshot.len(), 4, "合并请求不能新增监控项");
+        for state in snapshot {
+            let expected = matches!(state.target.part_number.as_str(), "A" | "C");
+            assert_eq!(
+                state.availability.is_in_stock(),
+                expected,
+                "{} {}",
+                state.target.store_number,
+                state.target.part_number
+            );
+        }
+        let requests = requests.lock().await;
+        assert_eq!(requests.len(), 1);
+        let pairs = sent_pairs(&requests[0]);
+        assert!(pairs.contains(&("location".into(), "上海 上海".into())));
+        assert_eq!(
+            pairs
+                .iter()
+                .filter(|(key, _)| key.starts_with("parts."))
+                .map(|(_, value)| value.as_str())
+                .collect::<Vec<_>>(),
+            vec!["A", "B", "C", "D"]
+        );
+        watcher.stop().await;
+        task.abort();
+        assert!(!peer.await.unwrap());
+    }
+
+    #[test]
+    fn 合并型号限制二十个且不同地点地区与套件隔离() {
+        let mut groups: Vec<Vec<Target>> = (0..21)
+            .map(|i| vec![nearby_target(&format!("R{i}"), &format!("P{i:02}"))])
+            .collect();
+        let mut overseas = nearby_target("HK", "HK");
+        overseas.locale = "zh_HK".into();
+        groups.push(vec![overseas]);
+        let mut another_city = nearby_target("CD", "CD");
+        another_city.pickup_location = Some("四川 成都".into());
+        groups.push(vec![another_city]);
+        let mut kit = nearby_target("WATCH", "WATCH");
+        kit.kit_part = Some("kit".into());
+        groups.push(vec![kit]);
+        let plan = plan_nearby_parts(&groups);
+        let shanghai: Vec<_> = plan
+            .iter()
+            .filter(|(key, _)| key.0 == "zh_CN" && key.2 == "上海 上海")
+            .collect();
+        assert_eq!(shanghai.len(), 21);
+        let batches: HashSet<_> = shanghai.iter().map(|(_, parts)| *parts).collect();
+        assert_eq!(batches.len(), 2);
+        for ((_, requested, _), merged) in shanghai {
+            assert!(merged.len() <= 20);
+            assert!(requested.iter().all(|part| merged.contains(part)));
+            assert!(
+                !merged
+                    .iter()
+                    .any(|part| ["CD", "HK", "WATCH"].contains(&part.as_str()))
+            );
+        }
+        assert_eq!(plan.len(), 23);
+    }
+
+    #[tokio::test]
+    async fn 合并响应缺型号不重复查询且新一轮重新规划() {
+        let (fetcher, peer, requests) = cdp_recorded_responses(vec![
+            multi_pickup_response(&[
+                ("R678", &[("A", "available")]),
+                ("R683", &[("A", "unavailable")]),
+            ]),
+            pickup_response(&["R683"], "C", "unavailable"),
+        ])
+        .await;
+        let region = region_by_locale("zh_CN").unwrap();
+        let first = vec![nearby_target("R678", "A")];
+        let second = vec![nearby_target("R683", "B")];
+        fetcher.begin_cycle().await;
+        fetcher.plan_cycle(&[first.clone(), second.clone()]).await;
+        fetcher.pickup(region, "R678", &first, None).await.unwrap();
+        let result = fetcher.pickup(region, "R683", &second, None).await.unwrap();
+        assert!(
+            !result.parts.contains_key("B"),
+            "未返回的型号必须留给引擎标记未知"
+        );
+        assert_eq!(fetcher.cycle_stats().await.request_count, 1);
+        fetcher.begin_cycle().await;
+        fetcher.state.lock().await.gate.last_sent = None;
+        let changed = vec![nearby_target("R683", "C")];
+        fetcher.plan_cycle(std::slice::from_ref(&changed)).await;
+        let result = fetcher
+            .pickup(region, "R683", &changed, None)
+            .await
+            .unwrap();
+        assert!(!result.parts["C"].availability.is_in_stock());
+        let requests = requests.lock().await;
+        assert_eq!(requests.len(), 2);
+        let pairs = sent_pairs(&requests[1]);
+        assert_eq!(
+            pairs
+                .iter()
+                .filter(|(key, _)| key.starts_with("parts."))
+                .map(|(_, value)| value.as_str())
+                .collect::<Vec<_>>(),
+            vec!["C"]
+        );
+        assert!(!peer.await.unwrap());
     }
 
     fn pickup_response(stores: &[&str], part: &str, display: &str) -> Value {
@@ -1660,9 +2040,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn 首店缺失只补查自身且其余门店复用合并响应() {
+        let (fetcher, peer, requests) = cdp_recorded_responses(vec![
+            multi_pickup_response(&[("R683", &[("B", "unavailable")])]),
+            pickup_response(&["R678"], "A", "available"),
+        ])
+        .await;
+        let region = region_by_locale("zh_CN").unwrap();
+        let first = vec![nearby_target("R678", "A")];
+        let second = vec![nearby_target("R683", "B")];
+        fetcher.begin_cycle().await;
+        fetcher.plan_cycle(&[first.clone(), second.clone()]).await;
+        assert!(
+            fetcher
+                .pickup(region, "R678", &first, None)
+                .await
+                .unwrap()
+                .parts["A"]
+                .availability
+                .is_in_stock()
+        );
+        assert!(
+            !fetcher
+                .pickup(region, "R683", &second, None)
+                .await
+                .unwrap()
+                .parts["B"]
+                .availability
+                .is_in_stock()
+        );
+        assert_eq!(
+            fetcher.cycle_stats().await,
+            CycleStats {
+                request_count: 2,
+                reused_response_count: 1
+            }
+        );
+        let requests = requests.lock().await;
+        assert_eq!(requests.len(), 2);
+        let pairs = sent_pairs(&requests[1]);
+        assert!(pairs.contains(&("store".into(), "R678".into())));
+        assert_eq!(
+            pairs
+                .iter()
+                .filter(|(key, _)| key.starts_with("parts."))
+                .map(|(_, value)| value.as_str())
+                .collect::<Vec<_>>(),
+            vec!["A"],
+            "单店补查不应携带其他门店的型号"
+        );
+        assert!(!peer.await.unwrap());
+    }
+
+    #[tokio::test]
     async fn 缓存缺门店时回退真实请求() {
         let (fetcher, peer) = cdp_responses(vec![
-            pickup_response(&["R390"], "one", "available"),
             pickup_response(&["R390"], "one", "available"),
             pickup_response(&["R683"], "one", "unavailable"),
         ])
@@ -1685,7 +2117,7 @@ mod tests {
             .await
             .unwrap();
         assert!(!second.parts["one"].availability.is_in_stock());
-        assert_eq!(fetcher.cycle_stats().await.request_count, 3);
+        assert_eq!(fetcher.cycle_stats().await.request_count, 2);
         assert_eq!(fetcher.cycle_stats().await.reused_response_count, 0);
         assert!(!peer.await.unwrap());
     }
@@ -1890,9 +2322,10 @@ mod tests {
                 (region.locale, vec![part.clone()], location.clone()),
                 pickup_body,
             );
-            state.delivery_cache.insert(
-                (region.locale, vec![part.clone()], destination.clone()),
-                delivery,
+            state.cache_delivery(
+                &test_target(&part),
+                &destination,
+                delivery.remove(&part).unwrap(),
             );
         }
         let mut target = test_target(&part);
@@ -1913,6 +2346,430 @@ mod tests {
                 reused_response_count: 1,
             }
         );
+    }
+
+    #[test]
+    fn 送货缓存按时长地址和套件区分且到期保留旧结果() {
+        let mut state = QueryState::default();
+        let target = test_target("A");
+        let location = DeliveryRegion {
+            state: "上海".into(),
+            city: "上海".into(),
+            district: "黄浦区".into(),
+        };
+        state.cache_delivery(&target, &location, ProductDelivery::default());
+        assert!(!state.needs_delivery(&target, &location));
+        state
+            .empty_delivery_cache
+            .values_mut()
+            .next()
+            .unwrap()
+            .fetched_at = Instant::now() - EMPTY_DELIVERY_CACHE_TTL;
+        assert!(state.needs_delivery(&target, &location));
+        assert!(state.cached_delivery(&target, &location).is_none());
+        state.cache_delivery(
+            &target,
+            &location,
+            ProductDelivery {
+                sale_reason: Some("OK".into()),
+                sale_message: Some("明天".into()),
+            },
+        );
+        state.begin_cycle();
+        state.retry_now();
+        assert!(!state.needs_delivery(&target, &location));
+        assert_eq!(
+            state
+                .cached_delivery(&target, &location)
+                .unwrap()
+                .sale_message
+                .as_deref(),
+            Some("明天")
+        );
+        let other = DeliveryRegion {
+            district: "静安区".into(),
+            ..location.clone()
+        };
+        assert!(state.cached_delivery(&target, &other).is_none());
+        assert!(state.needs_delivery(&target, &other));
+        let mut watch = target.clone();
+        watch.kit_part = Some("kit".into());
+        watch.companion_part = Some("band".into());
+        assert!(state.cached_delivery(&watch, &location).is_none());
+        assert!(state.needs_delivery(&watch, &location));
+        state.delivery_cache.values_mut().next().unwrap().fetched_at =
+            Instant::now() - DELIVERY_CACHE_TTL;
+        assert!(state.needs_delivery(&target, &location));
+        state.begin_cycle();
+        assert_eq!(
+            state
+                .cached_delivery(&target, &location)
+                .unwrap()
+                .sale_message
+                .as_deref(),
+            Some("明天")
+        );
+        state.cache_delivery(&target, &location, ProductDelivery::default());
+        assert!(!state.needs_delivery(&target, &location));
+        assert_eq!(
+            state
+                .cached_delivery(&target, &location)
+                .unwrap()
+                .sale_message
+                .as_deref(),
+            Some("明天")
+        );
+        state
+            .empty_delivery_cache
+            .values_mut()
+            .next()
+            .unwrap()
+            .fetched_at = Instant::now() - EMPTY_DELIVERY_CACHE_TTL;
+        state.begin_cycle();
+        assert!(
+            state.needs_delivery(&target, &location),
+            "空响应不能延长旧日期的一小时有效期"
+        );
+    }
+
+    #[tokio::test]
+    async fn 五家店的空送货结果跨轮短暂复用且到期只补查一次() {
+        let region = region_by_locale("zh_CN").unwrap();
+        let location = DeliveryRegion {
+            state: "上海".into(),
+            city: "上海".into(),
+            district: "黄浦区".into(),
+        };
+        let stores = ["R390", "R683", "R401", "R402", "R403"];
+        for regular in [
+            json!({"buyability":{"reason":"COMING_SOON"}}),
+            json!({"buyability":{"reason":"NOT_FOR_SALE"}}),
+            json!({"deliveryOptionMessages":[{"displayName":"  "}]}),
+            Value::Null,
+        ] {
+            let messages = if regular.is_null() {
+                json!({})
+            } else {
+                json!({"A":{"regular":regular}})
+            };
+            let empty = json!({"result":{"result":{"value":{
+                "status":200,
+                "body":json!({"body":{"content":{"deliveryMessage":messages}}}).to_string()
+            }}}});
+            let (fetcher, peer, requests) = cdp_recorded_responses(vec![
+                pickup_response(&stores, "A", "unavailable"),
+                empty.clone(),
+                pickup_response(&stores, "A", "unavailable"),
+                pickup_response(&stores, "A", "unavailable"),
+                empty,
+            ])
+            .await;
+            for (cycle, expected) in [(0, 2), (1, 1), (2, 2)] {
+                if cycle == 2 {
+                    for entry in fetcher.state.lock().await.empty_delivery_cache.values_mut() {
+                        entry.fetched_at = Instant::now() - EMPTY_DELIVERY_CACHE_TTL;
+                    }
+                }
+                fetcher.begin_cycle().await;
+                fetcher.state.lock().await.gate.last_sent = None;
+                for store in stores {
+                    let target = nearby_target(store, "A");
+                    let result = fetcher
+                        .pickup(region, store, &[target], Some(&location))
+                        .await
+                        .unwrap();
+                    assert!(!result.parts["A"].availability.is_in_stock());
+                    if let Some(reason) = regular
+                        .pointer("/buyability/reason")
+                        .and_then(Value::as_str)
+                    {
+                        assert_eq!(
+                            result.parts["A"]
+                                .pickup_details
+                                .as_ref()
+                                .unwrap()
+                                .sale_reason
+                                .as_deref(),
+                            Some(reason)
+                        );
+                    }
+                }
+                assert_eq!(fetcher.cycle_stats().await.request_count, expected);
+            }
+            assert_eq!(requests.lock().await.len(), 5);
+            assert!(!peer.await.unwrap());
+        }
+    }
+
+    #[tokio::test]
+    async fn 配送过期后失败或缺项保留旧日期而有效刷新替换日期() {
+        let stores = ["R390", "R683"];
+        let (fetcher, peer, requests) = cdp_recorded_responses(vec![
+            pickup_response(&stores, "A", "available"),
+            product_delivery_response("A", "今天"),
+            pickup_response(&stores, "A", "available"),
+            http_response(500),
+            pickup_response(&stores, "A", "available"),
+            product_delivery_response("other", "明天"),
+            pickup_response(&stores, "A", "available"),
+            product_delivery_response("A", "暂无供应"),
+            pickup_response(&stores, "A", "available"),
+        ])
+        .await;
+        let region = region_by_locale("zh_CN").unwrap();
+        let location = DeliveryRegion {
+            state: "上海".into(),
+            city: "上海".into(),
+            district: "黄浦区".into(),
+        };
+        for (cycle, expected, message) in [
+            (0, 2, "今天"),
+            (1, 2, "今天"),
+            (2, 2, "今天"),
+            (3, 2, "暂无供应"),
+            (4, 1, "暂无供应"),
+        ] {
+            if cycle == 1 {
+                for entry in fetcher.state.lock().await.delivery_cache.values_mut() {
+                    entry.fetched_at = Instant::now() - DELIVERY_CACHE_TTL;
+                }
+            }
+            if cycle == 3 {
+                for entry in fetcher.state.lock().await.empty_delivery_cache.values_mut() {
+                    entry.fetched_at = Instant::now() - EMPTY_DELIVERY_CACHE_TTL;
+                }
+            }
+            fetcher.begin_cycle().await;
+            fetcher.state.lock().await.gate.last_sent = None;
+            for store in stores {
+                let result = fetcher
+                    .pickup(region, store, &[nearby_target(store, "A")], Some(&location))
+                    .await
+                    .unwrap();
+                let status = &result.parts["A"];
+                assert!(
+                    status.availability.is_in_stock(),
+                    "送货状态不能覆盖取货结论"
+                );
+                assert_eq!(
+                    status
+                        .pickup_details
+                        .as_ref()
+                        .unwrap()
+                        .sale_message
+                        .as_deref(),
+                    Some(message)
+                );
+            }
+            assert_eq!(fetcher.cycle_stats().await.request_count, expected);
+        }
+        assert_eq!(requests.lock().await.len(), 9);
+        assert!(!peer.await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn watch空送货结果跨店跨轮复用且过期后补查() {
+        let (fetcher, peer) = cdp_responses(vec![
+            pickup_response(&["R390"], "watch", "available"),
+            product_delivery_response("kit", ""),
+            pickup_response(&["R683"], "watch", "available"),
+            pickup_response(&["R390"], "watch", "available"),
+            pickup_response(&["R390"], "watch", "available"),
+            product_delivery_response("kit", "明天"),
+        ])
+        .await;
+        let region = region_by_locale("zh_CN").unwrap();
+        let location = DeliveryRegion {
+            state: "上海".into(),
+            city: "上海".into(),
+            district: "黄浦区".into(),
+        };
+        let mut target = test_target("watch");
+        target.kit_part = Some("kit".into());
+        target.companion_part = Some("band".into());
+        for (index, store, count) in [
+            (0, "R390", 2),
+            (1, "R683", 3),
+            (2, "R390", 1),
+            (3, "R390", 2),
+        ] {
+            if index == 3 {
+                for entry in fetcher.state.lock().await.empty_delivery_cache.values_mut() {
+                    entry.fetched_at = Instant::now() - EMPTY_DELIVERY_CACHE_TTL;
+                }
+            }
+            if index != 1 {
+                fetcher.begin_cycle().await;
+            }
+            fetcher.state.lock().await.gate.last_sent = None;
+            let result = fetcher
+                .pickup(
+                    region,
+                    store,
+                    std::slice::from_ref(&target),
+                    Some(&location),
+                )
+                .await
+                .unwrap();
+            assert_eq!(fetcher.cycle_stats().await.request_count, count);
+            if index == 3 {
+                assert_eq!(
+                    result.parts["watch"]
+                        .pickup_details
+                        .as_ref()
+                        .unwrap()
+                        .sale_message
+                        .as_deref(),
+                    Some("明天")
+                );
+            }
+        }
+        assert!(!peer.await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn 有效期内送货跨轮跨店复用且新增型号只补查缺项() {
+        let (fetcher, peer, requests) = cdp_recorded_responses(vec![
+            pickup_response(&["R390"], "A", "available"),
+            product_delivery_response("A", "明天"),
+            pickup_response(&["R683"], "A", "unavailable"),
+            multi_pickup_response(&[("R683", &[("A", "unavailable"), ("B", "available")])]),
+            product_delivery_response("B", "后天"),
+        ])
+        .await;
+        let region = region_by_locale("zh_CN").unwrap();
+        let location = DeliveryRegion {
+            state: "上海".into(),
+            city: "上海".into(),
+            district: "黄浦区".into(),
+        };
+        for (store, parts, count) in [
+            ("R390", vec!["A"], 2),
+            ("R683", vec!["A"], 1),
+            ("R683", vec!["A", "B"], 2),
+        ] {
+            fetcher.begin_cycle().await;
+            fetcher.state.lock().await.gate.last_sent = None;
+            let targets: Vec<_> = parts.iter().map(|part| test_target(part)).collect();
+            let result = fetcher
+                .pickup(region, store, &targets, Some(&location))
+                .await
+                .unwrap();
+            assert_eq!(
+                result.parts["A"]
+                    .pickup_details
+                    .as_ref()
+                    .unwrap()
+                    .sale_message
+                    .as_deref(),
+                Some("明天")
+            );
+            assert_eq!(fetcher.cycle_stats().await.request_count, count);
+        }
+        let requests = requests.lock().await;
+        let pairs = sent_pairs(&requests[4]);
+        assert_eq!(
+            pairs
+                .iter()
+                .filter(|(key, _)| key.starts_with("parts."))
+                .map(|(_, value)| value.as_str())
+                .collect::<Vec<_>>(),
+            vec!["B"]
+        );
+        assert!(!peer.await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn 取货被拦仍展示送货缓存但不沿用取货结论() {
+        use apw_core::watcher::{Event, Watcher, WatcherConfig};
+        let (fetcher, peer) = cdp_responses(vec![
+            pickup_response(&["R390"], "A", "available"),
+            product_delivery_response("A", "明天"),
+            http_response(541),
+        ])
+        .await;
+        let location = DeliveryRegion {
+            state: "上海".into(),
+            city: "上海".into(),
+            district: "黄浦区".into(),
+        };
+        let config = WatcherConfig {
+            interval: Duration::from_millis(10),
+            delivery_region: Some(location),
+            ..WatcherConfig::default()
+        };
+        let (watcher, mut events, engine) = Watcher::new(fetcher.clone(), config);
+        let task = tokio::spawn(engine);
+        watcher.set_targets(vec![test_target("A")]).await;
+        watcher.start().await;
+        tokio::time::timeout(Duration::from_secs(8), async {
+            loop {
+                if let Event::CycleComplete {
+                    cycle: 2,
+                    snapshot,
+                    request_count,
+                    ..
+                } = events.recv().await.unwrap()
+                {
+                    let row = &snapshot[0];
+                    assert!(row.availability.is_unknown());
+                    let details = row.pickup_details.as_ref().unwrap();
+                    assert_eq!(details.sale_message.as_deref(), Some("明天"));
+                    assert!(details.pickup_display.is_empty());
+                    assert!(details.pickup_quote.is_none());
+                    assert_eq!(request_count, 1);
+                    break;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        watcher.stop().await;
+        task.abort();
+        assert!(!peer.await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn watch送货有效期内也只查询一次() {
+        let (fetcher, peer) = cdp_responses(vec![
+            pickup_response(&["R390"], "watch", "available"),
+            product_delivery_response("kit", "2026/10/21 — 免费"),
+            pickup_response(&["R390"], "watch", "unavailable"),
+        ])
+        .await;
+        let region = region_by_locale("zh_CN").unwrap();
+        let location = DeliveryRegion {
+            state: "上海".into(),
+            city: "上海".into(),
+            district: "黄浦区".into(),
+        };
+        let mut target = test_target("watch");
+        target.kit_part = Some("kit".into());
+        target.companion_part = Some("band".into());
+        for count in [2, 1] {
+            fetcher.begin_cycle().await;
+            fetcher.state.lock().await.gate.last_sent = None;
+            let result = fetcher
+                .pickup(
+                    region,
+                    "R390",
+                    std::slice::from_ref(&target),
+                    Some(&location),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                result.parts["watch"]
+                    .pickup_details
+                    .as_ref()
+                    .unwrap()
+                    .sale_message
+                    .as_deref(),
+                Some("2026/10/21 — 免费")
+            );
+            assert_eq!(fetcher.cycle_stats().await.request_count, count);
+        }
+        assert!(!peer.await.unwrap());
     }
 
     #[test]
@@ -2163,7 +3020,7 @@ mod tests {
     }
 
     #[test]
-    fn 普通商品送货请求使用官网当前的location参数() {
+    fn 普通商品送货请求分别传递省市区而不使用取货location() {
         let destination = DeliveryRegion {
             state: "江苏".into(),
             city: "苏州".into(),
@@ -2171,13 +3028,68 @@ mod tests {
         };
         let pairs = delivery_query_pairs(&["MJYM4CH/A".into()], &destination);
 
-        assert!(pairs.contains(&("location".into(), "江苏 苏州 吴江区".into())));
+        assert!(pairs.contains(&("state".into(), "江苏".into())));
+        assert!(pairs.contains(&("city".into(), "苏州".into())));
+        assert!(pairs.contains(&("district".into(), "吴江区".into())));
         assert!(pairs.contains(&("parts.0".into(), "MJYM4CH/A".into())));
-        for forbidden in ["store", "searchNearby", "state", "city", "district"] {
+        for forbidden in ["store", "searchNearby", "location"] {
             assert!(
                 pairs.iter().all(|(key, _)| key != forbidden),
                 "送货请求不应携带 {forbidden}"
             );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "送货地址参数对照，需要本机 Chromium 和 Apple 官网网络"]
+    async fn diagnose_delivery_address_parameters() {
+        let region = region_by_locale("zh_CN").unwrap();
+        let profile = tempfile::tempdir().unwrap();
+        let mut session = ChromiumSession::start(profile.path().to_path_buf())
+            .await
+            .unwrap();
+        session.ensure_region(region).await.unwrap();
+        let location = DeliveryRegion {
+            state: "北京".into(),
+            city: "北京".into(),
+            district: "石景山区".into(),
+        };
+        let mut gate = RequestGate::default();
+        for separate in [false, true] {
+            let mut pairs = delivery_query_pairs(&["MJYJ4CH/A".into()], &location);
+            if !separate {
+                pairs.retain(|(key, _)| !["state", "city", "district"].contains(&key.as_str()));
+                pairs.push((
+                    "location".into(),
+                    format!("{} {} {}", location.state, location.city, location.district),
+                ));
+            }
+            gate.acquire().await;
+            let pairs = serde_json::to_string(&pairs).unwrap();
+            let url = serde_json::to_string(&region.delivery_message_url()).unwrap();
+            let expression = format!(
+                r#"(async()=>{{const url=new URL({url});for(const [k,v] of {pairs})url.searchParams.append(k,v);const r=await fetch(url,{{credentials:'same-origin',headers:{{'Accept':'application/json, text/javascript, */*; q=0.01','X-Requested-With':'XMLHttpRequest'}}}});return {{status:r.status,body:await r.text()}};}})()"#
+            );
+            let result = session.evaluate(&expression, true).await.unwrap();
+            let body: Value =
+                serde_json::from_str(result["body"].as_str().unwrap_or("")).unwrap_or(Value::Null);
+            let regular = &body["body"]["content"]["deliveryMessage"]["MJYJ4CH/A"]["regular"];
+            eprintln!(
+                "separate={separate} status={} message={} type={} address={}",
+                result["status"],
+                regular["deliveryOptionMessages"][0]["displayName"],
+                regular["messageType"],
+                regular["address"]
+            );
+            if separate {
+                assert_eq!(result["status"], 200);
+                assert_eq!(
+                    regular["address"],
+                    serde_json::to_value(&location).unwrap(),
+                    "Apple 必须明确识别所选省市区，不能只断言有送货文字"
+                );
+                assert_eq!(regular["messageType"], "Delivery");
+            }
         }
     }
 

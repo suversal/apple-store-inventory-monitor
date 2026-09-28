@@ -100,7 +100,7 @@ export function describeDelivery(
 
   return {
     label: compactDeliveryLabel(detail),
-    timing: "未选地址或其他原因，Apple 未给出准确日期",
+    timing: "以 Apple 返回的送货说明为准",
     tone: "unknown",
     detail,
   };
