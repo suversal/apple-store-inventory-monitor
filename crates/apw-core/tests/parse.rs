@@ -269,14 +269,18 @@ fn 已知取货节点为空是暂无数据而不是接口损坏或无货() {
 
 #[test]
 fn 澳洲未接入在线取货的门店是暂无数据而不是查询失败() {
-    let raw = br#"{"head":{"status":"200"},"body":{"errorMessage":"There is no store associated with this search. Please try another search value."}}"#;
-    let err = parse_pickup_message(raw, "R384").unwrap_err();
+    for raw in [
+        r#"{"head":{"status":"200"},"body":{"errorMessage":"There is no store associated with this search. Please try another search value."}}"#,
+        r#"{"head":{"status":"200"},"body":{"errorMessage":"没有与此搜索相关的零售店。请尝试其他搜索内容。"}}"#,
+    ] {
+        let err = parse_pickup_message(raw.as_bytes(), "R384").unwrap_err();
 
-    assert!(matches!(
-        &err,
-        ApiError::StorePickupUnavailable { store_number } if store_number == "R384"
-    ));
-    assert!(!err.is_retryable());
+        assert!(matches!(
+            &err,
+            ApiError::StorePickupUnavailable { store_number } if store_number == "R384"
+        ));
+        assert!(!err.is_retryable());
+    }
 }
 
 #[test]

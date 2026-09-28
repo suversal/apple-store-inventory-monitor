@@ -383,7 +383,12 @@ async fn 新冷却只告警等待自动探测且不建议重启() {
 async fn 查询失败必须落到未知而不是无货() {
     // 这是整个项目的核心不变量。上游在这里失守，静默失效了大半年。
     let fake = FakeFetcher::new(|_, _, _| Err(ApiError::Blocked("HTTP 541".into())));
-    let (w, mut rx) = Watcher::spawn(fake.clone(), fast_config());
+    let config = WatcherConfig {
+        interval: Duration::from_secs(30),
+        jitter: 0.0,
+        ..fast_config()
+    };
+    let (w, mut rx) = Watcher::spawn(fake.clone(), config);
     w.set_targets(vec![target("R683", "MG724CH/A")]).await;
     w.start().await;
 
@@ -408,6 +413,17 @@ async fn 查询失败必须落到未知而不是无货() {
     assert!(
         events.iter().any(|e| matches!(e, Event::Trouble { .. })),
         "被拦截时必须发告警，否则用户不知道界面上的状态已经不可信"
+    );
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            Event::CycleComplete {
+                next_check_in_secs: 30,
+                cooling: false,
+                ..
+            }
+        )),
+        "HTTP 541 不得放大用户设置的 30 秒查询间隔"
     );
 }
 
@@ -824,8 +840,8 @@ async fn 并发启停不会跑出两套循环() {
 
 #[tokio::test]
 async fn 全部型号都缺失时判定为门店级失败() {
-    // 请求成功但一个型号都对不上，说明这轮实质是废的。若还算成功，就不退避、
-    // 不告警，程序会继续按原频率请求一个已经失效的结构。
+    // 请求成功但一个型号都对不上，说明这轮实质是废的。
+    // 必须标记失败并告警，但轮询间隔仍由用户设置。
     let fake = FakeFetcher::new(|_, store, _| {
         // 返回一个完全不相干的型号。
         Ok(ok_response(

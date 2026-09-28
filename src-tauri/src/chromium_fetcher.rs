@@ -1,15 +1,15 @@
-//! 通过独立的无界面 Chromium 会话查询 Apple 库存。
+//! 通过独立的 Chromium 会话查询 Apple 库存。
 //!
 //! Apple 当前会在商品页执行 `shop/shld/v2_1/verify.js`，完成浏览器环境校验后才
 //! 接受库存请求。普通 HTTP 客户端或 WKWebView 即便拿到了部分 Cookie，仍会收到
-//! HTTP 541；真正的 Chromium 会话则能得到正常 JSON。这里启动一个使用临时资料
-//! 目录的后台浏览器，通过 DevTools 协议复用同一会话查询所有门店。
+//! HTTP 541；真正的 Chromium 会话则能得到正常 JSON。这里启动一个使用应用专属
+//! 持久资料目录的浏览器，通过 DevTools 协议复用同一会话查询所有门店。
 //!
-//! 这个实现不会读取用户现有 Chrome 的个人资料、Cookie 或浏览记录。临时目录随
-//! 会话销毁，浏览器进程也由应用持有并在退出时终止。
+//! 这个实现不会读取用户现有 Chrome 的个人资料、Cookie 或浏览记录。专属会话
+//! 始终在后台启动，不会因查询失败自动弹出页面；浏览器进程由应用持有并在退出时终止。
 
-use std::collections::{BTreeMap, HashMap};
-#[cfg(target_os = "macos")]
+use std::collections::{BTreeMap, HashMap, HashSet};
+#[cfg(unix)]
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -23,28 +23,22 @@ use apw_core::model::{DeliveryRegion, Region, Target};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tempfile::TempDir;
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
 
 const CHROME_START_TIMEOUT: Duration = Duration::from_secs(12);
-const DEVTOOLS_HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 const DEVTOOLS_SOCKET_TIMEOUT: Duration = Duration::from_secs(10);
 const SESSION_READY_TIMEOUT: Duration = Duration::from_secs(50);
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(25);
 const MIN_REQUEST_INTERVAL: Duration = Duration::from_secs(2);
 const MAX_RESPONSE_BYTES: usize = 4 << 20;
-const FALLBACK_CHROMIUM_MAJOR: u32 = 152;
 const MAX_EXCEPTION_SUMMARY_CHARS: usize = 160;
 const DELIVERY_CACHE_TTL: Duration = Duration::from_secs(60);
-const PROBE_RETRY_AFTER_TRANSIENT_ERROR: Duration = Duration::from_secs(60);
-const COOLDOWN_STEPS: [Duration; 4] = [
-    Duration::from_secs(5 * 60),
-    Duration::from_secs(10 * 60),
-    Duration::from_secs(20 * 60),
-    Duration::from_secs(30 * 60),
-];
+const CHROMIUM_PROFILE_DIR: &str = "chromium-profile-v1";
+const SESSION_ESTABLISHED_MARKER: &str = ".apple-session-established";
+const PAGE_FETCH_FAILURE_MARKER: &str = "__APW_PAGE_FETCH_FAILED__:";
+const PAGE_FETCH_FAILURE_PREFIX: &str = "Apple 页面请求失败：";
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -73,11 +67,12 @@ impl Drop for ChromiumProcess {
 struct ChromiumSession {
     /// 必须放在会话建立的最早阶段。DevTools 连接前任一错误返回，都要回收进程树。
     _process: ChromiumProcess,
-    _profile: TempDir,
+    profile_dir: PathBuf,
     socket: Socket,
     next_command_id: u64,
     locale: Option<&'static str>,
     delivery_cache: HashMap<String, (Instant, Option<String>)>,
+    established: bool,
 }
 
 fn terminate_chromium(child: &mut Child, process_group_id: Option<u32>) {
@@ -107,44 +102,138 @@ fn terminate_chromium(child: &mut Child, process_group_id: Option<u32>) {
     let _ = child.wait();
 }
 
+fn reserve_loopback_port() -> Result<u16, ApiError> {
+    let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .map_err(|e| ApiError::Transport(format!("无法预留 Chromium 本机调试端口：{e}")))?;
+    listener
+        .local_addr()
+        .map(|address| address.port())
+        .map_err(|e| ApiError::Transport(format!("无法读取 Chromium 本机调试端口：{e}")))
+}
+
+fn chromium_profile_dir() -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("apple-store-inventory-monitor")
+        .join(CHROMIUM_PROFILE_DIR)
+}
+
+#[cfg(unix)]
+fn profile_lock_pid(profile_dir: &Path) -> Option<u32> {
+    let target = std::fs::read_link(profile_dir.join("SingletonLock")).ok()?;
+    target
+        .to_string_lossy()
+        .rsplit('-')
+        .next()
+        .and_then(|pid| pid.parse().ok())
+}
+
+#[cfg(unix)]
+fn reclaim_orphaned_profile_process(profile_dir: &Path) -> Result<(), ApiError> {
+    let Some(pid) = profile_lock_pid(profile_dir) else {
+        return Ok(());
+    };
+    let pid_text = pid.to_string();
+    let output = Command::new("ps")
+        .args(["-p", pid_text.as_str(), "-o", "ppid=", "-o", "command="])
+        .output()
+        .map_err(|e| ApiError::Transport(format!("无法检查遗留 Chromium 进程：{e}")))?;
+    if !output.status.success() || output.stdout.is_empty() {
+        return Ok(());
+    }
+
+    let process = String::from_utf8_lossy(&output.stdout);
+    let mut fields = process.split_whitespace();
+    let parent_pid = fields.next().and_then(|value| value.parse::<u32>().ok());
+    let command = fields.collect::<Vec<_>>().join(" ");
+    let profile_arg = format!("--user-data-dir={}", profile_dir.display());
+    let lower = command.to_ascii_lowercase();
+    let is_scoped_chromium = command.contains(&profile_arg)
+        && (lower.contains("google chrome")
+            || lower.contains("microsoft edge")
+            || lower.contains("chromium"));
+    if !is_scoped_chromium {
+        return Err(ApiError::Transport(
+            "Chromium 资料目录被其他进程占用，为避免影响你的普通浏览器，本轮未启动新会话".into(),
+        ));
+    }
+    if parent_pid != Some(1) {
+        return Err(ApiError::Transport(
+            "另一个果到雷达实例正在使用专属 Chromium 会话，本轮未重复打开浏览器".into(),
+        ));
+    }
+
+    let process_group = -(pid as i32);
+    unsafe {
+        libc::kill(process_group, libc::SIGTERM);
+    }
+    for _ in 0..20 {
+        let alive = unsafe { libc::kill(pid as i32, 0) == 0 };
+        if !alive {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    unsafe {
+        libc::kill(process_group, libc::SIGKILL);
+    }
+    for _ in 0..20 {
+        let alive = unsafe { libc::kill(pid as i32, 0) == 0 };
+        if !alive {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    Err(ApiError::Transport(
+        "应用专属 Chromium 残留进程未能退出，本轮不会继续重复启动".into(),
+    ))
+}
+
+#[cfg(not(unix))]
+fn reclaim_orphaned_profile_process(_profile_dir: &Path) -> Result<(), ApiError> {
+    Ok(())
+}
+
 impl ChromiumSession {
-    async fn start() -> Result<Self, ApiError> {
+    async fn start(profile_dir: PathBuf) -> Result<Self, ApiError> {
         let chrome = find_chromium().ok_or_else(|| {
             ApiError::Transport(
                 "未找到 Google Chrome 或 Microsoft Edge；Apple 当前库存接口要求完整 Chromium 浏览器会话"
                     .into(),
             )
         })?;
-        // Windows 上直接执行 `chrome.exe --version` 可能不会退出。旧实现用
-        // `Command::output()` 同步等待，整个查询任务因此永久卡在会话启动阶段。
-        // 版本号只用于隐藏 HeadlessChrome 标记，不值得为它启动第二个浏览器进程；
-        // 使用随版本维护的兼容 UA，彻底移除这个无界等待点。
-        let user_agent = chromium_user_agent();
-        let profile = tempfile::Builder::new()
-            .prefix("apple-store-inventory-monitor-chromium-")
-            .tempdir()
-            .map_err(|e| ApiError::Transport(format!("无法创建 Chromium 临时目录：{e}")))?;
-        let profile_arg = format!("--user-data-dir={}", profile.path().display());
-        let user_agent_arg = format!("--user-agent={user_agent}");
+        std::fs::create_dir_all(&profile_dir)
+            .map_err(|e| ApiError::Transport(format!("无法创建 Chromium 专属资料目录：{e}")))?;
+        reclaim_orphaned_profile_process(&profile_dir)?;
+        let established = profile_dir.join(SESSION_ESTABLISHED_MARKER).is_file();
+        let profile_arg = format!("--user-data-dir={}", profile_dir.display());
+
+        // 不用 `--remote-debugging-port=0`：Chrome 会把这个特殊值视为自动化信号。
+        // 先在本机回环上预留一个端口，立即释放后交给 Chromium 监听。
+        let debug_port = reserve_loopback_port()?;
+        let debug_port_arg = format!("--remote-debugging-port={debug_port}");
+        eprintln!(
+            "正在启动 Apple 专属 Chromium 会话：profile={}，mode=background-headed",
+            profile_dir.display()
+        );
         let mut command = Command::new(chrome);
         command
             .args([
-                "--headless=new",
-                "--remote-debugging-port=0",
+                "--remote-debugging-address=127.0.0.1",
+                debug_port_arg.as_str(),
                 profile_arg.as_str(),
-                user_agent_arg.as_str(),
-                "--disable-blink-features=AutomationControlled",
                 "--no-first-run",
                 "--no-default-browser-check",
-                "--disable-background-networking",
                 "--disable-sync",
                 "--disable-default-apps",
-                "--disable-extensions",
-                "about:blank",
             ])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        // 始终在后台建立会话。HTTP 541 或初始化失败也不能抢焦点、弹出页面；
+        // 错误留在应用日志中，并按用户设置的查询间隔重试。
+        command.arg("--start-minimized");
+        command.arg("about:blank");
         #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt;
@@ -163,15 +252,9 @@ impl ChromiumSession {
             process_group_id,
         };
 
-        let port_file = profile.path().join("DevToolsActivePort");
         let deadline = Instant::now() + CHROME_START_TIMEOUT;
-        let port = loop {
-            if let Ok(contents) = std::fs::read_to_string(&port_file)
-                && let Some(line) = contents.lines().next()
-                && let Ok(port) = line.parse::<u16>()
-            {
-                break port;
-            }
+        let targets_url = format!("http://127.0.0.1:{debug_port}/json/list");
+        let targets = loop {
             if let Some(status) = process
                 .child
                 .try_wait()
@@ -184,20 +267,16 @@ impl ChromiumSession {
             if Instant::now() >= deadline {
                 return Err(ApiError::Transport("等待 Chromium 启动超时".into()));
             }
+            let target_attempt = tokio::time::timeout(Duration::from_millis(500), async {
+                let response = reqwest::get(&targets_url).await.ok()?;
+                response.json::<Vec<DebugTarget>>().await.ok()
+            })
+            .await;
+            if let Ok(Some(targets)) = target_attempt {
+                break targets;
+            }
             tokio::time::sleep(Duration::from_millis(100)).await;
         };
-
-        let targets_url = format!("http://127.0.0.1:{port}/json/list");
-        let targets: Vec<DebugTarget> = tokio::time::timeout(DEVTOOLS_HTTP_TIMEOUT, async {
-            reqwest::get(&targets_url)
-                .await
-                .map_err(|e| ApiError::Transport(format!("无法连接 Chromium 调试端口：{e}")))?
-                .json()
-                .await
-                .map_err(|e| ApiError::Transport(format!("Chromium 目标列表无法解析：{e}")))
-        })
-        .await
-        .map_err(|_| ApiError::Transport("读取 Chromium 页面目标超时".into()))??;
         let socket_url = targets
             .into_iter()
             .find(|target| target.kind == "page")
@@ -208,14 +287,38 @@ impl ChromiumSession {
             .map_err(|_| ApiError::Transport("连接 Chromium 调试 WebSocket 超时".into()))?
             .map_err(|e| ApiError::Transport(format!("无法连接 Chromium 页面：{e}")))?;
 
-        Ok(Self {
+        let mut session = Self {
             _process: process,
-            _profile: profile,
+            profile_dir,
             socket,
             next_command_id: 1,
             locale: None,
             delivery_cache: HashMap::new(),
-        })
+            established,
+        };
+        if let Ok(version) = session.command("Browser.getVersion", json!({})).await {
+            let product = version
+                .get("product")
+                .and_then(Value::as_str)
+                .unwrap_or("未知版本");
+            let user_agent = version
+                .get("userAgent")
+                .and_then(Value::as_str)
+                .unwrap_or("未知 UA");
+            eprintln!("Apple 专属 Chromium 会话已连接：{product}，{user_agent}");
+        }
+        Ok(session)
+    }
+
+    async fn mark_established(&mut self) {
+        if !self.established {
+            let marker = self.profile_dir.join(SESSION_ESTABLISHED_MARKER);
+            if let Err(error) = std::fs::write(&marker, b"ok\n") {
+                eprintln!("Apple 会话成功，但无法写入已建立标记：{error}");
+            } else {
+                self.established = true;
+            }
+        }
     }
 
     async fn command(&mut self, method: &str, params: Value) -> Result<Value, ApiError> {
@@ -348,20 +451,25 @@ impl ChromiumSession {
         .map_err(|e| ApiError::Transport(format!("无法编码库存请求：{e}")))?;
         let expression = format!(
             r#"(async()=>{{
-                const request={request};
-                const url=new URL(request.url);
-                for(const [key,value] of request.pairs) url.searchParams.append(key,value);
-                const response=await fetch(url.toString(),{{
-                    credentials:'same-origin',
-                    headers:{{
-                        'Accept':'application/json, text/javascript, */*; q=0.01',
-                        'X-Requested-With':'XMLHttpRequest'
-                    }}
-                }});
-                const body=await response.text();
-                const bytes=new TextEncoder().encode(body).length;
-                if(bytes>request.max_bytes) return {{status:0,body:'Apple 响应超过 4 MiB 安全上限'}};
-                return {{status:response.status,body}};
+                try {{
+                    const request={request};
+                    const url=new URL(request.url);
+                    for(const [key,value] of request.pairs) url.searchParams.append(key,value);
+                    const response=await fetch(url.toString(),{{
+                        credentials:'same-origin',
+                        headers:{{
+                            'Accept':'application/json, text/javascript, */*; q=0.01',
+                            'X-Requested-With':'XMLHttpRequest'
+                        }}
+                    }});
+                    const body=await response.text();
+                    const bytes=new TextEncoder().encode(body).length;
+                    if(bytes>request.max_bytes) return {{status:0,body:'Apple 响应超过 4 MiB 安全上限'}};
+                    return {{status:response.status,body}};
+                }} catch(error) {{
+                    const detail=error instanceof Error ? `${{error.name}}: ${{error.message}}` : String(error);
+                    return {{status:0,body:'__APW_PAGE_FETCH_FAILED__:'+detail}};
+                }}
             }})()"#
         );
         let value = self.evaluate(&expression, true).await?;
@@ -394,17 +502,22 @@ impl ChromiumSession {
         .map_err(|e| ApiError::Transport(format!("无法编码送货请求：{e}")))?;
         let expression = format!(
             r#"(async()=>{{
-                const request={request};
-                const url=new URL(request.url);
-                for(const [key,value] of request.pairs) url.searchParams.append(key,value);
-                const response=await fetch(url.toString(),{{
-                    credentials:'same-origin',
-                    headers:{{'Accept':'application/json, text/javascript, */*; q=0.01','X-Requested-With':'XMLHttpRequest'}}
-                }});
-                const body=await response.text();
-                const bytes=new TextEncoder().encode(body).length;
-                if(bytes>request.max_bytes) return {{status:0,body:'Apple 响应超过 4 MiB 安全上限'}};
-                return {{status:response.status,body}};
+                try {{
+                    const request={request};
+                    const url=new URL(request.url);
+                    for(const [key,value] of request.pairs) url.searchParams.append(key,value);
+                    const response=await fetch(url.toString(),{{
+                        credentials:'same-origin',
+                        headers:{{'Accept':'application/json, text/javascript, */*; q=0.01','X-Requested-With':'XMLHttpRequest'}}
+                    }});
+                    const body=await response.text();
+                    const bytes=new TextEncoder().encode(body).length;
+                    if(bytes>request.max_bytes) return {{status:0,body:'Apple 响应超过 4 MiB 安全上限'}};
+                    return {{status:response.status,body}};
+                }} catch(error) {{
+                    const detail=error instanceof Error ? `${{error.name}}: ${{error.message}}` : String(error);
+                    return {{status:0,body:'__APW_PAGE_FETCH_FAILED__:'+detail}};
+                }}
             }})()"#
         );
         let value = self.evaluate(&expression, true).await?;
@@ -415,9 +528,7 @@ impl ChromiumSession {
             403 | 541 => Err(ApiError::Blocked(format!("HTTP {}", payload.status))),
             429 => Err(ApiError::RateLimited("HTTP 429".into())),
             status if status >= 500 => Err(ApiError::Transport(format!("HTTP {status}"))),
-            0 => Err(ApiError::Transport(
-                payload.body.chars().take(300).collect(),
-            )),
+            0 => Err(browser_payload_transport_error(&payload.body)),
             status => Err(ApiError::Transport(format!("HTTP {status}"))),
         }
     }
@@ -490,17 +601,22 @@ impl ChromiumSession {
         .map_err(|e| ApiError::Transport(format!("无法编码 Watch 送货请求：{e}")))?;
         let expression = format!(
             r#"(async()=>{{
-                const request={request};
-                const url=new URL(request.url);
-                for(const [key,value] of request.pairs) url.searchParams.append(key,value);
-                const response=await fetch(url.toString(),{{
-                    credentials:'same-origin',
-                    headers:{{'Accept':'application/json, text/javascript, */*; q=0.01','X-Requested-With':'XMLHttpRequest'}}
-                }});
-                const body=await response.text();
-                const bytes=new TextEncoder().encode(body).length;
-                if(bytes>request.max_bytes) return {{status:0,body:'Apple 响应超过 4 MiB 安全上限'}};
-                return {{status:response.status,body}};
+                try {{
+                    const request={request};
+                    const url=new URL(request.url);
+                    for(const [key,value] of request.pairs) url.searchParams.append(key,value);
+                    const response=await fetch(url.toString(),{{
+                        credentials:'same-origin',
+                        headers:{{'Accept':'application/json, text/javascript, */*; q=0.01','X-Requested-With':'XMLHttpRequest'}}
+                    }});
+                    const body=await response.text();
+                    const bytes=new TextEncoder().encode(body).length;
+                    if(bytes>request.max_bytes) return {{status:0,body:'Apple 响应超过 4 MiB 安全上限'}};
+                    return {{status:response.status,body}};
+                }} catch(error) {{
+                    const detail=error instanceof Error ? `${{error.name}}: ${{error.message}}` : String(error);
+                    return {{status:0,body:'__APW_PAGE_FETCH_FAILED__:'+detail}};
+                }}
             }})()"#
         );
         let value = self.evaluate(&expression, true).await?;
@@ -511,11 +627,7 @@ impl ChromiumSession {
             403 | 541 => return Err(ApiError::Blocked(format!("HTTP {}", payload.status))),
             429 => return Err(ApiError::RateLimited("HTTP 429".into())),
             status if status >= 500 => return Err(ApiError::RateLimited(format!("HTTP {status}"))),
-            0 => {
-                return Err(ApiError::Transport(
-                    payload.body.chars().take(300).collect(),
-                ));
-            }
+            0 => return Err(browser_payload_transport_error(&payload.body)),
             status => return Err(ApiError::Transport(format!("HTTP {status}"))),
         };
         self.delivery_cache
@@ -643,6 +755,21 @@ struct BrowserPayload {
     body: String,
 }
 
+fn browser_payload_transport_error(body: &str) -> ApiError {
+    let detail: String = body
+        .strip_prefix(PAGE_FETCH_FAILURE_MARKER)
+        .map(|detail| format!("{PAGE_FETCH_FAILURE_PREFIX}{detail}"))
+        .unwrap_or_else(|| body.to_string())
+        .chars()
+        .take(300)
+        .collect();
+    ApiError::Transport(detail)
+}
+
+fn is_page_fetch_failure(error: &ApiError) -> bool {
+    matches!(error, ApiError::Transport(detail) if detail.starts_with(PAGE_FETCH_FAILURE_PREFIX))
+}
+
 #[derive(Debug, Clone)]
 enum PickupScope {
     Store(String),
@@ -672,6 +799,21 @@ fn pickup_query_pairs(scope: &PickupScope, parts: &[String]) -> Vec<(String, Str
             .map(|(index, part)| (format!("parts.{index}"), part.clone())),
     );
     pairs
+}
+
+/// 地点查询没有给出目标门店时，单店查询仍可能正常工作。
+///
+/// 只认三种明确的“地点无结果”，不能把限流、网络错误或任意结构变化都变成一次
+/// 额外请求，否则恰好会在 Apple 拒绝访问时加重请求突发。
+fn nearby_response_needs_store_fallback(payload: &BrowserPayload, store_number: &str) -> bool {
+    if payload.status != 200 {
+        return false;
+    }
+    match parse_pickup_message(payload.body.as_bytes(), store_number) {
+        Err(ApiError::StorePickupUnavailable { .. } | ApiError::NoPickupData { .. }) => true,
+        Err(ApiError::SchemaDrift { field, .. }) => field == "body.stores[].storeNumber",
+        _ => false,
+    }
 }
 
 fn delivery_query_pairs(parts: &[String], location: &DeliveryRegion) -> Vec<(String, String)> {
@@ -751,17 +893,11 @@ fn find_chromium() -> Option<PathBuf> {
     })
 }
 
-fn chromium_user_agent() -> String {
-    format!(
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
-AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{FALLBACK_CHROMIUM_MAJOR}.0.0.0 Safari/537.36"
-    )
-}
-
 /// 可交给核心监控引擎的 Chromium 查询器。
 #[derive(Debug, Clone)]
 pub struct AppleChromiumFetcher {
     state: Arc<Mutex<QueryState>>,
+    profile_dir: PathBuf,
 }
 
 type PickupCacheKey = (&'static str, Vec<String>, String);
@@ -804,129 +940,94 @@ impl RequestGate {
 }
 
 #[derive(Debug, Clone)]
-struct CooldownState {
-    until: Instant,
-    level: usize,
-    detail: String,
-    announce: bool,
+enum CyclePickupRejection {
+    Blocked(String),
+    RateLimited(String),
+}
+
+impl CyclePickupRejection {
+    fn into_api_error(self) -> ApiError {
+        match self {
+            Self::Blocked(detail) => ApiError::Blocked(detail),
+            Self::RateLimited(detail) => ApiError::RateLimited(detail),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
 struct QueryState {
     session: Option<ChromiumSession>,
+    /// 本轮启动浏览器会话失败后不再为每个门店重复启动。
+    /// 新一轮会清空并再次尝试，重试节奏仍由用户设置决定。
+    session_start_failure: Option<String>,
     pickup_cache: HashMap<PickupCacheKey, String>,
+    /// 本轮已经证实无法用于批量查询的地点。后续同地点门店直接按编号查询，
+    /// 避免每家店都重复一次必然失败的地点请求；下一轮仍会重新探测。
+    unavailable_nearby: HashSet<PickupCacheKey>,
+    /// 本轮已经被 Apple 拒绝的取货地区。
+    ///
+    /// 541/403/429 发生后继续为同地区逐店发请求，不会提高成功率，只会把
+    /// 一轮查询从十几秒拖到数分钟。这里只短路当前轮次；`begin_cycle` 会清空它，
+    /// 下一轮仍按用户设置的间隔复用同一会话探测，不是保护冷却或指数退避。
+    pickup_rejections: HashMap<&'static str, CyclePickupRejection>,
+    /// 本轮已经被旧 fulfillment 送货接口拒绝的地区。
+    ///
+    /// 同轮不再重复请求，避免一轮里连续触发 541；新一轮立即清空，继续按用户设置
+    /// 的频率查询，不建立跨轮次冷却。它也不能阻断门店取货查询。
+    delivery_rejections: HashSet<&'static str>,
     delivery_cache: HashMap<DeliveryCacheKey, BTreeMap<String, ProductDelivery>>,
-    cooldowns: HashMap<&'static str, CooldownState>,
     gate: RequestGate,
     cycle_reused_response_count: u32,
 }
 
 impl QueryState {
     fn begin_cycle(&mut self) {
+        self.session_start_failure = None;
         self.pickup_cache.clear();
+        self.unavailable_nearby.clear();
+        self.pickup_rejections.clear();
+        self.delivery_rejections.clear();
         self.delivery_cache.clear();
         self.gate.cycle_request_count = 0;
         self.cycle_reused_response_count = 0;
     }
 
-    fn active_cooldown_error(&mut self, region: &'static Region) -> Option<ApiError> {
-        let now = Instant::now();
-        let state = self.cooldowns.get_mut(region.locale)?;
-        let remaining = state.until.saturating_duration_since(now);
-        if remaining.is_zero() {
-            return None;
-        }
-        let newly_started = std::mem::take(&mut state.announce);
-        Some(ApiError::CoolingDown {
-            remaining_seconds: remaining
-                .as_secs()
-                .saturating_add(u64::from(remaining.subsec_nanos() > 0)),
-            detail: state.detail.clone(),
-            newly_started,
-        })
-    }
-
-    fn start_or_escalate_cooldown(
-        &mut self,
-        region: &'static Region,
-        detail: impl Into<String>,
-    ) -> ApiError {
-        let now = Instant::now();
-        let level = self
-            .cooldowns
-            .get(region.locale)
-            .map(|state| {
-                if now >= state.until {
-                    state.level.saturating_add(1)
-                } else {
-                    state.level
-                }
-            })
-            .unwrap_or(0)
-            .min(COOLDOWN_STEPS.len() - 1);
-        self.cooldowns.insert(
-            region.locale,
-            CooldownState {
-                until: now + COOLDOWN_STEPS[level],
-                level,
-                detail: detail.into(),
-                announce: true,
-            },
-        );
-        self.pickup_cache.retain(|key, _| key.0 != region.locale);
-        self.active_cooldown_error(region)
-            .expect("刚建立的冷却应当立即生效")
-    }
-
-    /// 冷却结束后的唯一探测若遇到普通网络错误，不升档，但短暂挡住本轮其余门店。
-    fn defer_after_transient_probe_error(&mut self, region: &'static Region, detail: &str) {
-        let now = Instant::now();
-        if let Some(state) = self.cooldowns.get_mut(region.locale)
-            && now >= state.until
-        {
-            state.until = now + PROBE_RETRY_AFTER_TRANSIENT_ERROR;
-            state.detail = format!("恢复探测暂时失败：{detail}");
-            state.announce = false;
-        }
-    }
-
-    fn record_success(&mut self, region: &'static Region) {
-        self.cooldowns.remove(region.locale);
-    }
-
-    fn schedule_hint(&mut self, locales: &[String]) -> ScheduleHint {
-        let now = Instant::now();
-        let mut delay = Duration::ZERO;
-        let mut cooling = false;
-
-        if !locales.is_empty() {
-            let mut all_cooling = true;
-            let mut earliest = None::<Duration>;
-            for locale in locales {
-                let remaining = self
-                    .cooldowns
-                    .get(locale.as_str())
-                    .map(|state| state.until.saturating_duration_since(now))
-                    .filter(|remaining| !remaining.is_zero());
-                match remaining {
-                    Some(remaining) => {
-                        cooling = true;
-                        earliest = Some(earliest.map_or(remaining, |old| old.min(remaining)));
-                    }
-                    None => all_cooling = false,
-                }
-            }
-            if all_cooling && let Some(cooldown) = earliest {
-                delay = delay.max(cooldown);
-            }
-        }
-
-        ScheduleHint { delay, cooling }
+    fn schedule_hint(&mut self, _locales: &[String]) -> ScheduleHint {
+        ScheduleHint::default()
     }
 
     fn retry_now(&mut self) {
-        self.cooldowns.clear();
+        self.session_start_failure = None;
         self.pickup_cache.clear();
+        self.unavailable_nearby.clear();
+        self.pickup_rejections.clear();
+        self.delivery_rejections.clear();
+    }
+
+    fn pickup_rejection(&self, region: &'static Region) -> Option<ApiError> {
+        self.pickup_rejections
+            .get(region.locale)
+            .cloned()
+            .map(CyclePickupRejection::into_api_error)
+    }
+
+    fn reject_pickup_for_cycle(
+        &mut self,
+        region: &'static Region,
+        rejection: CyclePickupRejection,
+    ) {
+        self.pickup_rejections
+            .entry(region.locale)
+            .or_insert(rejection);
+        self.pickup_cache.retain(|key, _| key.0 != region.locale);
+    }
+
+    fn delivery_rejected_this_cycle(&self, region: &'static Region) -> bool {
+        self.delivery_rejections.contains(region.locale)
+    }
+
+    fn reject_delivery_for_cycle(&mut self, region: &'static Region) {
+        self.delivery_rejections.insert(region.locale);
     }
 }
 
@@ -934,6 +1035,7 @@ impl AppleChromiumFetcher {
     pub fn new() -> Self {
         Self {
             state: Arc::new(Mutex::new(QueryState::default())),
+            profile_dir: chromium_profile_dir(),
         }
     }
 
@@ -991,9 +1093,15 @@ impl AppleChromiumFetcher {
         // 一把锁覆盖整个浏览器命令往返。监控引擎可以并发调多个门店，但同一个
         // DevTools 连接与 Apple 会话必须串行使用，避免请求突发再次触发 541。
         let mut guard = self.state.lock().await;
-        if let Some(error) = guard.active_cooldown_error(region) {
+        if let Some(error) = guard.pickup_rejection(region) {
             return Err(error);
         }
+        if let Some(detail) = guard.session_start_failure.clone() {
+            return Err(ApiError::Transport(detail));
+        }
+        let nearby_unavailable = cache_key
+            .as_ref()
+            .is_some_and(|cache_key| guard.unavailable_nearby.contains(cache_key));
         let cached_body = cache_key.as_ref().and_then(|cache_key| {
             let body = guard.pickup_cache.get(cache_key)?;
             let availability = parse_pickup_message(body.as_bytes(), store_number).ok()?;
@@ -1009,9 +1117,19 @@ impl AppleChromiumFetcher {
             (BrowserPayload { status: 200, body }, true)
         } else {
             if guard.session.is_none() {
-                guard.session = Some(ChromiumSession::start().await?);
+                match ChromiumSession::start(self.profile_dir.clone()).await {
+                    Ok(session) => guard.session = Some(session),
+                    Err(error) => {
+                        let detail = match &error {
+                            ApiError::Transport(detail) => detail.clone(),
+                            _ => error.to_string(),
+                        };
+                        guard.session_start_failure = Some(detail);
+                        return Err(error);
+                    }
+                }
             }
-            let scope = if can_reuse_nearby {
+            let scope = if can_reuse_nearby && !nearby_unavailable {
                 PickupScope::Nearby(pickup_location.expect("附近查询必须有地点"))
             } else {
                 PickupScope::Store(store_number.to_string())
@@ -1030,12 +1148,19 @@ impl AppleChromiumFetcher {
                     // CDP 断连、命令超时或页面执行失败后，不再缓存这个失效会话。
                     // 保留原错误交给引擎处理，后续查询才重建，不在失败请求内重试。
                     // Apple 的 HTTP 限流和库存数据仍走下面原有的分类逻辑。
+                    if let ApiError::Blocked(detail) = &error {
+                        guard.reject_pickup_for_cycle(
+                            region,
+                            CyclePickupRejection::Blocked(detail.clone()),
+                        );
+                    } else if let ApiError::RateLimited(detail) = &error {
+                        guard.reject_pickup_for_cycle(
+                            region,
+                            CyclePickupRejection::RateLimited(detail.clone()),
+                        );
+                    }
                     if matches!(error, ApiError::Transport(_)) {
                         guard.session = None;
-                        guard.defer_after_transient_probe_error(region, &error.to_string());
-                    } else if matches!(error, ApiError::Blocked(_) | ApiError::RateLimited(_)) {
-                        guard.session = None;
-                        return Err(guard.start_or_escalate_cooldown(region, error.to_string()));
                     }
                     return Err(error);
                 }
@@ -1043,16 +1168,13 @@ impl AppleChromiumFetcher {
             let used_nearby_response = matches!(scope, PickupScope::Nearby(_));
             (payload, used_nearby_response)
         };
-        let nearby_missed_store = used_nearby_response
-            && payload.status == 200
-            && matches!(
-                parse_pickup_message(payload.body.as_bytes(), store_number),
-                Err(ApiError::SchemaDrift { ref field, .. })
-                    if field == "body.stores[].storeNumber"
-            );
-        if nearby_missed_store {
-            // Apple 只返回地点附近的有限门店；若目标店不在其中，立即按门店补查。
+        if used_nearby_response && nearby_response_needs_store_fallback(&payload, store_number) {
+            // 地点搜索可能返回空门店、业务无结果，或只返回附近的有限门店。
+            // 这些结果都不能代表目标门店不可查询，立即按门店编号补查。
             // 这份单店响应不能放进地点缓存，否则后续同城门店都会误用它。
+            if let Some(cache_key) = cache_key.as_ref() {
+                guard.unavailable_nearby.insert(cache_key.clone());
+            }
             let fallback_scope = PickupScope::Store(store_number.to_string());
             let fallback = {
                 let QueryState { session, gate, .. } = &mut *guard;
@@ -1065,12 +1187,19 @@ impl AppleChromiumFetcher {
             payload = match fallback {
                 Ok(payload) => payload,
                 Err(error) => {
+                    if let ApiError::Blocked(detail) = &error {
+                        guard.reject_pickup_for_cycle(
+                            region,
+                            CyclePickupRejection::Blocked(detail.clone()),
+                        );
+                    } else if let ApiError::RateLimited(detail) = &error {
+                        guard.reject_pickup_for_cycle(
+                            region,
+                            CyclePickupRejection::RateLimited(detail.clone()),
+                        );
+                    }
                     if matches!(error, ApiError::Transport(_)) {
                         guard.session = None;
-                        guard.defer_after_transient_probe_error(region, &error.to_string());
-                    } else if matches!(error, ApiError::Blocked(_) | ApiError::RateLimited(_)) {
-                        guard.session = None;
-                        return Err(guard.start_or_escalate_cooldown(region, error.to_string()));
                     }
                     return Err(error);
                 }
@@ -1086,27 +1215,39 @@ impl AppleChromiumFetcher {
                     .find(|byte| !byte.is_ascii_whitespace())
                     .is_some_and(|byte| *byte != b'{' && *byte != b'[')
                 {
-                    guard.session = None;
-                    return Err(
-                        guard.start_or_escalate_cooldown(region, "HTTP 200 但响应不是 JSON")
+                    guard.reject_pickup_for_cycle(
+                        region,
+                        CyclePickupRejection::Blocked("HTTP 200 但响应不是 JSON".into()),
                     );
+                    return Err(ApiError::Blocked("HTTP 200 但响应不是 JSON".into()));
                 }
                 let mut availability = match parse_pickup_message(bytes, store_number) {
                     Ok(availability) => availability,
                     Err(error @ (ApiError::Blocked(_) | ApiError::RateLimited(_))) => {
-                        guard.session = None;
-                        return Err(guard.start_or_escalate_cooldown(region, error.to_string()));
-                    }
-                    Err(error) => {
-                        guard.defer_after_transient_probe_error(region, &error.to_string());
+                        match &error {
+                            ApiError::Blocked(detail) => guard.reject_pickup_for_cycle(
+                                region,
+                                CyclePickupRejection::Blocked(detail.clone()),
+                            ),
+                            ApiError::RateLimited(detail) => guard.reject_pickup_for_cycle(
+                                region,
+                                CyclePickupRejection::RateLimited(detail.clone()),
+                            ),
+                            _ => unreachable!(),
+                        }
                         return Err(error);
                     }
+                    Err(error) => return Err(error),
                 };
-                guard.record_success(region);
+                if let Some(session) = guard.session.as_mut() {
+                    session.mark_established().await;
+                }
                 if used_nearby_response && let Some(cache_key) = cache_key {
                     guard.pickup_cache.insert(cache_key, payload.body.clone());
                 }
-                if let Some(location) = delivery_region {
+                if let Some(location) = delivery_region
+                    && !guard.delivery_rejected_this_cycle(region)
+                {
                     let mut regular_parts: Vec<String> = targets
                         .iter()
                         .filter(|target| target.kit_part.is_none())
@@ -1121,7 +1262,9 @@ impl AppleChromiumFetcher {
                             Some(delivery) => Ok(delivery),
                             None => {
                                 if guard.session.is_none() {
-                                    guard.session = Some(ChromiumSession::start().await?);
+                                    guard.session = Some(
+                                        ChromiumSession::start(self.profile_dir.clone()).await?,
+                                    );
                                 }
                                 let fetched = {
                                     let QueryState { session, gate, .. } = &mut *guard;
@@ -1159,10 +1302,17 @@ impl AppleChromiumFetcher {
                                 // 配送是辅助信息。旧 fulfillment 接口失败时，保留
                                 // 已由 retail 接口确认的取货状态，只让本轮配送留空。
                                 eprintln!("普通商品送货查询失败：{error}");
+                                if matches!(error, ApiError::Blocked(_) | ApiError::RateLimited(_))
+                                {
+                                    guard.reject_delivery_for_cycle(region);
+                                }
                             }
                         }
                     }
                     for target in targets.iter().filter(|target| target.kit_part.is_some()) {
+                        if guard.delivery_rejected_this_cycle(region) {
+                            break;
+                        }
                         let delivery = {
                             let QueryState { session, gate, .. } = &mut *guard;
                             session
@@ -1185,18 +1335,9 @@ impl AppleChromiumFetcher {
                                 // 送货是附加信息，失败不能抹掉已经拿到的门店库存结论。
                                 // 保留取货响应里的粗略文案，下轮自动重试精确送货。
                                 eprintln!("Watch 送货查询失败（{}）：{error}", target.part_number);
-                                match error {
-                                    ApiError::Blocked(_) | ApiError::RateLimited(_) => {
-                                        guard.start_or_escalate_cooldown(region, error.to_string());
-                                    }
-                                    ApiError::Transport(_) => {
-                                        guard.session = None;
-                                        guard.defer_after_transient_probe_error(
-                                            region,
-                                            &error.to_string(),
-                                        );
-                                    }
-                                    _ => {}
+                                if matches!(error, ApiError::Blocked(_) | ApiError::RateLimited(_))
+                                {
+                                    guard.reject_delivery_for_cycle(region);
                                 }
                                 break;
                             }
@@ -1206,21 +1347,32 @@ impl AppleChromiumFetcher {
                 Ok(availability)
             }
             403 | 541 => {
-                // 当前浏览器会话已经被拒绝。直接销毁临时资料与进程；下一轮会用
-                // 全新会话重新握手，不拿失效 Cookie 反复撞接口。
-                guard.session = None;
-                Err(guard.start_or_escalate_cooldown(region, format!("HTTP {}", payload.status)))
+                // 保留专属 Profile、Cookie 和当前会话，显示 Apple 页面便于完成必要的
+                // 浏览器校验。只短路本轮同地区；下一轮按用户设置的间隔复用它。
+                let detail = format!("HTTP {}", payload.status);
+                guard
+                    .reject_pickup_for_cycle(region, CyclePickupRejection::Blocked(detail.clone()));
+                Err(ApiError::Blocked(detail))
             }
-            429 => Err(guard.start_or_escalate_cooldown(region, "HTTP 429")),
-            status if status >= 500 => {
-                let error = ApiError::Transport(format!("Apple 服务暂时异常：HTTP {status}"));
-                guard.defer_after_transient_probe_error(region, &error.to_string());
-                Err(error)
+            429 => {
+                let detail = "HTTP 429".to_string();
+                guard.reject_pickup_for_cycle(
+                    region,
+                    CyclePickupRejection::RateLimited(detail.clone()),
+                );
+                Err(ApiError::RateLimited(detail))
             }
+            status if status >= 500 => Err(ApiError::Transport(format!(
+                "Apple 服务暂时异常：HTTP {status}"
+            ))),
             0 => {
-                let error = ApiError::Transport(payload.body.chars().take(300).collect());
-                guard.session = None;
-                guard.defer_after_transient_probe_error(region, &error.to_string());
+                let error = browser_payload_transport_error(&payload.body);
+                // 页面里的 fetch 偶发失败并不等于 DevTools 连接或 Chromium 进程已死。
+                // 保留会话，让同轮其他门店继续查询；当前门店保持未知，并由下一轮
+                // 按用户设置的查询间隔重试。只有无法解析等真正会话故障才重建。
+                if !is_page_fetch_failure(&error) {
+                    guard.session = None;
+                }
                 Err(error)
             }
             status => Err(ApiError::Transport(format!("HTTP {status}"))),
@@ -1322,11 +1474,12 @@ mod tests {
                     .unwrap(),
                 process_group_id: None,
             },
-            _profile: tempfile::tempdir().unwrap(),
+            profile_dir: std::env::temp_dir(),
             socket,
             next_command_id: 1,
             locale: Some("zh_CN"),
             delivery_cache: HashMap::new(),
+            established: true,
         };
         (
             AppleChromiumFetcher {
@@ -1334,6 +1487,7 @@ mod tests {
                     session: Some(session),
                     ..QueryState::default()
                 })),
+                profile_dir: std::env::temp_dir(),
             },
             peer,
         )
@@ -1357,6 +1511,84 @@ mod tests {
         }}}})
     }
 
+    fn pickup_error_response(message: &str) -> Value {
+        json!({"result":{"result":{"value":{
+            "status": 200,
+            "body": json!({"body":{"errorMessage":message}}).to_string()
+        }}}})
+    }
+
+    fn http_response(status: u16) -> Value {
+        json!({"result":{"result":{"value":{
+            "status": status,
+            "body": ""
+        }}}})
+    }
+
+    fn page_fetch_failure_response(detail: &str) -> Value {
+        json!({"result":{"result":{"value":{
+            "status": 0,
+            "body": format!("{PAGE_FETCH_FAILURE_MARKER}{detail}")
+        }}}})
+    }
+
+    fn product_delivery_response(part: &str, display_name: &str) -> Value {
+        json!({"result":{"result":{"value":{
+            "status": 200,
+            "body": json!({
+                "body": {
+                    "content": {
+                        "deliveryMessage": {
+                            part: {
+                                "regular": {
+                                    "deliveryOptionMessages": [{"displayName": display_name}]
+                                }
+                            }
+                        }
+                    }
+                }
+            }).to_string()
+        }}}})
+    }
+
+    #[test]
+    fn 只有明确的地点无结果才触发单店补查() {
+        let business_error = BrowserPayload {
+            status: 200,
+            body: json!({"body":{"errorMessage":"没有与此搜索相关的零售店。请尝试其他搜索内容。"}})
+                .to_string(),
+        };
+        let empty_stores = BrowserPayload {
+            status: 200,
+            body: json!({"body":{"stores":[]}}).to_string(),
+        };
+        let missing_store = BrowserPayload {
+            status: 200,
+            body: json!({"body":{"stores":[{"storeNumber":"R761","partsAvailability":{}}]}})
+                .to_string(),
+        };
+        let unrelated_error = BrowserPayload {
+            status: 200,
+            body: json!({"body":{"errorMessage":"Product invalid"}}).to_string(),
+        };
+        let blocked = BrowserPayload {
+            status: 541,
+            body: String::new(),
+        };
+
+        assert!(nearby_response_needs_store_fallback(
+            &business_error,
+            "R793"
+        ));
+        assert!(nearby_response_needs_store_fallback(&empty_stores, "R793"));
+        assert!(nearby_response_needs_store_fallback(&missing_store, "R793"));
+        assert!(!nearby_response_needs_store_fallback(
+            &unrelated_error,
+            "R793"
+        ));
+        assert!(!nearby_response_needs_store_fallback(&blocked, "R793"));
+    }
+
     #[tokio::test]
     async fn 显式关闭会话会释放浏览器连接() {
         let (fetcher, peer) = cdp_responses(Vec::new()).await;
@@ -1371,7 +1603,10 @@ mod tests {
     #[tokio::test]
     #[ignore = "需要本机 Chromium"]
     async fn 真实chromium会话析构后进程组消失() {
-        let session = ChromiumSession::start().await.unwrap();
+        let profile = tempfile::tempdir().unwrap();
+        let session = ChromiumSession::start(profile.path().to_path_buf())
+            .await
+            .unwrap();
         let process_group_id = session._process.process_group_id.unwrap();
 
         drop(session);
@@ -1454,6 +1689,170 @@ mod tests {
         assert!(!second.parts["one"].availability.is_in_stock());
         assert_eq!(fetcher.cycle_stats().await.request_count, 3);
         assert_eq!(fetcher.cycle_stats().await.reused_response_count, 0);
+        assert!(!peer.await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn 地点查询无门店时回退单店且同轮跳过失效地点() {
+        let message = "没有与此搜索相关的零售店。请尝试其他搜索内容。";
+        let (fetcher, peer) = cdp_responses(vec![
+            pickup_error_response(message),
+            pickup_response(&["R761"], "one", "unavailable"),
+            pickup_response(&["R793"], "one", "unavailable"),
+        ])
+        .await;
+        let region = region_by_locale("zh_CN").unwrap();
+        fetcher.begin_cycle().await;
+
+        let mut first_target = test_target("one");
+        first_target.store_number = "R761".into();
+        first_target.pickup_location = Some("广东 深圳".into());
+        let first = fetcher
+            .pickup_message(region, "R761", &[first_target], None)
+            .await
+            .unwrap();
+        assert_eq!(first.store_number, "R761");
+        assert_eq!(fetcher.cycle_stats().await.request_count, 2);
+
+        let key = (
+            region.locale,
+            vec!["one".to_string()],
+            "广东 深圳".to_string(),
+        );
+        assert!(fetcher.state.lock().await.unavailable_nearby.contains(&key));
+
+        // 避免测试真的等待生产环境的两秒间隔；这里仍会记录一次请求。
+        fetcher.state.lock().await.gate.last_sent = None;
+        let mut second_target = test_target("one");
+        second_target.store_number = "R793".into();
+        second_target.pickup_location = Some("广东 深圳".into());
+        let second = fetcher
+            .pickup_message(region, "R793", &[second_target], None)
+            .await
+            .unwrap();
+        assert_eq!(second.store_number, "R793");
+        assert_eq!(fetcher.cycle_stats().await.request_count, 3);
+        assert_eq!(fetcher.cycle_stats().await.reused_response_count, 0);
+
+        fetcher.begin_cycle().await;
+        assert!(fetcher.state.lock().await.unavailable_nearby.is_empty());
+        assert!(!peer.await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn 单店补查仍无关联门店时保留暂停取货语义() {
+        let message = "没有与此搜索相关的零售店。请尝试其他搜索内容。";
+        let (fetcher, peer) = cdp_responses(vec![
+            pickup_error_response(message),
+            pickup_error_response(message),
+        ])
+        .await;
+        let region = region_by_locale("zh_CN").unwrap();
+        fetcher.begin_cycle().await;
+
+        let mut target = test_target("one");
+        target.store_number = "R793".into();
+        target.pickup_location = Some("广东 深圳".into());
+        let error = fetcher
+            .pickup_message(region, "R793", &[target], None)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            ApiError::StorePickupUnavailable { store_number } if store_number == "R793"
+        ));
+        assert_eq!(fetcher.cycle_stats().await.request_count, 2);
+        assert!(!peer.await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn 送货被拒只跳过同轮且下一轮恢复查询() {
+        let (fetcher, peer) = cdp_responses(vec![
+            pickup_response(&["R390"], "watch-one", "available"),
+            http_response(541),
+            pickup_response(&["R683"], "regular-two", "unavailable"),
+            pickup_response(&["R683"], "regular-two", "unavailable"),
+            product_delivery_response("regular-two", "明天"),
+        ])
+        .await;
+        let region = region_by_locale("zh_CN").unwrap();
+        let destination = DeliveryRegion {
+            state: "上海".into(),
+            city: "上海".into(),
+            district: "黄浦区".into(),
+        };
+        fetcher.begin_cycle().await;
+
+        let mut watch = test_target("watch-one");
+        watch.companion_part = Some("band-one".into());
+        watch.kit_part = Some("kit-one".into());
+        let first = fetcher
+            .pickup_message(region, "R390", &[watch], Some(&destination))
+            .await
+            .unwrap();
+        assert!(first.parts["watch-one"].availability.is_in_stock());
+        {
+            let mut state = fetcher.state.lock().await;
+            assert!(state.delivery_rejected_this_cycle(region));
+            assert_eq!(
+                state.schedule_hint(&[region.locale.to_string()]),
+                ScheduleHint::default(),
+                "辅助送货失败不能改变取货轮询间隔"
+            );
+            // 避免测试真的等待生产环境的两秒间隔。
+            state.gate.last_sent = None;
+        }
+
+        let second = fetcher
+            .pickup_message(
+                region,
+                "R683",
+                &[test_target("regular-two")],
+                Some(&destination),
+            )
+            .await
+            .unwrap();
+        assert!(!second.parts["regular-two"].availability.is_in_stock());
+        assert_eq!(
+            fetcher.cycle_stats().await.request_count,
+            3,
+            "送货接口被拒后只应继续取货，不应再次查询送货"
+        );
+
+        fetcher.begin_cycle().await;
+        {
+            let mut state = fetcher.state.lock().await;
+            assert!(
+                !state.delivery_rejected_this_cycle(region),
+                "新一轮必须立即清除送货拒绝标记"
+            );
+            // 避免测试真的等待生产环境的两秒间隔。
+            state.gate.last_sent = None;
+        }
+
+        let next_cycle = fetcher
+            .pickup_message(
+                region,
+                "R683",
+                &[test_target("regular-two")],
+                Some(&destination),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            next_cycle.parts["regular-two"]
+                .pickup_details
+                .as_ref()
+                .and_then(|details| details.sale_message.as_deref()),
+            Some("明天"),
+            "下一轮必须重新查询并合并预计送货数据"
+        );
+        assert_eq!(
+            fetcher.cycle_stats().await.request_count,
+            2,
+            "新一轮应重新发出一次取货请求和一次送货请求"
+        );
         assert!(!peer.await.unwrap());
     }
 
@@ -1553,61 +1952,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn 冷却只在恢复探测再次被拒时升档() {
-        let region = region_by_locale("zh_CN").unwrap();
-        let mut state = QueryState::default();
-        let first = state.start_or_escalate_cooldown(region, "HTTP 541");
-        assert!(matches!(
-            first,
-            ApiError::CoolingDown {
-                newly_started: true,
-                ..
-            }
-        ));
-        let level = state.cooldowns[region.locale].level;
-        for _ in 0..6 {
-            assert!(matches!(
-                state.active_cooldown_error(region),
-                Some(ApiError::CoolingDown {
-                    newly_started: false,
-                    ..
-                })
-            ));
-        }
-        assert_eq!(state.cooldowns[region.locale].level, level);
-
-        state.cooldowns.get_mut(region.locale).unwrap().until =
-            Instant::now() - Duration::from_secs(1);
-        let second = state.start_or_escalate_cooldown(region, "HTTP 541");
-        assert!(matches!(
-            second,
-            ApiError::CoolingDown {
-                newly_started: true,
-                ..
-            }
-        ));
-        assert_eq!(state.cooldowns[region.locale].level, level + 1);
-    }
-
-    #[test]
-    fn 用户立即重试会解除当前冷却等待() {
-        let region = region_by_locale("zh_CN").unwrap();
-        let mut state = QueryState::default();
-        state.start_or_escalate_cooldown(region, "HTTP 541");
-        assert!(state.schedule_hint(&[region.locale.to_string()]).delay > Duration::ZERO);
-
-        state.retry_now();
-
-        assert_eq!(
-            state.schedule_hint(&[region.locale.to_string()]),
-            ScheduleHint::default()
-        );
-        assert!(state.active_cooldown_error(region).is_none());
-    }
-
     #[tokio::test]
-    async fn 服务端五百错误不进入固定地区冷却() {
+    async fn 服务端五百错误不改变正常轮询间隔() {
         let (fetcher, peer) = cdp_fixture(json!({
             "result": {"result": {"value": {"status": 503, "body": "{}"}}}
         }))
@@ -1617,13 +1963,9 @@ mod tests {
             .pickup_message(region, "R390", &[test_target("MG6X4CH/A")], None)
             .await;
         assert!(matches!(result, Err(ApiError::Transport(_))));
-        assert!(
-            !fetcher
-                .state
-                .lock()
-                .await
-                .cooldowns
-                .contains_key(region.locale)
+        assert_eq!(
+            fetcher.schedule_hint(&[region.locale.to_string()]).await,
+            ScheduleHint::default()
         );
         assert!(!peer.await.unwrap(), "普通 5xx 不应销毁仍连接的浏览器会话");
     }
@@ -1650,8 +1992,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn 限流保留会话而明确拦截仍清理会话() {
-        for (status, should_close) in [(429, false), (403, true), (541, true)] {
+    async fn 拒绝响应短路同轮同地区且下一轮恢复探测() {
+        for status in [429, 403, 541] {
             let (fetcher, peer) = cdp_fixture(json!({
                 "result": {"result": {"value": {"status": status, "body": "{}"}}}
             }))
@@ -1664,9 +2006,123 @@ mod tests {
                     None,
                 )
                 .await;
-            assert!(matches!(result, Err(ApiError::CoolingDown { .. })));
-            assert_eq!(peer.await.unwrap(), should_close, "HTTP {status}");
+            match status {
+                429 => assert!(matches!(result, Err(ApiError::RateLimited(_)))),
+                403 | 541 => assert!(matches!(result, Err(ApiError::Blocked(_)))),
+                _ => unreachable!(),
+            }
+
+            let second = tokio::time::timeout(
+                Duration::from_millis(100),
+                fetcher.pickup_message(
+                    region_by_locale("zh_CN").unwrap(),
+                    "R683",
+                    &[test_target("MG6X4CH/A")],
+                    None,
+                ),
+            )
+            .await
+            .expect("同轮后续门店应直接复用拒绝结果，不能重新启动 Chromium");
+            match status {
+                429 => assert!(matches!(second, Err(ApiError::RateLimited(_)))),
+                403 | 541 => assert!(matches!(second, Err(ApiError::Blocked(_)))),
+                _ => unreachable!(),
+            }
+            assert_eq!(
+                fetcher.cycle_stats().await.request_count,
+                1,
+                "HTTP {status} 后同轮同地区不得继续发请求"
+            );
+            assert_eq!(
+                fetcher.schedule_hint(&["zh_CN".to_string()]).await,
+                ScheduleHint::default(),
+                "HTTP {status} 不得延长用户设定的轮询间隔"
+            );
+
+            fetcher.begin_cycle().await;
+            assert!(
+                fetcher
+                    .state
+                    .lock()
+                    .await
+                    .pickup_rejection(region_by_locale("zh_CN").unwrap())
+                    .is_none(),
+                "HTTP {status} 的短路标记只能存在于当前轮次"
+            );
+            assert!(
+                !peer.await.unwrap(),
+                "HTTP {status} 不应销毁持久会话或丢失 Cookie"
+            );
         }
+    }
+
+    #[tokio::test]
+    async fn http_541后下一轮复用原会话而不是换新身份() {
+        let (fetcher, peer) = cdp_responses(vec![
+            http_response(541),
+            pickup_response(&["R390"], "MG6X4CH/A", "unavailable"),
+        ])
+        .await;
+        let region = region_by_locale("zh_CN").unwrap();
+
+        fetcher.begin_cycle().await;
+        let first = fetcher
+            .pickup_message(region, "R390", &[test_target("MG6X4CH/A")], None)
+            .await;
+        assert!(matches!(first, Err(ApiError::Blocked(_))));
+        assert!(fetcher.state.lock().await.session.is_some());
+
+        fetcher.begin_cycle().await;
+        fetcher.state.lock().await.gate.last_sent = None;
+        let second = fetcher
+            .pickup_message(region, "R390", &[test_target("MG6X4CH/A")], None)
+            .await
+            .expect("下一轮应复用同一 DevTools 连接继续探测");
+
+        assert!(
+            !second.parts["MG6X4CH/A"].availability.is_in_stock(),
+            "第二轮的正常响应应能解析"
+        );
+        assert!(fetcher.state.lock().await.session.is_some());
+        assert!(
+            !peer.await.unwrap(),
+            "从 541 恢复到正常响应的过程不应断开原 Chromium 会话"
+        );
+    }
+
+    #[tokio::test]
+    async fn 页面请求瞬时失败不会销毁浏览器会话或影响下一门店() {
+        let (fetcher, peer) = cdp_responses(vec![
+            page_fetch_failure_response("TypeError: Failed to fetch"),
+            pickup_response(&["R683"], "MG6X4CH/A", "unavailable"),
+        ])
+        .await;
+        let region = region_by_locale("zh_CN").unwrap();
+
+        fetcher.begin_cycle().await;
+        let first = fetcher
+            .pickup_message(region, "R580", &[test_target("MJYK4CH/A")], None)
+            .await;
+        assert!(matches!(
+            first,
+            Err(ApiError::Transport(ref detail))
+                if detail == "Apple 页面请求失败：TypeError: Failed to fetch"
+        ));
+        assert!(
+            fetcher.state.lock().await.session.is_some(),
+            "页面 fetch 失败时 DevTools 会话仍然可用"
+        );
+
+        fetcher.state.lock().await.gate.last_sent = None;
+        let second = fetcher
+            .pickup_message(region, "R683", &[test_target("MG6X4CH/A")], None)
+            .await
+            .expect("下一门店应继续复用原会话查询");
+        assert!(!second.parts["MG6X4CH/A"].availability.is_in_stock());
+        assert!(
+            !peer.await.unwrap(),
+            "页面 fetch 失败后不应断开原 Chromium 会话"
+        );
     }
 
     #[test]
@@ -1731,7 +2187,10 @@ mod tests {
     #[ignore = "需要本机 Chromium 与 Apple 官网网络"]
     async fn 真实普通商品能按省市区查询送货时间() {
         let region = region_by_locale("zh_CN").unwrap();
-        let mut session = ChromiumSession::start().await.unwrap();
+        let profile = tempfile::tempdir().unwrap();
+        let mut session = ChromiumSession::start(profile.path().to_path_buf())
+            .await
+            .unwrap();
         let mut gate = RequestGate::default();
         session.ensure_region(region).await.unwrap();
         let destination = DeliveryRegion {
@@ -1764,10 +2223,48 @@ mod tests {
     }
 
     #[test]
-    fn 兼容ua不暴露headless标记() {
-        let user_agent = chromium_user_agent();
-        assert!(user_agent.contains(&format!("Chrome/{FALLBACK_CHROMIUM_MAJOR}.0.0.0")));
-        assert!(!user_agent.contains("HeadlessChrome"));
+    fn chromium使用应用专属持久资料目录() {
+        let path = chromium_profile_dir();
+        assert!(path.ends_with(CHROMIUM_PROFILE_DIR));
+        assert!(
+            path.to_string_lossy()
+                .contains("apple-store-inventory-monitor")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn 能从chromium资料目录锁中识别专属进程号() {
+        use std::os::unix::fs::symlink;
+
+        let profile = tempfile::tempdir().unwrap();
+        symlink(
+            "MacBook-Sue.local-29642",
+            profile.path().join("SingletonLock"),
+        )
+        .unwrap();
+        assert_eq!(profile_lock_pid(profile.path()), Some(29642));
+    }
+
+    #[test]
+    fn 会话启动失败只短路当前轮次() {
+        let mut state = QueryState {
+            session_start_failure: Some("Chromium 启动后立即退出".into()),
+            ..QueryState::default()
+        };
+        assert_eq!(
+            state.session_start_failure.as_deref(),
+            Some("Chromium 启动后立即退出")
+        );
+
+        state.begin_cycle();
+
+        assert!(state.session_start_failure.is_none());
+        assert_eq!(
+            state.schedule_hint(&["zh_CN".into()]),
+            ScheduleHint::default(),
+            "启动失败不能改变用户设置的轮询间隔"
+        );
     }
 
     #[test]
@@ -1962,7 +2459,7 @@ mod tests {
         let region = region_by_locale("zh_CN").unwrap();
         let fetcher = AppleChromiumFetcher::new();
         fetcher.begin_cycle().await;
-        let stores = [("R502", "四川-成都万象城"), ("R580", "四川-成都太古里")];
+        let stores = [("R502", "成都-成都万象城"), ("R580", "成都-成都太古里")];
         for (store, title) in stores {
             let mut target = test_target("MJYN4CH/A");
             target.store_number = store.into();
@@ -1978,6 +2475,38 @@ mod tests {
         let stats = fetcher.cycle_stats().await;
         assert_eq!(stats.request_count, 1, "成都两店应由一次地点查询覆盖");
         assert_eq!(stats.reused_response_count, 1);
+    }
+
+    #[tokio::test]
+    #[ignore = "需要本机 Chromium 与 Apple 官网网络"]
+    async fn 真实深圳三店在地点无结果时仍能按门店补查() {
+        let region = region_by_locale("zh_CN").unwrap();
+        let fetcher = AppleChromiumFetcher::new();
+        fetcher.begin_cycle().await;
+        let stores = [
+            ("R761", "深圳-深圳万象城"),
+            ("R484", "深圳-深圳益田假日广场"),
+            ("R793", "深圳-前海壹方城"),
+        ];
+
+        for (store, title) in stores {
+            let mut target = test_target("MJYN4CH/A");
+            target.store_number = store.into();
+            target.store_title = title.into();
+            target.pickup_location = Some("广东 深圳".into());
+            let result = fetcher
+                .pickup(region, store, &[target], None)
+                .await
+                .unwrap_or_else(|error| panic!("深圳门店 {store} 查询失败：{error}"));
+            assert_eq!(result.store_number, store);
+            assert!(result.parts.contains_key("MJYN4CH/A"));
+        }
+
+        let stats = fetcher.cycle_stats().await;
+        assert!(
+            (1..=4).contains(&stats.request_count),
+            "深圳三店应由一次地点查询覆盖，或由一次地点探测加三次单店补查完成：{stats:?}"
+        );
     }
 
     /// 用户现场回归：Apple Watch 的配置零件号没有 `/shop/product/{part}` 页面，
@@ -2130,7 +2659,10 @@ mod tests {
     #[ignore = "现场只读诊断，需要本机 Chromium 与 Apple 官网网络"]
     async fn diagnose_missing_store_response() {
         let region = region_by_locale("zh_CN").unwrap();
-        let mut session = ChromiumSession::start().await.unwrap();
+        let profile = tempfile::tempdir().unwrap();
+        let mut session = ChromiumSession::start(profile.path().to_path_buf())
+            .await
+            .unwrap();
         let mut gate = RequestGate::default();
         for (store, part) in [
             ("R581", "MFA04CH/B"),
@@ -2168,7 +2700,10 @@ mod tests {
     #[ignore = "用户现场批量隔离对照，只读库存，需要网络"]
     async fn diagnose_old_products_without_new_iphone() {
         let region = region_by_locale("zh_CN").unwrap();
-        let mut session = ChromiumSession::start().await.unwrap();
+        let profile = tempfile::tempdir().unwrap();
+        let mut session = ChromiumSession::start(profile.path().to_path_buf())
+            .await
+            .unwrap();
         let mut gate = RequestGate::default();
         let batches: &[(&str, &[&str])] = &[
             ("watch_only", &["MF9T4CH/B"]),

@@ -324,7 +324,7 @@ struct StoreOutcome {
     store_number: String,
     /// 每个**请求过**的零件号对应的判定结果。
     parts: Vec<(String, Availability, Option<PickupDetails>)>,
-    /// 这次门店查询是否算成功，用于全局退避判断。
+    /// 这次门店查询是否算成功，用于判断整轮是否健康。
     ok: bool,
     /// 本次遇到的异常数量，用于判断整轮是否健康。
     problems: usize,
@@ -584,11 +584,6 @@ struct Engine<F: Fetcher> {
     targets: Vec<Target>,
     states: BTreeMap<TargetKey, TargetState>,
     running: bool,
-    /// 连续「整轮全败」的次数，用于全局退避。
-    ///
-    /// 不用单个目标的失败次数来驱动：某个零件号下架会让它永远失败，据此退避
-    /// 的话，一条陈旧的监控项就能把所有正常门店的查询频率拖慢八倍。
-    cycle_failures: u32,
     /// 当前监控会话已经开始的轮次数。暂停后重新开始会从 1 重新计数。
     cycle_number: u64,
 }
@@ -602,7 +597,6 @@ impl<F: Fetcher> Engine<F> {
             targets: Vec::new(),
             states: BTreeMap::new(),
             running: false,
-            cycle_failures: 0,
             cycle_number: 0,
         }
     }
@@ -757,9 +751,6 @@ impl<F: Fetcher> Engine<F> {
         self.running = running;
         if running {
             self.cycle_number = 0;
-        } else {
-            // 重新启动时应当从干净的节奏开始，不背着上一轮的退避。
-            self.cycle_failures = 0;
         }
         self.emit_droppable(Event::RunStateChanged { running });
     }
@@ -862,15 +853,12 @@ impl<F: Fetcher> Engine<F> {
         schedule_hint: ScheduleHint,
     ) -> Duration {
         let mut ok = 0usize;
-        let mut failed = 0usize;
         let mut problems = 0usize;
         let now = now_ms();
 
         for outcome in outcomes {
             if outcome.ok {
                 ok += 1;
-            } else {
-                failed += 1;
             }
             problems += outcome.problems;
 
@@ -938,13 +926,6 @@ impl<F: Fetcher> Engine<F> {
             }
         }
 
-        // 只有一个门店都没查成功，才认为是全局故障，进入退避。
-        if failed > 0 && ok == 0 {
-            self.cycle_failures = self.cycle_failures.saturating_add(1);
-        } else {
-            self.cycle_failures = 0;
-        }
-
         // 这条不能丢。emit_droppable 的理由是「信息都能从 CycleComplete 带的快照里
         // 重新拿到」—— 那对 StateChanged/Trouble 成立，对 CycleComplete 自己就是循环
         // 论证：兜底的那张网不能自己也是可丢的。
@@ -973,16 +954,9 @@ impl<F: Fetcher> Engine<F> {
         delay
     }
 
-    /// 下一轮的等待时长，含抖动与全局退避。
+    /// 下一轮的等待时长，只由用户设置的间隔与抖动决定。
     fn next_delay(&self) -> Duration {
-        let mut base = self.config.interval;
-
-        // 整轮全败时逐步拉长间隔，最多放大到 8 倍。被拦截还按原频率猛冲，
-        // 只会让风控更严。
-        if self.cycle_failures > 0 {
-            let factor = 1u32 << self.cycle_failures.min(3);
-            base = base.saturating_mul(factor);
-        }
+        let base = self.config.interval;
 
         if self.config.jitter <= 0.0 {
             return base;

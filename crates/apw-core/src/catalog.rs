@@ -313,6 +313,27 @@ impl Catalog {
         }
     }
 
+    /// 按当前门店目录修复已保存目标的展示名。
+    ///
+    /// `store_title` 会落盘；只改内置目录只能修好新建目标，旧目标仍会永久显示
+    /// 旧的省份名称。门店编号才是稳定标识，因此可以据此安全刷新展示文本。
+    pub fn hydrate_store_targets(&self, targets: &mut [crate::model::Target]) {
+        let mut by_locale: HashMap<String, Option<Vec<Store>>> = HashMap::new();
+        for target in targets {
+            let stores = by_locale
+                .entry(target.locale.clone())
+                .or_insert_with(|| self.stores(&target.locale).ok());
+            let Some(stores) = stores else { continue };
+            let Some(store) = stores
+                .iter()
+                .find(|store| store.number == target.store_number)
+            else {
+                continue;
+            };
+            target.store_title = store.title.clone();
+        }
+    }
+
     /// 按门店目录给监控目标补上取货接口的附近查询地点。
     ///
     /// 该字段只在本次进程中使用，不会改变设置文件格式。目录里找不到的旧门店
@@ -635,11 +656,25 @@ fn load_stores(text: &str) -> Result<HashMap<String, Vec<Store>>, CatalogError> 
 
         for state in &region.states {
             for raw in &state.stores {
-                push_store(&mut stores, &mut seen, raw, region.has_states, &state.name);
+                push_store(
+                    &mut stores,
+                    &mut seen,
+                    raw,
+                    &region.locale,
+                    region.has_states,
+                    &state.name,
+                );
             }
         }
         for raw in &region.stores {
-            push_store(&mut stores, &mut seen, raw, region.has_states, "");
+            push_store(
+                &mut stores,
+                &mut seen,
+                raw,
+                &region.locale,
+                region.has_states,
+                "",
+            );
         }
 
         result.insert(region.locale.clone(), stores);
@@ -658,6 +693,7 @@ fn push_store(
     out: &mut Vec<Store>,
     seen: &mut HashSet<String>,
     raw: &RawStore,
+    locale: &str,
     has_states: bool,
     state_name: &str,
 ) {
@@ -670,17 +706,17 @@ fn push_store(
     }
 
     let name = raw.name.trim();
-    // 有 state 层级的地区（中国大陆、日本、澳大利亚等）用 stateName，否则用
-    // city。香港、新加坡这类城市站根本没有 stateName 字段。日本站两者都有且
-    // 不同（stateName=Tokyo、city=Chiyoda-ku），必须挑前者，否则界面上会冒出
-    // 一堆没人认得的区名。
-    let mut city = raw.address.city.trim();
-    if has_states {
+    // 中国大陆按实际城市展示，用户搜“深圳”应当能找到前海壹方城；省份仍保留在
+    // state 字段里，取货查询继续使用“广东 深圳”。其他有 state 层级的地区仍用
+    // stateName：日本若改用 city，界面会出现 Chiyoda-ku 这类区名。
+    let address_city = raw.address.city.trim();
+    let mut display_city = address_city;
+    if locale != "zh_CN" && has_states {
         let from_store = raw.address.state_name.trim();
         if !from_store.is_empty() {
-            city = from_store;
+            display_city = from_store;
         } else if !state_name.trim().is_empty() {
-            city = state_name.trim();
+            display_city = state_name.trim();
         }
     }
 
@@ -698,12 +734,12 @@ fn push_store(
     out.push(Store {
         number: number.to_string(),
         name: name.to_string(),
-        title: if city.is_empty() {
+        title: if display_city.is_empty() {
             name.to_string()
         } else {
-            format!("{city}-{name}")
+            format!("{display_city}-{name}")
         },
-        city: raw.address.city.trim().to_string(),
+        city: address_city.to_string(),
         state: state.to_string(),
         postal_code: raw.address.postal_code.trim().to_string(),
     });
@@ -807,6 +843,26 @@ mod tests {
                 .contains_key("pickupLocation"),
             "运行时地点不应写进设置或跨前端边界"
         );
+    }
+
+    #[test]
+    fn 已保存目标会按门店编号刷新展示名() {
+        let catalog = Catalog::new();
+        let mut targets = vec![crate::model::Target {
+            locale: "zh_CN".into(),
+            store_number: "R793".into(),
+            store_title: "广东-前海壹方城".into(),
+            part_number: "MJYN4CH/A".into(),
+            product_name: "iPhone 18 Pro Max 2TB 冰川蓝色".into(),
+            companion_part: None,
+            companion_name: None,
+            kit_part: None,
+            pickup_location: None,
+        }];
+
+        catalog.hydrate_store_targets(&mut targets);
+
+        assert_eq!(targets[0].store_title, "深圳-前海壹方城");
     }
 
     #[test]

@@ -578,7 +578,7 @@ export default function App() {
     : null;
   const runningLabel =
     secondsUntilNextCheck === null || secondsUntilNextCheck === 0
-      ? "正在查询"
+      ? `查询中 · 完成后倒计时 ${ui.settings.intervalSeconds} 秒`
       : ui.cooling
         ? `保护冷却中 · 约 ${secondsUntilNextCheck} 秒后检查`
         : `约 ${secondsUntilNextCheck} 秒后检查`;
@@ -708,7 +708,7 @@ export default function App() {
   return (
     <TooltipProvider delayDuration={180}>
       <div className="app-canvas min-h-screen text-foreground">
-        <main className="flex min-h-screen w-full max-w-none flex-col gap-4 px-5 py-5 lg:h-screen lg:overflow-hidden">
+        <main className="flex min-h-screen w-full max-w-none flex-col gap-4 overflow-x-hidden px-5 py-5 min-[980px]:h-screen min-[980px]:overflow-hidden">
           <header className="surface-panel flex shrink-0 items-center justify-between gap-5 px-5 py-4">
             <div className="flex min-w-0 items-center gap-3.5">
               <div className="brand-mark" aria-hidden="true">
@@ -853,7 +853,7 @@ export default function App() {
             </Alert>
           )}
 
-          <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] gap-4 min-[980px]:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] gap-4 min-[980px]:grid-cols-[minmax(0,1fr)_25rem]">
             <div className="flex min-h-0 min-w-0 flex-col gap-4">
               <section className="surface-panel shrink-0 p-4" aria-labelledby="create-monitor-title">
                 <div className="mb-4 flex items-start justify-between gap-4">
@@ -1122,7 +1122,10 @@ export default function App() {
               </section>
             </div>
 
-            <aside className="flex min-h-0 flex-col gap-4">
+            <aside
+              className="workspace-sidebar flex min-h-0 flex-col gap-4 min-[980px]:overflow-y-auto min-[980px]:overscroll-contain min-[980px]:pr-2"
+              aria-label="监控概览、设置与活动日志"
+            >
               <section className="grid grid-cols-4 gap-2" aria-label="监控概览">
                 <div className="metric-tile">
                   <Radar className="size-4 text-primary" aria-hidden="true" />
@@ -1341,16 +1344,16 @@ export default function App() {
                 </Button>
               </section>
 
-              <section className="surface-panel flex min-h-[150px] flex-1 flex-col overflow-hidden" aria-labelledby="activity-log-title">
-                <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-4 py-3">
-                  <div className="flex items-center gap-2.5">
-                    <SquareTerminal className="size-4 text-muted-foreground" aria-hidden="true" />
-                    <h2 id="activity-log-title" className="text-sm font-semibold">活动日志</h2>
+              <section className="surface-panel flex min-h-[26rem] flex-1 flex-col overflow-hidden" aria-labelledby="activity-log-title">
+                <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-4 py-3.5">
+                  <div className="flex items-center gap-3">
+                    <SquareTerminal className="size-[18px] text-muted-foreground" aria-hidden="true" />
+                    <h2 id="activity-log-title" className="text-base font-semibold">活动日志</h2>
                   </div>
-                  <span className="text-[11px] tabular-nums text-muted-foreground">{ui.logs.length} 条</span>
+                  <span className="text-xs tabular-nums text-muted-foreground">最新 {ui.logs.length} 条</span>
                 </div>
-                <ScrollArea className="min-h-0 flex-1 p-3.5">
-                  <pre className="font-mono text-[11px] leading-[1.65] whitespace-pre-wrap text-muted-foreground select-text">
+                <ScrollArea className="min-h-0 flex-1 p-4" aria-label="活动日志内容">
+                  <pre className="font-mono text-[13px] leading-6 whitespace-pre-wrap break-words text-foreground/80 select-text">
                     {ui.logs.length === 0 ? "等待监控活动…" : ui.logs.join("\n")}
                   </pre>
                 </ScrollArea>

@@ -509,6 +509,7 @@ async fn refresh_products(
     let mut next = state.settings_snapshot();
     let before = next.targets.clone();
     state.catalog.hydrate_watch_targets(&mut next.targets);
+    state.catalog.hydrate_store_targets(&mut next.targets);
     state.catalog.attach_pickup_locations(&mut next.targets);
     if next.targets != before {
         state.put_settings(next.clone())?;
@@ -530,6 +531,7 @@ async fn save_settings(
     let mut next = settings;
     next.normalize();
     state.catalog.hydrate_watch_targets(&mut next.targets);
+    state.catalog.hydrate_store_targets(&mut next.targets);
     state.catalog.attach_pickup_locations(&mut next.targets);
 
     // 先成功落盘，再把同一份设置同步给引擎，避免三者分叉。
@@ -558,6 +560,7 @@ async fn set_targets(
     next.targets = targets;
     next.normalize();
     state.catalog.hydrate_watch_targets(&mut next.targets);
+    state.catalog.hydrate_store_targets(&mut next.targets);
     state.catalog.attach_pickup_locations(&mut next.targets);
     state.put_settings(next.clone())?;
     state.watcher.set_targets(next.targets).await;
@@ -1084,12 +1087,13 @@ pub fn run() {
             let catalog = Catalog::new();
             let saved_targets = settings.targets.clone();
             catalog.hydrate_watch_targets(&mut settings.targets);
+            catalog.hydrate_store_targets(&mut settings.targets);
             if settings.targets != saved_targets
                 && let Some(store) = store.as_ref()
                 && let Err(error) = store.save(&settings)
             {
                 notices.push(format!(
-                    "Watch 型号名称已在本次运行修复，但暂时无法保存：{error}"
+                    "监控项的型号或门店名称已在本次运行修复，但暂时无法保存：{error}"
                 ));
             }
             catalog.attach_pickup_locations(&mut settings.targets);
