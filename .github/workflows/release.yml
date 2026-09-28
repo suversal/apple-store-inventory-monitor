@@ -244,13 +244,14 @@ jobs:
           # 四个作业传的是同一段文字，后跑完的作业会用它覆盖 Release 说明，
           # 内容一致所以结果是幂等的。改这里记得别引入 ${{ }}，会被当成表达式求值。
           releaseBody: |
-            ### v1.0.15 更新内容
+            ### v1.0.16 更新内容
 
-            - 修复澳大利亚等海外地区的查询会话，恢复海外门店取货状态。
-            - 门店未接入在线取货时显示「暂停取货」，不再误报为查询失败或无货。
-            - 中国大陆送货地区不再受当前浏览地区影响，并恢复预计送货时间。
+            - 查询会话改用应用专属的持久 Chromium 资料，不读取个人 Chrome/Edge 数据，也不再重复打开页面。
+            - 移除 Apple 拦截后的五分钟冷却与间隔放大，每轮按你设置的频率重试，直到手动暂停。
+            - 单个门店或送货接口失败不再拖垮整轮查询，并恢复预计送货数据。
+            - 修复深圳等门店的地点回退查询，同时改善倒计时、侧栏滚动和活动日志可读性。
 
-            完整逐项记录见 [CHANGELOG.md](https://github.com/suversal/apple-store-inventory-monitor/blob/v1.0.15/CHANGELOG.md)。
+            完整逐项记录见 [CHANGELOG.md](https://github.com/suversal/apple-store-inventory-monitor/blob/v1.0.16/CHANGELOG.md)。
 
             ### 下载哪一个
 

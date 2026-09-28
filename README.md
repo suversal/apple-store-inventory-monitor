@@ -1,13 +1,13 @@
 # 果到雷达
 
 [![CI](https://github.com/suversal/apple-store-inventory-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/suversal/apple-store-inventory-monitor/actions/workflows/ci.yml)
-[![源码版本: v1.0.15](https://img.shields.io/badge/source-v1.0.15-blue)](package.json)
+[![源码版本: v1.0.16](https://img.shields.io/badge/source-v1.0.16-blue)](package.json)
 [下载与发布记录](https://github.com/suversal/apple-store-inventory-monitor/releases)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 
 果到雷达是一款 Apple 直营店取货库存监控工具。选好地区、门店和具体型号后，它会定时检查库存；检测到有货时，可以播放提示音、推送 Bark，并按你的选择打开 Apple 购物袋或商品详情。
 
-支持 macOS、Windows 和 Linux，使用 Rust、Tauri 2 和 React 编写。果到雷达的正式版本从 **1.0.0** 开始，本 README 对应 `1.0.15` 源码。应用名称为 **果到雷达**，仓库名为 `apple-store-inventory-monitor`。
+支持 macOS、Windows 和 Linux，使用 Rust、Tauri 2 和 React 编写。果到雷达的正式版本从 **1.0.0** 开始，本 README 对应 `1.0.16` 源码。应用名称为 **果到雷达**，仓库名为 `apple-store-inventory-monitor`。
 
 基于 [ENCHIGO/apple-pickup-watcher v0.3.2](https://github.com/ENCHIGO/apple-pickup-watcher/tree/v0.3.2) 继续开发，按 GPL-3.0-or-later 发布。来源与修改记录见 [NOTICE](NOTICE)。
 
@@ -74,7 +74,7 @@ Apple 可能限流或调整接口，库存也可能在提醒后立即变化。�
 1. 打开 `.dmg`，把 `果到雷达.app` 拖进「应用程序」，不要直接在磁盘映像中长期运行。
 2. 应用包已经过完整的 ad-hoc 签名，但暂未使用 Developer ID 证书，也未经过 Apple 公证。如果系统提示无法验证开发者，可以在 Finder 中按住 Control 点击应用并选择「打开」，或到「系统设置 → 隐私与安全性」确认被拦截的是本应用，再选择「仍要打开」。
 
-`v1.0.2` 的 macOS 包曾因应用签名不完整而被系统误报为“已损坏”，此问题已在 `v1.0.3` 修复。如果新版仍显示旧提示，请先删除旧应用和旧 DMG，确认重新下载的文件名包含 `1.0.15`。确认安装包来自本仓库 Release 后，仍可执行：
+`v1.0.2` 的 macOS 包曾因应用签名不完整而被系统误报为“已损坏”，此问题已在 `v1.0.3` 修复。如果新版仍显示旧提示，请先删除旧应用和旧 DMG，确认重新下载的文件名包含 `1.0.16`。确认安装包来自本仓库 Release 后，仍可执行：
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/果到雷达.app"
@@ -95,7 +95,7 @@ Release 提供 x64 的 `.deb` 和 `.AppImage`。安装包在 Ubuntu 24.04 上构
 **Debian / Ubuntu：**
 
 ```bash
-sudo apt install "./apple-store-inventory-monitor_1.0.15_amd64.deb"
+sudo apt install "./apple-store-inventory-monitor_1.0.16_amd64.deb"
 ```
 
 `apt` 会同时安装包声明的依赖。音频播放和托盘还需要 ALSA 与 AppIndicator 运行库。
@@ -103,14 +103,14 @@ sudo apt install "./apple-store-inventory-monitor_1.0.15_amd64.deb"
 **AppImage：**
 
 ```bash
-chmod +x "./apple-store-inventory-monitor_1.0.15_amd64.AppImage"
-"./apple-store-inventory-monitor_1.0.15_amd64.AppImage"
+chmod +x "./apple-store-inventory-monitor_1.0.16_amd64.AppImage"
+"./apple-store-inventory-monitor_1.0.16_amd64.AppImage"
 ```
 
 AppImage 需要 FUSE 2。Ubuntu 24.04 可以用 `sudo apt install libfuse2t64` 安装；也可以不安装 FUSE，直接解包运行：
 
 ```bash
-"./apple-store-inventory-monitor_1.0.15_amd64.AppImage" --appimage-extract-and-run
+"./apple-store-inventory-monitor_1.0.16_amd64.AppImage" --appimage-extract-and-run
 ```
 
 Linux 还需要自行安装 Chrome、Edge 或 Chromium。使用 Chromium 时，请确认终端可以运行 `chromium` 或 `chromium-browser`。
@@ -348,9 +348,9 @@ macOS 应用包使用完整的 ad-hoc 签名，但没有 Developer ID 证书且�
 
 下面只比较本项目与直接上游 `ENCHIGO/apple-pickup-watcher v0.3.2` 的差异。Rust、Tauri、三态库存、四个产品品类、系统托盘和应用内更新等能力已经由上游完成，不算作本项目新增。
 
-| 项目 | 直接上游 v0.3.2 | 果到雷达 v1.0.15 |
+| 项目 | 直接上游 v0.3.2 | 果到雷达 v1.0.16 |
 | --- | --- | --- |
-| Apple 查询会话 | 普通 HTTP 客户端先访问商品页获取 Cookie，再查询库存 | 启动独立的临时 Chromium 会话，在 Apple 页面环境中完成校验和库存请求；同地区附近门店复用响应，遇到 `403` 或 `541` 时进入分级冷却后自动探测 |
+| Apple 查询会话 | 普通 HTTP 客户端先访问商品页获取 Cookie，再查询库存 | 启动应用专属的持久 Chromium 会话，在 Apple 页面环境中完成校验和库存请求；同轮对被拦截地区停止重复请求，下轮按用户设置的间隔重试 |
 | 批量添加监控 | 每次选择一家门店和一个型号 | 门店、型号都可以多选，一次生成全部组合；重复组合会自动跳过 |
 | 持续有货提醒 | 只在状态从非有货变成有货时提醒一次 | 每轮确认有货都会重新执行提醒，适合库存短暂出现、第一次错过提醒等情况 |
 | 运行过程反馈 | 主要记录状态变化，长时间无变化时不容易判断是否仍在查询 | 每轮显示覆盖的门店和监控项、逐项结果、耗时与预计等待时间；日志最多保留 300 行 |
@@ -362,16 +362,16 @@ macOS 应用包使用完整的 ad-hoc 签名，但没有 Developer ID 证书且�
 
 Apple 当前商品页会先完成浏览器环境校验，再请求库存接口。普通 HTTP 客户端即使带上常见请求头和购物袋 Cookie，也可能收到 `HTTP 541`。
 
-果到雷达会启动一个独立的无界面 Chromium 会话（Chrome、Edge，或 Linux 上的 Chromium）：
+果到雷达会在后台启动一个独立的 Chromium 会话（Chrome、Edge，或 Linux 上的 Chromium）：
 
-1. 创建临时浏览器资料目录。
+1. 使用果到雷达自己的持久浏览器资料目录，不复用个人浏览器资料。
 2. 打开当前地区的 Apple 正式购买页，等待页面校验完成。
 3. 在同一页面和同一会话中请求库存。
 4. 同一地区、相同型号组合的附近门店优先复用一个响应；数据不完整时才针对目标门店补查。
 5. 所有真实库存请求至少间隔 2 秒，避免并发形成瞬时突发。
-6. 如果会话被 `403` 或 `541` 拒绝，销毁当前会话并进入分级冷却；冷却期不发真实请求，结束后只放行一次恢复探测。
+6. 如果会话被 `403`、`541` 或 `429` 拒绝，当轮同地区不再重复请求；下一轮复用同一会话，仍按用户设置的间隔重试，不另行冷却或放大间隔。
 
-临时浏览器不会读取用户日常使用的 Chrome/Edge 个人资料、Cookie 或浏览记录。应用正常退出时会清理临时进程和资料目录。
+应用专属资料不会读取用户日常使用的 Chrome/Edge 登录状态、Cookie 或浏览记录。应用正常退出时会停止专属进程，并保留它自己的会话资料；若上次异常退出，下次启动只会回收绑定到该专属目录的遗留 Chromium，不会终止普通浏览器。
 
 ## 从源码运行
 
@@ -485,7 +485,7 @@ pnpm tauri build --no-sign
 
 产物位于 `target/release/bundle/`。自动更新包需要仓库维护者配置 `TAURI_SIGNING_PRIVATE_KEY`；私钥设置了密码时还要配置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。没有私钥时不能生成可被现有客户端验证的更新签名。
 
-正式版本由 [Release 工作流](.github/workflows/release.yml) 构建，标签使用 `v1.0.15` 这样的格式。发版前应确认 `package.json`、工作区 `Cargo.toml`、`src-tauri/tauri.conf.json` 与标签的版本一致。macOS 专用配置在 `src-tauri/tauri.macos.conf.json` 中启用 ad-hoc 签名；发布流水线会同时验证自动更新归档和 DMG 内的应用签名。
+正式版本由 [Release 工作流](.github/workflows/release.yml) 构建，标签使用 `v1.0.16` 这样的格式。发版前应确认 `package.json`、工作区 `Cargo.toml`、`src-tauri/tauri.conf.json` 与标签的版本一致。macOS 专用配置在 `src-tauri/tauri.macos.conf.json` 中启用 ad-hoc 签名；发布流水线会同时验证自动更新归档和 DMG 内的应用签名。
 
 推送 `v*` 标签后，GitHub Actions 会生成 macOS、Windows 和 Linux 安装包，并先创建草稿 Release；确认四个平台全部成功后再公开发布，避免用户下载到缺少部分平台或 `latest.json` 尚未完整生成的版本。手动运行 `workflow_dispatch` 只生成 Actions 构建产物，不会创建公开 Release。
 
