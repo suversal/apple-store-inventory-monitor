@@ -9,9 +9,7 @@
 //! 始终在后台启动，不会因查询失败自动弹出页面；浏览器进程由应用持有并在退出时终止。
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-#[cfg(unix)]
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -75,9 +73,9 @@ struct ChromiumSession {
     established: bool,
 }
 
-fn terminate_chromium(child: &mut Child, process_group_id: Option<u32>) {
+fn terminate_chromium(child: &mut Child, _process_group_id: Option<u32>) {
     #[cfg(unix)]
-    if let Some(process_group_id) = process_group_id {
+    if let Some(process_group_id) = _process_group_id {
         // Chromium 会再派生 renderer、GPU、utility 等子进程。只 kill 主进程会让
         // 它们被 launchd/systemd 接管，最终表现为 Dock 认为 Chrome 仍在运行。
         // 独立进程组让我们可以先温和终止整棵树，再用 SIGKILL 做有界兜底。
