@@ -207,6 +207,7 @@ impl Fetcher for ProtectedFetcher {
         CycleStats {
             request_count: 3,
             reused_response_count: 2,
+            route: Some("Clash 节点 香港01".into()),
         }
     }
 

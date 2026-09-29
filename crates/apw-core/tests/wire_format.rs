@@ -224,6 +224,7 @@ fn 轮询事件携带前端可用的轮次与耗时() {
         reused_response_count: 2,
         next_check_in_secs: 60,
         cooling: true,
+        route: Some("Clash 节点 香港01".into()),
         healthy: true,
         snapshot: Vec::new(),
     });
@@ -233,6 +234,7 @@ fn 轮询事件携带前端可用的轮次与耗时() {
     assert_eq!(completed.get("requestCount"), Some(&json!(1)));
     assert_eq!(completed.get("reusedResponseCount"), Some(&json!(2)));
     assert_eq!(completed.get("nextCheckInSecs"), Some(&json!(60)));
+    assert_eq!(completed.get("route"), Some(&json!("Clash 节点 香港01")));
     assert_eq!(completed.get("cooling"), Some(&json!(true)));
     assert!(completed.get("elapsed_ms").is_none());
 }

@@ -123,6 +123,49 @@ export interface Store {
 /** 检测到有货时自动打开的页面，与 Rust 侧 `OpenOnHit` 一一对应。 */
 export type OpenOnHit = "none" | "bag" | "education_bag" | "product";
 
+export type NetworkMode = "system" | "pinned" | "clash";
+
+export interface ClashSettings {
+  controller: string;
+  secret: string;
+  group: string;
+  proxyPort: number;
+  /** 节点名关键词，用 | 分隔；为空表示全部节点。 */
+  nodeFilter: string;
+  /** 「指定节点」模式固定使用的节点。 */
+  pinnedNode: string;
+}
+
+export interface NetworkSettings {
+  mode: NetworkMode;
+  clash: ClashSettings;
+}
+
+/** 本机 Clash 线路检查结果，不代表 Apple 一定接受这些节点。 */
+export interface ClashRouteCheck {
+  version: string;
+  now: string | null;
+  nodes: string[];
+  skipped: number;
+  portOpen: boolean;
+  /** 批量测速超时的节点数；切换时会逐个复测，超时节点不会被切换过去。 */
+  timeoutCount: number;
+}
+
+/** 专用策略组中的一个节点。 */
+export interface RouteInfo {
+  name: string;
+  /** 批量测速延迟（毫秒）；超时或 DIRECT 为 null。 */
+  delay: number | null;
+  /** 被 Apple 拒绝后冷却中，或暂时连不通。 */
+  resting: boolean;
+}
+
+export interface RouteList {
+  now: string | null;
+  nodes: RouteInfo[];
+}
+
 export interface Settings {
   locale: string;
   targets: Target[];
@@ -133,6 +176,7 @@ export interface Settings {
   barkUrl: string;
   soundEnabled: boolean;
   openOnHit: OpenOnHit;
+  network: NetworkSettings;
 }
 
 /** 监控目标的唯一键，与 Rust 侧 Target::key 的构成保持一致。 */
@@ -176,6 +220,8 @@ export type WatcherEvent =
       reusedResponseCount: number;
       nextCheckInSecs: number;
       cooling: boolean;
+      /** 本轮使用的出口线路；跟随系统代理时省略。 */
+      route?: string;
       healthy: boolean;
       snapshot: TargetState[];
     }

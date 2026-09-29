@@ -28,6 +28,8 @@ import {
 import { describeUpdateProgress, updatePercent } from "@/lib/updateStatus";
 import { Combobox } from "@/components/Combobox";
 import { MultiCombobox } from "@/components/MultiCombobox";
+import { CollapsiblePanel } from "@/components/CollapsiblePanel";
+import { NetworkSettings } from "@/components/NetworkSettings";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1149,14 +1151,20 @@ export default function App() {
                 </div>
               </section>
 
-              <section className="surface-panel shrink-0 p-4" aria-labelledby="preferences-title">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="section-icon" aria-hidden="true"><Settings2 className="size-4" /></div>
-                  <div>
-                    <h2 id="preferences-title" className="text-sm font-semibold">监控设置</h2>
-                    <p className="mt-0.5 text-xs text-muted-foreground">查询频率与提醒方式</p>
-                  </div>
-                </div>
+              <CollapsiblePanel
+                id="preferences"
+                icon={<Settings2 className="size-4" />}
+                title="监控设置"
+                subtitle="查询频率与提醒方式"
+                summary={[
+                  `每 ${ui.settings.intervalSeconds} 秒`,
+                  ui.settings.deliveryRegion
+                    ? `送货 ${ui.settings.deliveryRegion.city}${ui.settings.deliveryRegion.district}`
+                    : "未设送货地区",
+                  ui.settings.barkUrl ? "Bark 已设置" : "未设 Bark",
+                  ui.settings.soundEnabled ? "提示音开" : "提示音关",
+                ].join(" · ")}
+              >
 
                 <div className="field-group">
                   <Label htmlFor="interval" className="control-label">
@@ -1342,7 +1350,9 @@ export default function App() {
                 <Button variant="outline" className="mt-3 h-10 w-full rounded-xl border-border/70 bg-background/30" onClick={() => void testNotify()}>
                   <BellRing aria-hidden="true" /> 测试提醒与跳转
                 </Button>
-              </section>
+              </CollapsiblePanel>
+
+              <NetworkSettings network={ui.settings.network} running={ui.running} route={ui.route} />
 
               <section className="surface-panel flex min-h-[26rem] flex-1 flex-col overflow-hidden" aria-labelledby="activity-log-title">
                 <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-4 py-3.5">

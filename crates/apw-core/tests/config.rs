@@ -15,7 +15,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::os::unix::fs::PermissionsExt;
 
 use apw_core::config::{
-    ConfigError, DEFAULT_INTERVAL_SECONDS, MAX_SETTINGS_BYTES, OpenOnHit, Settings, SettingsStore,
+    ClashSettings, ConfigError, DEFAULT_INTERVAL_SECONDS, MAX_SETTINGS_BYTES, NetworkMode,
+    NetworkSettings, OpenOnHit, Settings, SettingsStore,
 };
 use apw_core::model::Target;
 
@@ -98,6 +99,17 @@ fn 样例设置() -> Settings {
             .collect(),
         sound_enabled: false,
         open_on_hit: OpenOnHit::Product,
+        network: NetworkSettings {
+            mode: NetworkMode::Clash,
+            clash: ClashSettings {
+                controller: "http://127.0.0.1:9097".into(),
+                secret: "s3cret".into(),
+                group: "果到雷达".into(),
+                proxy_port: 7899,
+                node_filter: "香港|日本".into(),
+                pinned_node: "DIRECT".into(),
+            },
+        },
     }
 }
 
@@ -560,13 +572,28 @@ fn 设置的线上格式是小驼峰() {
         "productBarkUrls",
         "soundEnabled",
         "openOnHit",
+        "network",
     ] {
         assert!(obj.contains_key(key), "缺少字段 {key}：{value}");
     }
     assert!(!obj.contains_key("interval_seconds"), "不该有蛇形字段");
     assert_eq!(obj.get("openOnHit"), Some(&serde_json::json!("product")));
     assert!(!obj.contains_key("openBagOnHit"));
-    assert_eq!(obj.len(), 8);
+    assert_eq!(obj.len(), 9);
+    assert_eq!(
+        obj.get("network"),
+        Some(&serde_json::json!({
+            "mode": "clash",
+            "clash": {
+                "controller": "http://127.0.0.1:9097",
+                "secret": "s3cret",
+                "group": "果到雷达",
+                "proxyPort": 7899,
+                "nodeFilter": "香港|日本",
+                "pinnedNode": "DIRECT"
+            }
+        }))
+    );
 }
 
 #[test]
@@ -633,4 +660,37 @@ fn 配置文件路径落在用户配置目录下() {
             .path()
             .ends_with(Path::new("apple-store-inventory-monitor").join("settings.v2.json"))
     );
+}
+
+#[test]
+fn 旧设置缺少线路字段时继续跟随系统代理() {
+    let settings: Settings =
+        serde_json::from_str(r#"{"locale":"zh_CN","intervalSeconds":30}"#).expect("旧设置应可读取");
+    assert_eq!(settings.network.mode, NetworkMode::System);
+    assert_eq!(settings.network.clash, ClashSettings::default());
+}
+
+#[test]
+fn 线路设置规范化去掉空白与控制地址结尾斜杠() {
+    let mut settings = Settings {
+        network: NetworkSettings {
+            mode: NetworkMode::Clash,
+            clash: ClashSettings {
+                controller: "  http://127.0.0.1:9097/ ".into(),
+                secret: " key ".into(),
+                group: " 果到雷达 ".into(),
+                proxy_port: 7899,
+                node_filter: " 香港|日本 ".into(),
+                pinned_node: "  ".into(),
+            },
+        },
+        ..Settings::default()
+    };
+    settings.normalize();
+    let clash = &settings.network.clash;
+    assert_eq!(clash.controller, "http://127.0.0.1:9097");
+    assert_eq!(clash.secret, "key");
+    assert_eq!(clash.group, "果到雷达");
+    assert_eq!(clash.node_filter, "香港|日本");
+    assert_eq!(clash.pinned_node, "DIRECT", "空的指定节点回到 DIRECT");
 }

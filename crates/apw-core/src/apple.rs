@@ -531,10 +531,13 @@ pub trait Fetcher: Clone + Send + Sync + 'static {
 }
 
 /// 一轮内查询器真正产生的网络负载。
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CycleStats {
     pub request_count: u32,
     pub reused_response_count: u32,
+    /// 本轮使用的出口线路说明，例如「Clash 节点 香港01（本轮切换 1 次）」。
+    /// 跟随系统代理时为 `None`。
+    pub route: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]

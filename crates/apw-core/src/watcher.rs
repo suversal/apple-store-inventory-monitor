@@ -117,6 +117,9 @@ pub enum Event {
         next_check_in_secs: u64,
         /// 当前目标地区中是否仍有 Apple 查询保护冷却。
         cooling: bool,
+        /// 本轮使用的出口线路说明；跟随系统代理时省略。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        route: Option<String>,
         /// 本轮是否所有目标都拿到了明确答复。
         ///
         /// 界面需要一个明确的「恢复」信号才能收起故障告警。用「所有行都没有
@@ -987,6 +990,7 @@ impl<F: Fetcher> Engine<F> {
             reused_response_count: stats.reused_response_count,
             next_check_in_secs,
             cooling: schedule_hint.cooling,
+            route: stats.route,
             healthy: problems == 0 && ok > 0,
             snapshot: self.snapshot(),
         })

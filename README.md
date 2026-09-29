@@ -1,13 +1,13 @@
 # 果到雷达
 
 [![CI](https://github.com/suversal/apple-store-inventory-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/suversal/apple-store-inventory-monitor/actions/workflows/ci.yml)
-[![源码版本: v1.0.17](https://img.shields.io/badge/source-v1.0.17-blue)](package.json)
+[![源码版本: v1.0.18](https://img.shields.io/badge/source-v1.0.18-blue)](package.json)
 [下载与发布记录](https://github.com/suversal/apple-store-inventory-monitor/releases)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 
 果到雷达是一款 Apple 直营店取货库存监控工具。选好地区、门店和具体型号后，它会定时检查库存；检测到有货时，可以播放提示音、推送 Bark，并按你的选择打开 Apple 购物袋或商品详情。
 
-支持 macOS、Windows 和 Linux，使用 Rust、Tauri 2 和 React 编写。果到雷达的正式版本从 **1.0.0** 开始，本 README 对应 `1.0.17` 源码。应用名称为 **果到雷达**，仓库名为 `apple-store-inventory-monitor`。
+支持 macOS、Windows 和 Linux，使用 Rust、Tauri 2 和 React 编写。果到雷达的正式版本从 **1.0.0** 开始，本 README 对应 `1.0.18` 源码。应用名称为 **果到雷达**，仓库名为 `apple-store-inventory-monitor`。
 
 基于 [ENCHIGO/apple-pickup-watcher v0.3.2](https://github.com/ENCHIGO/apple-pickup-watcher/tree/v0.3.2) 继续开发，按 GPL-3.0-or-later 发布。来源与修改记录见 [NOTICE](NOTICE)。
 
@@ -39,6 +39,7 @@ V1.0.0
 5. 选择地区和品类，再勾选门店与型号，点击「添加监控」。
 6. 选择提示音、Bark 和「到货后打开」方式，再点一次「测试提醒与跳转」。
 7. 确认测试正常后点击「开始监控」。看到「未知」时先看活动日志，不要把它当成无货。
+8. 如果经常出现「请求被 Apple 拦截」，并且电脑上装有 Clash，可以按[查询线路与 Clash 配置](#查询线路与-clash-配置)为查询单独设置出口。
 
 Apple 可能限流或调整接口，库存也可能在提醒后立即变化。最终能否取货，以 Apple 官网下单时的结果为准。
 
@@ -74,7 +75,7 @@ Apple 可能限流或调整接口，库存也可能在提醒后立即变化。�
 1. 打开 `.dmg`，把 `果到雷达.app` 拖进「应用程序」，不要直接在磁盘映像中长期运行。
 2. 应用包已经过完整的 ad-hoc 签名，但暂未使用 Developer ID 证书，也未经过 Apple 公证。如果系统提示无法验证开发者，可以在 Finder 中按住 Control 点击应用并选择「打开」，或到「系统设置 → 隐私与安全性」确认被拦截的是本应用，再选择「仍要打开」。
 
-`v1.0.2` 的 macOS 包曾因应用签名不完整而被系统误报为“已损坏”，此问题已在 `v1.0.3` 修复。如果新版仍显示旧提示，请先删除旧应用和旧 DMG，确认重新下载的文件名包含 `1.0.17`。确认安装包来自本仓库 Release 后，仍可执行：
+`v1.0.2` 的 macOS 包曾因应用签名不完整而被系统误报为“已损坏”，此问题已在 `v1.0.3` 修复。如果新版仍显示旧提示，请先删除旧应用和旧 DMG，确认重新下载的文件名包含 `1.0.18`。确认安装包来自本仓库 Release 后，仍可执行：
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/果到雷达.app"
@@ -95,7 +96,7 @@ Release 提供 x64 的 `.deb` 和 `.AppImage`。安装包在 Ubuntu 24.04 上构
 **Debian / Ubuntu：**
 
 ```bash
-sudo apt install "./apple-store-inventory-monitor_1.0.17_amd64.deb"
+sudo apt install "./apple-store-inventory-monitor_1.0.18_amd64.deb"
 ```
 
 `apt` 会同时安装包声明的依赖。音频播放和托盘还需要 ALSA 与 AppIndicator 运行库。
@@ -103,14 +104,14 @@ sudo apt install "./apple-store-inventory-monitor_1.0.17_amd64.deb"
 **AppImage：**
 
 ```bash
-chmod +x "./apple-store-inventory-monitor_1.0.17_amd64.AppImage"
-"./apple-store-inventory-monitor_1.0.17_amd64.AppImage"
+chmod +x "./apple-store-inventory-monitor_1.0.18_amd64.AppImage"
+"./apple-store-inventory-monitor_1.0.18_amd64.AppImage"
 ```
 
 AppImage 需要 FUSE 2。Ubuntu 24.04 可以用 `sudo apt install libfuse2t64` 安装；也可以不安装 FUSE，直接解包运行：
 
 ```bash
-"./apple-store-inventory-monitor_1.0.17_amd64.AppImage" --appimage-extract-and-run
+"./apple-store-inventory-monitor_1.0.18_amd64.AppImage" --appimage-extract-and-run
 ```
 
 Linux 还需要自行安装 Chrome、Edge 或 Chromium。使用 Chromium 时，请确认终端可以运行 `chromium` 或 `chromium-browser`。
@@ -128,6 +129,7 @@ Linux 还需要自行安装 Chrome、Edge 或 Chromium。使用 Chromium 时，�
 - 同一型号和送货地址在不同门店之间共享送货结果：有效信息缓存 60 分钟，空结果缓存 5 分钟，到期后在监控查询中刷新；刷新失败会保留上次日期。修改送货地区后按新地址查询，退出应用后缓存不会保留。门店取货状态仍按设置的查询间隔更新。
 - 支持提示音和 Bark 推送；可为不同型号指定不同的 Bark 地址，把到货消息分发给不同的人。
 - 有货时可以选择不自动打开页面、打开对应地区的 Apple 购物袋，或打开对应型号的商品详情；也可以点击监控列表中的型号手动打开商品详情。
+- 可通过 Clash 为库存查询单独指定出口，或在多个节点之间自动轮换，减少被 Apple 拦截；不影响电脑本身使用的节点。详见[查询线路与 Clash 配置](#查询线路与-clash-配置)。
 - 窗口关闭后可继续在系统托盘运行。
 - 型号目录可以从 Apple 官网刷新；网络失败时仍可使用内嵌目录。
 - 活动日志逐轮显示每项状态、门店编号、商品零件号及 Apple 返回的取货、购买和配送说明，并按状态汇总。
@@ -253,7 +255,184 @@ https://api.day.app/你的设备Key/这里改成你自己的推送内容
 
 同一地区、相同型号组合的附近门店会优先复用首个响应；响应没有包含目标门店或型号时才补发请求。为避免瞬时请求突发，任意两次真实库存请求之间仍至少间隔 2 秒，但成功的正常轮次不会再因累计额度延后下一轮。
 
-整轮全部失败时，等待时间会逐步延长到设定间隔的 2、4、8 倍。如果 Apple 返回明确的保护响应，则按地区进入分级冷却；界面倒计时和日志会显示调度器实际采用的等待时间。
+Apple 返回 `403`、`541` 或 `429` 时，处理方式取决于「查询线路」：跟随系统代理和指定节点模式下，当轮同地区不再重复请求，下一轮按设定间隔继续重试；Clash 节点轮换模式下，被拒的节点进入冷却并立即换下一个节点，所有节点都不可用时，下一轮等到最早恢复的节点。界面倒计时和日志会显示调度器实际采用的等待时间。
+
+### 查询线路与 Clash 配置
+
+Apple 按出口 IP 统计请求次数，同一 IP 连续查询一定次数后会返回 HTTP 541，并在十几分钟内持续拒绝。实测中不同出口的额度差异很大：家庭宽带有时十几次请求就被拒，部分机场节点可以撑过数十次。如果你经常看到「请求被 Apple 拦截」，可以在右侧「查询线路」中为查询单独指定出口，或让程序在多个 Clash 节点之间自动轮换。
+
+不使用 Clash 的用户保持默认的「跟随系统代理」即可，本节可以跳过。
+
+#### 三种出口方式
+
+| 出口方式 | 适合谁 | 行为 |
+| --- | --- | --- |
+| 跟随系统代理（默认） | 不使用代理，或不想改动 Clash | 与旧版本一致。开着 Clash 系统代理或 TUN 时，出口由 Clash 规则决定 |
+| 指定节点 | 想固定用某个节点，或固定用家庭宽带 | 经 Clash 专用端口固定使用一个节点，不自动切换。选 DIRECT 即使用本机网络，Clash 开着 TUN 也有效 |
+| Clash 节点轮换 | 有机场订阅、经常被拦截 | 平时一直用当前节点；被 Apple 拒绝时冷却该节点并立即换下一个 |
+
+Clash 节点轮换的具体规则：
+
+- 节点被 Apple 拒绝（`541`、`403`、`429`）后冷却 5 分钟；冷却结束后的第一次请求仍被拒，则依次延长到 10、20、30 分钟，成功一次即恢复。
+- 切换前先对目标节点测速，测不通的节点跳过 60 秒，直接试下一个。测速地址为 `https://www.gstatic.com/generate_204`，不消耗 Apple 的请求额度；DIRECT 不参与测速。
+- 连续 10 个不同节点都被 Apple 拒绝时，本轮停止切换，因为这通常说明拦截的不只是 IP。
+- 所有节点都不可用时，下一轮等到最早恢复的节点，界面显示「冷却中」和倒计时。
+- 可以在「当前节点」中手动指定节点，手动指定会解除该节点的冷却；之后被拒时仍会自动切换。
+
+两种 Clash 模式都**只切换果到雷达专用的策略组，只让查询浏览器使用专用端口**，电脑上其他软件使用的节点不受影响。
+
+#### 配置 Clash（以 Clash Verge Rev 为例）
+
+需要使用 mihomo（Clash Meta）内核。Clash Verge Rev 默认就是 mihomo 内核。
+
+**第一步：开启外部控制器**
+
+1. 打开 Clash Verge，进入「设置」→「Clash 设置」→「外部控制」。
+2. 打开「启用外部控制器」，监听地址填 `127.0.0.1:9097`。
+3. 设置一个「API 访问密钥」并记下来，稍后要填到果到雷达里。
+4. 点「保存」。
+
+**第二步：添加果到雷达专用的扩展脚本**
+
+1. 进入「订阅」页面，在页面底部找到 **「全局扩展脚本」**（右上角标着 `Script`）。
+2. 右键点击它，选择「编辑文件」。
+3. 把编辑器里原有的内容**全部替换**成下面的脚本。
+4. 在 `APW_SUBSCRIPTIONS` 中填写机场订阅地址。每行一个，左边是机场名（只用于给节点加前缀），右边是订阅地址；有几个机场就写几行。订阅地址可以在对应订阅卡片上右键复制，或到机场官网复制。
+5. 保存。如果「代理」页面没有刷新，在当前使用的订阅卡片上点一下刷新。
+
+```javascript
+// Clash Verge「全局扩展脚本」：节点只供果到雷达的专用端口使用，不影响电脑本身的节点
+const APW_PREFIX = "APW·";
+const APW_GROUP = "果到雷达";
+const APW_SUBSCRIPTIONS = {
+  机场1: "机场订阅地址",
+};
+
+function main(config, profileName) {
+  const providers = config["proxy-providers"] || {};
+  const used = [];
+  for (const [label, url] of Object.entries(APW_SUBSCRIPTIONS)) {
+    if (!/^https?:\/\//.test(url)) continue;
+    const key = `apw-${label}`;
+    providers[key] = {
+      type: "http",
+      url,
+      interval: 86400,
+      path: `./providers/${key}.yaml`,
+      override: { "additional-prefix": `${APW_PREFIX}${label}|` },
+      "health-check": { enable: false },
+    };
+    used.push(key);
+  }
+  config["proxy-providers"] = providers;
+
+  // 原有策略组若自动收录全部节点（include-all / include-all-providers），排除专用节点
+  const guard = `^${APW_PREFIX}`;
+  const groups = (config["proxy-groups"] || []).filter((g) => g.name !== APW_GROUP);
+  for (const group of groups) {
+    if (group["include-all"] || group["include-all-providers"]) {
+      const old = group["exclude-filter"];
+      if (old && old.includes(guard)) continue;
+      group["exclude-filter"] = old ? `(?:${old})|${guard}` : guard;
+    }
+  }
+  groups.push({ name: APW_GROUP, type: "select", proxies: ["DIRECT"], use: used });
+  config["proxy-groups"] = groups;
+
+  const listeners = (config.listeners || []).filter((l) => l.name !== "apple-store-monitor");
+  listeners.push({ name: "apple-store-monitor", type: "mixed", port: 7899, listen: "127.0.0.1", proxy: APW_GROUP });
+  config.listeners = listeners;
+  return config;
+}
+```
+
+脚本做了三件事：把订阅节点加上 `APW·机场名|` 前缀，放进新建的「果到雷达」策略组；让原有策略组排除这些节点，电脑本身的分流保持不变；开一个只转发到「果到雷达」组的本机端口 `7899`。
+
+> 不要把这些配置写进「全局扩展覆写配置」（Merge）。新版 Clash Verge 的 Merge 不支持追加策略组，写成 `proxy-groups` 还会替换原有的全部策略组，导致电脑分流异常。
+>
+> 订阅地址相当于账号凭证，不要截图、分享或提交到公开仓库。
+
+**第三步：确认 Clash 已生效**
+
+在 Clash Verge 的「代理」页面检查：
+
+- 出现了名为「果到雷达」的策略组，里面有 DIRECT 和带 `APW·` 前缀的节点。
+- 你平时使用的策略组（例如「节点选择」「自动选择」）中**没有**出现 `APW·` 开头的节点。如果出现了，说明脚本没有生效，或者使用了旧版写法，请重新按第二步操作。
+
+**第四步：在果到雷达中填写**
+
+1. 展开右侧「查询线路」，出口方式选择「Clash 节点轮换」或「指定节点」。
+2. 按下表填写：
+
+   | 项目 | 填写 |
+   | --- | --- |
+   | 控制接口 | `http://127.0.0.1:9097`（与第一步的监听地址一致） |
+   | 密钥 | 第一步设置的 API 访问密钥 |
+   | 专用端口 | `7899`（与脚本中的 `port` 一致） |
+   | 策略组 | `果到雷达`（与脚本中的 `APW_GROUP` 一致） |
+   | 节点关键词 | 可留空；只想用部分节点时填关键词，用竖线分隔，例如 `香港\|台湾\|日本` |
+
+3. 点「检查线路」。正常情况下会显示内核版本、可用节点数量和「端口 7899 可连接」。这一步只访问本机的 Clash，不会请求 Apple。
+4. 在「当前节点」（指定节点模式下为「指定节点」）下拉框中查看各节点的延迟，需要时手动选择。
+5. 点「开始监控」。活动日志每轮结束时会显示「线路：Clash 节点 …」，被拒或切换节点时也会记录。
+
+设置面板中「Clash 配置脚本」按钮可以随时查看并复制与当前端口、策略组对应的脚本。
+
+#### 使用建议
+
+- **查询间隔建议保持 30 秒或更长。** 间隔越短，每个节点的额度消耗越快，切换越频繁。
+- **不想优先使用家庭宽带时**，把脚本中的 `proxies: ["DIRECT"]` 改成 `proxies: []`。脚本默认把 DIRECT 排在第一位，平时优先走本机网络，被拦截后再切换到机场节点。
+- **优先使用延迟低的地区**，例如在「节点关键词」中填 `香港|台湾|日本|新加坡`。
+- **某个机场的节点全部测速超时**时，说明该订阅当前不可用，可以从 `APW_SUBSCRIPTIONS` 中删掉。
+- 机场的多个节点可能共用同一个出口 IP，也可能与其他用户共用，因此节点数量多不代表不会被拦截。
+- 控制接口密钥以明文保存在本机设置文件中。
+
+#### 其他 Clash 客户端
+
+只要客户端使用 mihomo 内核，并且能满足以下三点，就可以使用：
+
+1. 开启外部控制器（`external-controller`），并设置密钥（`secret`）。
+2. 有一个 `select` 类型的策略组，只供果到雷达使用。
+3. 有一个 `listeners` 端口，`proxy` 指向这个策略组。
+
+直接编辑 mihomo 配置文件时，可参考：
+
+```yaml
+external-controller: 127.0.0.1:9097
+secret: "你的密钥"
+proxy-providers:
+  apw-airport1:
+    type: http
+    url: "机场订阅地址"
+    interval: 86400
+    path: ./providers/apw-airport1.yaml
+    override:
+      additional-prefix: "APW·机场1|"
+proxy-groups:
+  # 保留原有策略组，只在末尾追加这一个；原有使用 include-all 的组需加上 exclude-filter: "^APW·"
+  - name: 果到雷达
+    type: select
+    proxies: [DIRECT]
+    use: [apw-airport1]
+listeners:
+  - name: apple-store-monitor
+    type: mixed
+    port: 7899
+    listen: 127.0.0.1
+    proxy: 果到雷达
+```
+
+#### Clash 配置常见问题
+
+| 检查线路或日志提示 | 原因与处理 |
+| --- | --- |
+| 无法连接 Clash 控制接口 | 外部控制器没有开启，或地址、端口与设置不一致。按第一步检查 |
+| Clash 控制接口拒绝访问，请检查密钥 | 密钥填错，或 Clash 中修改了密钥 |
+| Clash 中没有名为「果到雷达」的策略组 | 扩展脚本没有生效：确认写在「全局扩展脚本」而不是 Merge，已保存，并刷新了订阅 |
+| 「果到雷达」的类型不是 select | 策略组类型需要是 `select`，程序才能切换节点 |
+| 端口 7899 无法连接 / 无法连接 Clash 专用端口 | 脚本中的 `listeners` 没有生效，或端口被占用；确认脚本已保存，必要时换一个端口，并同步修改果到雷达中的「专用端口」 |
+| 可用节点为 0，或某个机场没有节点 | 订阅地址填错，或该订阅在国内无法直接下载；到 Clash 的日志中查看订阅加载错误 |
+| 电脑平时用的策略组里出现了 `APW·` 节点 | 使用了旧版配置或 Merge 写法，请按第二步改用本节的脚本 |
 
 ### 应用更新
 
@@ -308,11 +487,11 @@ macOS 应用包使用完整的 ad-hoc 签名，但没有 Developer ID 证书且�
 
 ### 出现 HTTP 541
 
-`541` 表示这次请求没有取得可信的库存结果，不代表无货。程序会把对应条目标为「冷却中」，停止向该地区继续发真实请求，并在 5 分钟后自动探测；若探测仍被拒绝，冷却依次延长到 10、20、30 分钟。普通网络错误不会把冷却升档。
+`541` 表示这次请求没有取得可信的库存结果，不代表无货。使用 Clash 节点轮换时，程序会冷却被拒的节点并自动换下一个；所有节点都在冷却时，条目标为「冷却中」，冷却结束后自动探测，探测仍被拒绝则依次延长到 10、20、30 分钟。其他模式下，程序在下一轮按设定间隔重试。
 
 如果连续多轮仍然失败：
 
-1. 先等待界面倒计时结束，让程序自动探测，不要连续快速启停或手动重启。
+1. 不要连续快速启停或手动重启；同一 IP 持续请求只会延长封禁。可以调大查询间隔，或改用「Clash 节点轮换」分散到多个出口，配置方法见[查询线路与 Clash 配置](#查询线路与-clash-配置)。
 2. 确认 Chrome 或 Edge 可以正常打开 Apple 官网。
 3. 如果多次自动探测仍失败，再对照 Apple 官网或尝试其他网络。`541` 本身不能证明当前网络被封锁，也不能保证换网络后一定恢复。
 
@@ -349,7 +528,7 @@ macOS 应用包使用完整的 ad-hoc 签名，但没有 Developer ID 证书且�
 
 下面只比较本项目与直接上游 `ENCHIGO/apple-pickup-watcher v0.3.2` 的差异。Rust、Tauri、三态库存、四个产品品类、系统托盘和应用内更新等能力已经由上游完成，不算作本项目新增。
 
-| 项目 | 直接上游 v0.3.2 | 果到雷达 v1.0.17 |
+| 项目 | 直接上游 v0.3.2 | 果到雷达 v1.0.18 |
 | --- | --- | --- |
 | Apple 查询会话 | 普通 HTTP 客户端先访问商品页获取 Cookie，再查询库存 | 启动应用专属的持久 Chromium 会话，在 Apple 页面环境中完成校验和库存请求；同轮对被拦截地区停止重复请求，下轮按用户设置的间隔重试 |
 | 批量添加监控 | 每次选择一家门店和一个型号 | 门店、型号都可以多选，一次生成全部组合；重复组合会自动跳过 |
@@ -366,11 +545,12 @@ Apple 当前商品页会先完成浏览器环境校验，再请求库存接口�
 果到雷达会在后台启动一个独立的 Chromium 会话（Chrome、Edge，或 Linux 上的 Chromium）：
 
 1. 使用果到雷达自己的持久浏览器资料目录，不复用个人浏览器资料。
+   浏览器以无头模式运行，不显示窗口或 Dock 图标；UA、Client Hints、屏幕尺寸和语言按本机真实浏览器版本修正，去掉无头模式的标记。
 2. 打开当前地区的 Apple 正式购买页，等待页面校验完成。
 3. 在同一页面和同一会话中请求库存。
 4. 同一地区、相同型号组合的附近门店优先复用一个响应；数据不完整时才针对目标门店补查。
 5. 所有真实库存请求至少间隔 2 秒，避免并发形成瞬时突发。
-6. 如果会话被 `403`、`541` 或 `429` 拒绝，当轮同地区不再重复请求；下一轮复用同一会话，仍按用户设置的间隔重试，不另行冷却或放大间隔。
+6. 如果会话被 `403`、`541` 或 `429` 拒绝：Clash 节点轮换模式下冷却该节点并换下一个继续查询；其他模式下当轮同地区不再重复请求，下一轮复用同一会话，按用户设置的间隔重试。
 
 应用专属资料不会读取用户日常使用的 Chrome/Edge 登录状态、Cookie 或浏览记录。应用正常退出时会停止专属进程，并保留它自己的会话资料；若上次异常退出，下次启动只会回收绑定到该专属目录的遗留 Chromium，不会终止普通浏览器。
 
@@ -486,7 +666,7 @@ pnpm tauri build --no-sign
 
 产物位于 `target/release/bundle/`。自动更新包需要仓库维护者配置 `TAURI_SIGNING_PRIVATE_KEY`；私钥设置了密码时还要配置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。没有私钥时不能生成可被现有客户端验证的更新签名。
 
-正式版本由 [Release 工作流](.github/workflows/release.yml) 构建，标签使用 `v1.0.17` 这样的格式。发版前应确认 `package.json`、工作区 `Cargo.toml`、`src-tauri/tauri.conf.json` 与标签的版本一致。macOS 专用配置在 `src-tauri/tauri.macos.conf.json` 中启用 ad-hoc 签名；发布流水线会同时验证自动更新归档和 DMG 内的应用签名。
+正式版本由 [Release 工作流](.github/workflows/release.yml) 构建，标签使用 `v1.0.18` 这样的格式。发版前应确认 `package.json`、工作区 `Cargo.toml`、`src-tauri/tauri.conf.json` 与标签的版本一致。macOS 专用配置在 `src-tauri/tauri.macos.conf.json` 中启用 ad-hoc 签名；发布流水线会同时验证自动更新归档和 DMG 内的应用签名。
 
 推送 `v*` 标签后，GitHub Actions 会生成 macOS、Windows 和 Linux 安装包，并先创建草稿 Release；确认四个平台全部成功后再公开发布，避免用户下载到缺少部分平台或 `latest.json` 尚未完整生成的版本。手动运行 `workflow_dispatch` 只生成 Actions 构建产物，不会创建公开 Release。
 
