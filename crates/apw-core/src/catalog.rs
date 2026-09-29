@@ -19,9 +19,11 @@
 //! 不复存在，就足以触发。
 
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::apple::ApiError;
 use crate::model::{Category, Family, Product, Region, Store};
@@ -107,8 +109,15 @@ pub struct Catalog {
     /// 地区」，永远不知道是数据坏了。存 `String` 而不是 `CatalogError` 是因为
     /// 它要被反复返回，而 `CatalogError` 携带了不可克隆的 [`ApiError`]。
     offline_products: HashMap<&'static str, Result<Vec<Page>, String>>,
-    /// 门店快照。门店变动远慢于商品，没有在线刷新这条路。
+    /// 门店快照，在线刷新失败或从未刷新时使用。
     offline_stores: Result<HashMap<String, Vec<Store>>, String>,
+    /// 在线刷新的门店，按地区整体覆盖快照。门店列表一次请求就是完整的一份，
+    /// 不存在商品那样「部分页失败」的问题。
+    online_stores: RwLock<HashMap<String, Vec<Store>>>,
+    /// 各地区最近一次成功刷新型号目录的时间（Unix 秒），随缓存保存。
+    refreshed_at: RwLock<HashMap<String, u64>>,
+    /// 在线刷新结果的本地缓存目录；`None` 表示不落盘（测试或目录不可用）。
+    cache_dir: Option<PathBuf>,
     /// 在线刷新结果，按「地区 + 购买页」覆盖内嵌快照的同一页。
     ///
     /// **单位必须是「页」，不能是「地区」也不能是「品类」。** 抓取是一页一页
@@ -167,9 +176,190 @@ impl Catalog {
         Self {
             offline_products,
             offline_stores: load_stores(EMBEDDED_STORES).map_err(|e| e.to_string()),
+            online_stores: RwLock::new(HashMap::new()),
+            refreshed_at: RwLock::new(HashMap::new()),
             online_products: RwLock::new(HashMap::new()),
             current_families: RwLock::new(HashMap::new()),
+            cache_dir: None,
         }
+    }
+
+    /// 载入内嵌数据，并用 `dir` 中缓存的在线刷新结果覆盖。
+    ///
+    /// 在线刷新只存在内存里的话，每次重启都会退回编译时的快照，用户得再点一次
+    /// 刷新才能看到新机型。缓存读不出来（不存在、损坏、版本不符）时静默忽略，
+    /// 照常使用内嵌快照：缓存只是加速，绝不能让目录因此不可用。
+    pub fn with_cache_dir(dir: PathBuf) -> Self {
+        let mut catalog = Self::new();
+        catalog.cache_dir = Some(dir);
+        for region in crate::model::REGIONS {
+            catalog.load_cache(region.locale);
+        }
+        catalog
+    }
+
+    /// 某地区最近一次成功刷新型号目录的时间；从未刷新时为 `None`。
+    pub fn last_refreshed(&self, locale: &str) -> Option<SystemTime> {
+        read_lock(&self.refreshed_at)
+            .get(locale)
+            .map(|secs| UNIX_EPOCH + Duration::from_secs(*secs))
+    }
+
+    fn mark_refreshed(&self, locale: &str) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        write_lock(&self.refreshed_at).insert(locale.to_string(), now);
+    }
+
+    fn cache_path(&self, locale: &str) -> Option<PathBuf> {
+        self.cache_dir
+            .as_ref()
+            .map(|dir| dir.join(format!("{locale}.json")))
+    }
+
+    fn load_cache(&self, locale: &str) {
+        let Some(path) = self.cache_path(locale) else {
+            return;
+        };
+        let Ok(text) = std::fs::read(&path) else {
+            return;
+        };
+        let Ok(cache) = serde_json::from_slice::<CatalogCache>(&text) else {
+            return;
+        };
+        if cache.version != CATALOG_CACHE_VERSION {
+            return;
+        }
+        // 刷新时间只对型号目录有意义；缓存里没有任何型号页时视为从未刷新。
+        let refreshed_at = if cache.pages.iter().any(|page| !page.products.is_empty()) {
+            cache.refreshed_at
+        } else {
+            0
+        };
+        {
+            let mut online = write_lock(&self.online_products);
+            for page in cache.pages {
+                if page.products.is_empty() {
+                    continue;
+                }
+                let id = PageId {
+                    category: page.category,
+                    slug: page.slug,
+                };
+                online.insert(
+                    (locale.to_string(), id.clone()),
+                    Page {
+                        id,
+                        products: page.products,
+                    },
+                );
+            }
+        }
+        {
+            let mut current = write_lock(&self.current_families);
+            for family in cache.current_families {
+                if !family.slugs.is_empty() {
+                    current.insert(
+                        (locale.to_string(), family.category),
+                        family.slugs.into_iter().collect(),
+                    );
+                }
+            }
+        }
+        if let Some(stores) = cache.stores.filter(|stores| !stores.is_empty()) {
+            write_lock(&self.online_stores).insert(
+                locale.to_string(),
+                stores.into_iter().map(CachedStore::into_store).collect(),
+            );
+        }
+        if refreshed_at > 0 {
+            write_lock(&self.refreshed_at).insert(locale.to_string(), refreshed_at);
+        }
+    }
+
+    /// 把某地区的在线刷新结果写入缓存。先写临时文件再改名，写到一半断电也不会
+    /// 留下半个文件。
+    fn save_cache(&self, locale: &str) -> std::io::Result<()> {
+        let Some(path) = self.cache_path(locale) else {
+            return Ok(());
+        };
+        let mut pages: Vec<CachedPage> = read_lock(&self.online_products)
+            .iter()
+            .filter(|((l, _), page)| l == locale && !page.products.is_empty())
+            .map(|((_, id), page)| CachedPage {
+                category: id.category,
+                slug: id.slug.clone(),
+                products: page.products.clone(),
+            })
+            .collect();
+        pages.sort_by(|a, b| (a.category, &a.slug).cmp(&(b.category, &b.slug)));
+        let mut current_families: Vec<CachedFamilies> = read_lock(&self.current_families)
+            .iter()
+            .filter(|((l, _), _)| l == locale)
+            .map(|((_, category), slugs)| {
+                let mut slugs: Vec<String> = slugs.iter().cloned().collect();
+                slugs.sort();
+                CachedFamilies {
+                    category: *category,
+                    slugs,
+                }
+            })
+            .collect();
+        current_families.sort_by_key(|family| family.category);
+        let cache = CatalogCache {
+            version: CATALOG_CACHE_VERSION,
+            refreshed_at: read_lock(&self.refreshed_at)
+                .get(locale)
+                .copied()
+                .unwrap_or_default(),
+            pages,
+            current_families,
+            stores: read_lock(&self.online_stores)
+                .get(locale)
+                .map(|stores| stores.iter().map(CachedStore::from_store).collect()),
+        };
+        let json = serde_json::to_vec(&cache).map_err(std::io::Error::other)?;
+        write_atomically(&path, &json)
+    }
+
+    /// 从 Apple 官网刷新某地区的门店列表，返回门店数。
+    ///
+    /// 门店列表页带着全部地区的数据，但只更新 `region` 这一个地区：用户刷新
+    /// 中国大陆时，其他地区保持原样。
+    pub async fn refresh_stores(
+        &self,
+        region: &'static Region,
+        http: &reqwest::Client,
+    ) -> Result<usize, CatalogError> {
+        let page = crate::apple_catalog::fetch_store_list(http).await?;
+        let stores = parse_store_page(&page)?
+            .remove(region.locale)
+            .ok_or_else(|| CatalogError::PageSchema {
+                detail: format!("门店列表里没有 {} 的门店，保留现有列表", region.locale),
+            })?;
+        self.apply_store_refresh(region.locale, stores)
+    }
+
+    /// 校验并安装一个地区刷新到的门店，返回门店数。
+    ///
+    /// 新列表比当前列表少一半以上时视为异常数据（例如页面只返回了一部分），
+    /// 保留原有列表：正常的开闭店不会一次变化这么多，而少掉的门店会让用户已
+    /// 添加的监控项失去门店名称和附近查询地点。
+    fn apply_store_refresh(&self, locale: &str, stores: Vec<Store>) -> Result<usize, CatalogError> {
+        let current = self.stores(locale).map(|stores| stores.len()).unwrap_or(0);
+        if stores.is_empty() || stores.len() * 2 < current {
+            return Err(CatalogError::PageSchema {
+                detail: format!(
+                    "{locale} 刷新到 {} 家门店，比当前的 {current} 家少一半以上，疑似数据不完整，保留现有列表",
+                    stores.len()
+                ),
+            });
+        }
+        let count = stores.len();
+        write_lock(&self.online_stores).insert(locale.to_string(), stores);
+        let _ = self.save_cache(locale);
+        Ok(count)
     }
 
     /// 某地区的全部商品，四个品类合在一起。
@@ -253,8 +443,11 @@ impl Catalog {
         }
     }
 
-    /// 某地区的全部直营店。
+    /// 某地区的全部直营店。在线刷新过的优先，否则使用内嵌快照。
     pub fn stores(&self, locale: &str) -> Result<Vec<Store>, CatalogError> {
+        if let Some(stores) = read_lock(&self.online_stores).get(locale) {
+            return Ok(stores.clone());
+        }
         let by_locale = self
             .offline_stores
             .as_ref()
@@ -454,6 +647,12 @@ impl Catalog {
             }
         }
 
+        // 部分页失败时，成功的页已经生效，同样要落盘，重启后不必再抓一遍。
+        if !fetched.is_empty() {
+            self.mark_refreshed(region.locale);
+            let _ = self.save_cache(region.locale);
+        }
+
         if !failures.is_empty() {
             return Err(CatalogError::RefreshFailed {
                 locale: region.locale.to_string(),
@@ -634,6 +833,143 @@ struct RawAddress {
     postal_code: String,
 }
 
+/// 把一个地区的原始门店数据整理成门店列表。
+fn stores_of_region(region: &RawStoreRegion, locale: &str) -> Vec<Store> {
+    let mut stores = Vec::new();
+    // 按门店编号去重，保留第一次出现的那条，顺序沿用数据源里的顺序 ——
+    // 那本来就是按省 / 州分好组的，正合下拉框里找店的直觉。
+    let mut seen = HashSet::new();
+
+    for state in &region.states {
+        for raw in &state.stores {
+            push_store(
+                &mut stores,
+                &mut seen,
+                raw,
+                locale,
+                region.has_states,
+                &state.name,
+            );
+        }
+    }
+    for raw in &region.stores {
+        push_store(&mut stores, &mut seen, raw, locale, region.has_states, "");
+    }
+    stores
+}
+
+/// 解析门店列表页，返回按地区分组的门店。没有门店的地区不出现在结果中。
+pub(crate) fn parse_store_page(page: &[u8]) -> Result<HashMap<String, Vec<Store>>, CatalogError> {
+    let schema = |detail: String| CatalogError::PageSchema {
+        detail: format!("门店列表结构与预期不符：{detail}"),
+    };
+    let raw = crate::apple_catalog::extract_next_data(page)?;
+    let value: serde_json::Value =
+        serde_json::from_slice(raw).map_err(|e| schema(e.to_string()))?;
+    let list = value
+        .pointer("/props/pageProps/storeList")
+        .cloned()
+        .ok_or_else(|| schema("缺少 props.pageProps.storeList".into()))?;
+    let regions: Vec<RawStoreRegion> =
+        serde_json::from_value(list).map_err(|e| schema(e.to_string()))?;
+    let mut result = HashMap::new();
+    for region in &regions {
+        if region.locale.is_empty() {
+            continue;
+        }
+        let stores = stores_of_region(region, &region.locale);
+        if !stores.is_empty() {
+            result.insert(region.locale.clone(), stores);
+        }
+    }
+    if result.is_empty() {
+        return Err(schema("没有解析出任何门店，保留现有列表".into()));
+    }
+    Ok(result)
+}
+
+/// 在线刷新结果的缓存格式版本。结构改变时加一，旧缓存会被忽略。
+const CATALOG_CACHE_VERSION: u32 = 1;
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CatalogCache {
+    version: u32,
+    /// 最近一次在线刷新的 Unix 秒。
+    #[serde(default)]
+    refreshed_at: u64,
+    #[serde(default)]
+    pages: Vec<CachedPage>,
+    #[serde(default)]
+    current_families: Vec<CachedFamilies>,
+    #[serde(default)]
+    stores: Option<Vec<CachedStore>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CachedPage {
+    category: Category,
+    slug: String,
+    products: Vec<Product>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CachedFamilies {
+    category: Category,
+    slugs: Vec<String>,
+}
+
+/// 缓存里的门店。[`Store`] 的城市、省份和邮编不对前端序列化，缓存必须完整保存，
+/// 否则重启后取货查询拼不出附近地点。
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CachedStore {
+    number: String,
+    name: String,
+    title: String,
+    #[serde(default)]
+    city: String,
+    #[serde(default)]
+    state: String,
+    #[serde(default)]
+    postal_code: String,
+}
+
+impl CachedStore {
+    fn from_store(store: &Store) -> Self {
+        Self {
+            number: store.number.clone(),
+            name: store.name.clone(),
+            title: store.title.clone(),
+            city: store.city.clone(),
+            state: store.state.clone(),
+            postal_code: store.postal_code.clone(),
+        }
+    }
+
+    fn into_store(self) -> Store {
+        Store {
+            number: self.number,
+            name: self.name,
+            title: self.title,
+            city: self.city,
+            state: self.state,
+            postal_code: self.postal_code,
+        }
+    }
+}
+
+fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path)
+}
+
 /// 解析内嵌门店快照，返回按地区分组的门店表。
 fn load_stores(text: &str) -> Result<HashMap<String, Vec<Store>>, CatalogError> {
     let regions: Vec<RawStoreRegion> =
@@ -648,36 +984,10 @@ fn load_stores(text: &str) -> Result<HashMap<String, Vec<Store>>, CatalogError> 
         if region.locale.is_empty() {
             continue;
         }
-
-        let mut stores = Vec::new();
-        // 按门店编号去重，保留第一次出现的那条，顺序沿用数据源里的顺序 ——
-        // 那本来就是按省 / 州分好组的，正合下拉框里找店的直觉。
-        let mut seen = HashSet::new();
-
-        for state in &region.states {
-            for raw in &state.stores {
-                push_store(
-                    &mut stores,
-                    &mut seen,
-                    raw,
-                    &region.locale,
-                    region.has_states,
-                    &state.name,
-                );
-            }
-        }
-        for raw in &region.stores {
-            push_store(
-                &mut stores,
-                &mut seen,
-                raw,
-                &region.locale,
-                region.has_states,
-                "",
-            );
-        }
-
-        result.insert(region.locale.clone(), stores);
+        result.insert(
+            region.locale.clone(),
+            stores_of_region(region, &region.locale),
+        );
     }
 
     if result.is_empty() {
@@ -1159,5 +1469,188 @@ mod tests {
             "Apple Watch Series 12 42 毫米 铝金属 GPS + 蜂窝网络 浅金色"
         );
         assert_eq!(targets[0].companion_part.as_deref(), Some("MJUY4FE/A"));
+    }
+
+    fn temp_cache_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "apw-catalog-cache-{name}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    /// 门店列表页的最小样本：结构与官网 `__NEXT_DATA__` 一致。
+    fn store_page(store_list: &str) -> String {
+        format!(
+            r#"<html><body><div id="__next"></div><script id="__NEXT_DATA__" type="application/json">{{"props":{{"pageProps":{{"storeList":{store_list}}}}}}}</script></body></html>"#
+        )
+    }
+
+    const STORE_LIST: &str = r#"[
+        {"locale": "zh_CN", "hasStates": true, "state": [
+            {"name": "上海", "store": [
+                {"id": "R999", "name": "新店", "address": {"city": "上海", "stateName": "上海", "postalCode": "200000"}},
+                {"id": "R683", "name": "环球港", "address": {"city": "上海", "stateName": "上海", "postalCode": "200062"}}
+            ]}
+        ]},
+        {"locale": "ja_JP", "hasStates": true, "state": [
+            {"name": "東京都", "store": [
+                {"id": "R079", "name": "Ginza", "address": {"city": "Chuo-ku", "stateName": "東京都", "postalCode": "104-0061"}}
+            ]}
+        ]},
+        {"locale": "en_US", "hasStates": true, "state": []}
+    ]"#;
+
+    #[test]
+    fn 门店列表页可解析且保留取货查询所需地址() {
+        let by_locale = parse_store_page(store_page(STORE_LIST).as_bytes()).expect("应能解析");
+        let stores = &by_locale["zh_CN"];
+        assert_eq!(stores.len(), 2);
+        assert_eq!(stores[0].number, "R999");
+        assert_eq!(stores[0].title, "上海-新店");
+        assert_eq!(stores[0].city, "上海");
+        assert_eq!(stores[0].state, "上海");
+        assert_eq!(by_locale["ja_JP"][0].number, "R079");
+        assert!(!by_locale.contains_key("en_US"), "没有门店的地区不应出现");
+
+        assert!(parse_store_page(store_page("[]").as_bytes()).is_err());
+        assert!(parse_store_page(b"<html>blocked</html>").is_err());
+    }
+
+    #[test]
+    fn 在线门店覆盖内嵌快照并写入缓存_重启后仍然生效() {
+        let dir = temp_cache_dir("stores");
+        let catalog = Catalog::with_cache_dir(dir.clone());
+        let stores = parse_store_page(store_page(STORE_LIST).as_bytes())
+            .unwrap()
+            .remove("zh_CN")
+            .unwrap();
+        write_lock(&catalog.online_stores).insert("zh_CN".into(), stores);
+        catalog.mark_refreshed("zh_CN");
+        catalog.save_cache("zh_CN").expect("应能写入缓存");
+
+        let reloaded = Catalog::with_cache_dir(dir.clone());
+        let stores = reloaded.stores("zh_CN").unwrap();
+        assert_eq!(stores.len(), 2);
+        assert_eq!(
+            stores[0].postal_code, "200000",
+            "缓存必须保留不对前端序列化的地址字段"
+        );
+        assert!(
+            reloaded.last_refreshed("zh_CN").is_none(),
+            "只有门店没有型号页的缓存不算已刷新"
+        );
+        // 其他地区不受影响，仍用内嵌快照。
+        assert!(reloaded.stores("ja_JP").unwrap().len() > 2);
+        assert!(reloaded.last_refreshed("ja_JP").is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn 在线型号页写入缓存_重启后覆盖内嵌快照的同一页() {
+        let dir = temp_cache_dir("products");
+        let catalog = Catalog::with_cache_dir(dir.clone());
+        let mut product = catalog.products("zh_CN").unwrap()[0].clone();
+        let slug = catalog.offline_pages("zh_CN").unwrap()[0].id.slug.clone();
+        let category = catalog.offline_pages("zh_CN").unwrap()[0].id.category;
+        product.part_number = "TEST1CH/A".into();
+        product.title = "缓存里的新型号".into();
+        product.category = category;
+        catalog.install_page(
+            "zh_CN",
+            &Family {
+                category,
+                slug: &slug,
+            },
+            vec![product],
+        );
+        catalog.mark_refreshed("zh_CN");
+        catalog.save_cache("zh_CN").unwrap();
+
+        let reloaded = Catalog::with_cache_dir(dir.clone());
+        let products = reloaded.products("zh_CN").unwrap();
+        assert!(products.iter().any(|p| p.part_number == "TEST1CH/A"));
+        assert!(reloaded.last_refreshed("zh_CN").is_some());
+        assert_eq!(
+            reloaded.products("ja_JP").unwrap(),
+            Catalog::new().products("ja_JP").unwrap(),
+            "刷新中国大陆的型号不能改动日本"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn 缓存损坏或版本不符时退回内嵌快照() {
+        let dir = temp_cache_dir("corrupt");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("zh_CN.json"), b"{not json").unwrap();
+        std::fs::write(
+            dir.join("zh_HK.json"),
+            br#"{"version":999,"refreshedAt":1,"stores":[{"number":"R1","name":"x","title":"x"}]}"#,
+        )
+        .unwrap();
+        let catalog = Catalog::with_cache_dir(dir.clone());
+        assert_eq!(
+            catalog.stores("zh_CN").unwrap(),
+            Catalog::new().stores("zh_CN").unwrap()
+        );
+        assert_eq!(
+            catalog.stores("zh_HK").unwrap(),
+            Catalog::new().stores("zh_HK").unwrap()
+        );
+        assert!(catalog.last_refreshed("zh_HK").is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn 内嵌门店快照与门店列表页使用同一结构() {
+        // 内嵌 stores.json 就是门店列表页 storeList 的导出；两者必须能用同一套解析。
+        let embedded = load_stores(EMBEDDED_STORES).unwrap();
+        let page = store_page(EMBEDDED_STORES);
+        let parsed = parse_store_page(page.as_bytes()).unwrap();
+        for region in REGIONS {
+            assert_eq!(
+                parsed.get(region.locale),
+                embedded.get(region.locale),
+                "{}",
+                region.locale
+            );
+        }
+    }
+
+    #[test]
+    fn 刷新某地区门店不影响其他地区() {
+        let dir = temp_cache_dir("isolation");
+        let catalog = Catalog::with_cache_dir(dir.clone());
+        let ja_before = catalog.stores("ja_JP").unwrap();
+        let mut by_locale = parse_store_page(store_page(STORE_LIST).as_bytes()).unwrap();
+
+        // 模拟门店数量正常变化：在内嵌的中国大陆门店基础上去掉一家（闭店）。
+        let mut cn = catalog.stores("zh_CN").unwrap();
+        cn.pop();
+        let expected = cn.len();
+        assert_eq!(catalog.apply_store_refresh("zh_CN", cn).unwrap(), expected);
+        assert_eq!(catalog.stores("zh_CN").unwrap().len(), expected);
+        assert_eq!(
+            catalog.stores("ja_JP").unwrap(),
+            ja_before,
+            "刷新中国大陆不能改动日本"
+        );
+        assert!(dir.join("zh_CN.json").exists());
+        assert!(
+            !dir.join("ja_JP.json").exists(),
+            "其他地区的缓存文件不应被写入"
+        );
+
+        // 异常数据：门店数骤减到不足一半时拒绝，保留原列表。
+        let partial = by_locale.remove("zh_CN").unwrap();
+        assert!(catalog.apply_store_refresh("zh_CN", partial).is_err());
+        assert_eq!(catalog.stores("zh_CN").unwrap().len(), expected);
+        assert!(catalog.apply_store_refresh("zh_CN", Vec::new()).is_err());
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

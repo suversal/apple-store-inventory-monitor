@@ -972,14 +972,14 @@ export default function App() {
                           variant="outline"
                           size="icon-lg"
                           className="rounded-xl border-border/70 bg-background/40"
-                          aria-label="从 Apple 官网更新当前品类的型号列表"
+                          aria-label="从 Apple 官网更新门店列表和当前品类的型号"
                           disabled={ui.refreshing}
                           onClick={() => void refreshProducts()}
                         >
                           <RefreshCw className={ui.refreshing ? "animate-spin" : undefined} />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent>从 Apple 官网更新当前品类的型号列表</TooltipContent>
+                      <TooltipContent>从 Apple 官网更新门店列表和当前品类的型号</TooltipContent>
                     </Tooltip>
                     <Button
                       className="h-10 min-w-28 rounded-xl px-4"

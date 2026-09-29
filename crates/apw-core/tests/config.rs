@@ -694,3 +694,18 @@ fn 线路设置规范化去掉空白与控制地址结尾斜杠() {
     assert_eq!(clash.node_filter, "香港|日本");
     assert_eq!(clash.pinned_node, "DIRECT", "空的指定节点回到 DIRECT");
 }
+
+#[test]
+fn 控制接口地址缺少协议时自动补上_http() {
+    let mut settings = Settings::default();
+    settings.network.clash.controller = " 127.0.0.1:9097 ".into();
+    settings.normalize();
+    assert_eq!(settings.network.clash.controller, "http://127.0.0.1:9097");
+
+    settings.network.clash.controller = "https://example.invalid:9090/".into();
+    settings.normalize();
+    assert_eq!(
+        settings.network.clash.controller,
+        "https://example.invalid:9090"
+    );
+}

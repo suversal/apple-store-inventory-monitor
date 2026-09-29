@@ -363,6 +363,38 @@ async fn fetch_page_once(
     Ok(body)
 }
 
+/// 门店列表页。
+///
+/// Apple 旧的 `/rsp-web/store-list` 接口已下线（返回 404）。现在的门店列表页由
+/// Next.js 渲染，全球门店数据以 `__NEXT_DATA__` JSON 嵌在页面里，结构与内嵌的
+/// `stores.json` 一致——内嵌快照本来就取自中国站这一页。统一从这一页取数，门店
+/// 名称与快照保持一致（日本站页面会给出日文名）。页面虽带着全部地区，刷新时只更新
+/// 用户正在刷新的那个地区。
+pub const STORE_LIST_URL: &str = "https://www.apple.com.cn/retail/storelist/";
+
+/// 取门店列表页 HTML。
+pub async fn fetch_store_list(http: &reqwest::Client) -> Result<Vec<u8>, ApiError> {
+    let region = crate::model::region_by_locale("zh_CN")
+        .ok_or_else(|| ApiError::Transport("内置地区表缺少中国大陆".into()))?;
+    crate::apple::with_retry(MAX_RETRIES, || {
+        fetch_page_once(http, STORE_LIST_URL, region)
+    })
+    .await
+}
+
+/// 从 Next.js 页面中截出 `__NEXT_DATA__` 的 JSON 文本。
+pub fn extract_next_data(page: &[u8]) -> Result<&[u8], CatalogError> {
+    const OPEN: &[u8] = b"<script id=\"__NEXT_DATA__\" type=\"application/json\">";
+    const CLOSE: &[u8] = b"</script>";
+    let start = find(page, OPEN).ok_or_else(|| CatalogError::PageSchema {
+        detail: "门店列表页里找不到 __NEXT_DATA__".into(),
+    })? + OPEN.len();
+    let len = find(&page[start..], CLOSE).ok_or_else(|| CatalogError::PageSchema {
+        detail: "门店列表页的 __NEXT_DATA__ 没有结束标记".into(),
+    })?;
+    Ok(&page[start..start + len])
+}
+
 /// 从购买页 HTML 中截出 `productSelectionData` 的值。
 ///
 /// 返回的是页面里的原始切片，本身保证是合法 JSON 对象。

@@ -15,6 +15,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import type {
+  CatalogRefresh,
   Category,
   CategoryOption,
   ClashRouteCheck,
@@ -360,6 +361,16 @@ export async function changeLocale(locale: string): Promise<void> {
   await loadCatalog(locale);
 }
 
+/** 用一句话描述一次目录刷新，例如「更新目录：门店 49 家、型号 73 个」。 */
+function describeCatalogRefresh(result: CatalogRefresh): string {
+  const parts = [
+    result.stores === null ? "门店未更新" : `门店 ${result.stores} 家`,
+    `型号 ${result.products} 个`,
+  ];
+  const notes = result.errors.length > 0 ? `（${result.errors.join("；")}）` : "";
+  return `从 Apple 官网更新目录：${parts.join("、")}${notes}。`;
+}
+
 async function writeTargets(targets: Target[]): Promise<boolean> {
   try {
     const rows = await invoke<TargetState[]>("set_targets", { targets });
@@ -484,13 +495,12 @@ export async function refreshProducts(): Promise<void> {
   const locale = state.settings.locale;
   const category = state.category;
   try {
-    const count = await invoke<number>("refresh_products", { locale, category });
-    // 说「抓到」而不是「更新」：这个数字是本轮成功抓下来的不同零件号数，
-    // 不等于目录里真的多了或改了多少行。
-    pushLog(`已从 Apple 官网抓到 ${count} 个型号。`);
+    const result = await invoke<CatalogRefresh>("refresh_products", { locale, category });
+    // 型号数是本轮成功抓下来的不同零件号数，不等于目录里真的多了或改了多少行。
+    pushLog(`已${describeCatalogRefresh(result)}`);
   } catch (err) {
-    // 抓取失败仍可继续用内嵌的离线目录，只是可能缺最新机型。
-    pushLog(`更新型号列表失败（仍可使用内置目录）：${String(err)}`);
+    // 抓取失败仍可继续用缓存或内置目录，只是可能缺最新机型或门店。
+    pushLog(`更新门店与型号失败（继续使用已有目录）：${String(err)}`);
   } finally {
     // 无论成败都重载一次目录。**失败时也必须重载**：后端是一页一页安装的，
     // 一个品类有八页，其中几页成功、几页失败是常事，成功那几页的新数据此刻

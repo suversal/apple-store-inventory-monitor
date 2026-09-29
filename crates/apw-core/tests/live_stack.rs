@@ -256,3 +256,27 @@ async fn 能从官网抓到最新型号() {
         }
     }
 }
+
+/// 门店列表页是门店在线刷新的唯一来源。它的结构一旦变化，门店就只能停留在
+/// 缓存或内嵌快照上，这里要第一时间发现。
+#[tokio::test(flavor = "multi_thread")]
+async fn 能从官网门店列表页刷新七个地区的门店() {
+    let catalog = Catalog::new();
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .expect("构造 http 客户端失败");
+
+    let region = region_by_locale("zh_CN").expect("地区表里应当有中国大陆");
+    let count = catalog
+        .refresh_stores(region, &http)
+        .await
+        .unwrap_or_else(|e| panic!("门店列表页刷新失败，页面结构可能已变：{e}"));
+    assert!(count > 30, "中国大陆只刷新到 {count} 家门店");
+
+    for region in apw_core::model::REGIONS {
+        let stores = catalog.stores(region.locale).expect("门店目录应当可用");
+        assert!(!stores.is_empty(), "{} 没有门店", region.locale);
+        println!("{}：{} 家门店", region.locale, stores.len());
+    }
+}

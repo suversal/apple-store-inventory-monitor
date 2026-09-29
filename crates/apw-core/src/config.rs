@@ -234,6 +234,10 @@ impl NetworkSettings {
     fn normalize(&mut self) {
         let clash = &mut self.clash;
         clash.controller = clash.controller.trim().trim_end_matches('/').to_string();
+        // Clash 界面显示的监听地址不带协议（如 127.0.0.1:9097），用户会直接照抄。
+        if !clash.controller.is_empty() && !clash.controller.contains("://") {
+            clash.controller = format!("http://{}", clash.controller);
+        }
         clash.secret = clash.secret.trim().to_string();
         clash.group = clash.group.trim().to_string();
         clash.node_filter = clash.node_filter.trim().to_string();
