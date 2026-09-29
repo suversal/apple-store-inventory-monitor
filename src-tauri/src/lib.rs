@@ -12,7 +12,7 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 use apw_core::catalog::Catalog;
-use apw_core::config::{MIN_INTERVAL_SECONDS, OpenOnHit, Settings, SettingsStore};
+use apw_core::config::{ClashSettings, MIN_INTERVAL_SECONDS, OpenOnHit, Settings, SettingsStore};
 use apw_core::model::{Category, Product, REGIONS, Store, Target, region_by_locale};
 use apw_core::notify::{Bark, Multi, Notification, Notifier, Sound};
 use apw_core::watcher::{Event, TargetState, Watcher, WatcherConfig};
@@ -23,6 +23,8 @@ use tauri::{AppHandle, Emitter, Manager, WindowEvent};
 use tauri_plugin_updater::UpdaterExt;
 
 mod chromium_fetcher;
+mod clash;
+mod route_pool;
 use chromium_fetcher::AppleChromiumFetcher;
 
 /// 前端事件通道名。前端用 `listen("watcher://event", ...)` 订阅。
@@ -542,8 +544,76 @@ async fn save_settings(
         .watcher
         .set_delivery_region(next.delivery_region.clone())
         .await;
+    state.fetcher.set_network(next.network.clone()).await;
 
     Ok(next)
+}
+
+/// Clash 线路测试结果。只访问本机控制接口和端口，不向 Apple 发请求。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClashRouteCheck {
+    version: String,
+    #[serde(flatten)]
+    group: clash::GroupNodes,
+    /// 专用代理端口是否能在本机连上。
+    port_open: bool,
+    /// 批量测速超时的节点数（不含 DIRECT）。并发测速可能略微偏高。
+    timeout_count: usize,
+}
+
+#[tauri::command]
+async fn test_clash_route(clash: ClashSettings) -> Result<ClashRouteCheck, String> {
+    let mut network = apw_core::config::NetworkSettings {
+        mode: apw_core::config::NetworkMode::Clash,
+        clash,
+    };
+    let mut settings = Settings {
+        network: network.clone(),
+        ..Settings::default()
+    };
+    settings.normalize();
+    network = settings.network;
+    let controller = clash::ClashController::new(&network.clash)?;
+    let version = controller.version().await?;
+    let group = controller
+        .group_nodes(&network.clash.group, &network.clash.node_filter)
+        .await?;
+    let timeout_count = match controller.group_delays(&network.clash.group).await {
+        Ok(delays) => group
+            .nodes
+            .iter()
+            .filter(|node| node.as_str() != "DIRECT" && !delays.contains_key(*node))
+            .count(),
+        Err(_) => 0,
+    };
+    let port_open = tokio::time::timeout(
+        Duration::from_secs(2),
+        tokio::net::TcpStream::connect(("127.0.0.1", network.clash.proxy_port)),
+    )
+    .await
+    .is_ok_and(|connected| connected.is_ok());
+    Ok(ClashRouteCheck {
+        version,
+        group,
+        port_open,
+        timeout_count,
+    })
+}
+
+#[tauri::command]
+async fn list_clash_nodes(
+    state: tauri::State<'_, AppState>,
+) -> Result<chromium_fetcher::RouteList, String> {
+    state.fetcher.list_routes().await
+}
+
+#[tauri::command]
+async fn select_clash_node(
+    state: tauri::State<'_, AppState>,
+    node: String,
+) -> Result<Option<u32>, String> {
+    state.fetcher.select_route(&node).await
 }
 
 #[tauri::command]
@@ -1112,9 +1182,12 @@ pub fn run() {
 
             {
                 let watcher = watcher.clone();
+                let fetcher = fetcher.clone();
+                let network = settings.network.clone();
                 let targets = settings.targets.clone();
                 let interval = settings.interval();
                 tauri::async_runtime::spawn(async move {
+                    fetcher.set_network(network).await;
                     watcher.set_targets(targets).await;
                     watcher.set_interval(interval).await;
                 });
@@ -1168,6 +1241,9 @@ pub fn run() {
             refresh_products,
             get_settings,
             save_settings,
+            test_clash_route,
+            list_clash_nodes,
+            select_clash_node,
             get_snapshot,
             set_targets,
             set_interval,

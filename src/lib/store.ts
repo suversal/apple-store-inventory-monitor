@@ -17,9 +17,12 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   Category,
   CategoryOption,
+  ClashRouteCheck,
+  ClashSettings,
   DeliveryLocalities,
   Product,
   Region,
+  RouteList,
   Settings,
   Store,
   Target,
@@ -46,6 +49,8 @@ export interface UiState {
   nextCheckAtMs: number | null;
   /** 当前目标地区中是否仍有 Apple 请求保护冷却。 */
   cooling: boolean;
+  /** 最近一轮实际使用的出口线路；跟随系统代理或尚未查询时为 null。 */
+  route: string | null;
   /** 非 null 表示「当前的状态不可信」，界面要挂一条持续可见的告警。 */
   trouble: Trouble | null;
   logs: string[];
@@ -83,6 +88,17 @@ const DEFAULT_SETTINGS: Settings = {
   productBarkUrls: {},
   soundEnabled: true,
   openOnHit: "bag",
+  network: {
+    mode: "system",
+    clash: {
+      controller: "http://127.0.0.1:9097",
+      secret: "",
+      group: "果到雷达",
+      proxyPort: 7899,
+      nodeFilter: "",
+      pinnedNode: "DIRECT",
+    },
+  },
 };
 
 let state: UiState = {
@@ -90,6 +106,7 @@ let state: UiState = {
   running: false,
   nextCheckAtMs: null,
   cooling: false,
+  route: null,
   trouble: null,
   logs: [],
   regions: [],
@@ -176,6 +193,7 @@ function applyEvent(event: WatcherEvent): void {
         rows: event.snapshot,
         nextCheckAtMs: Date.now() + event.nextCheckInSecs * 1_000,
         cooling: event.cooling,
+        route: event.route ?? null,
         // 只有引擎明说本轮健康，才收起告警。用「所有行都没错误」去反推是
         // 不可靠的：某些故障路径下状态压根没被更新。
         trouble: event.healthy ? null : state.trouble,
@@ -184,7 +202,8 @@ function applyEvent(event: WatcherEvent): void {
       if (recovered) lines.unshift("查询已恢复正常。");
       lines.push(
         `第 ${event.cycle} 轮完成（${formatElapsed(event.elapsedMs)}，实际请求 ${event.requestCount} 次` +
-        `${event.reusedResponseCount > 0 ? `，批量响应覆盖 ${event.reusedResponseCount} 家门店` : ""}）：` +
+        `${event.reusedResponseCount > 0 ? `，批量响应覆盖 ${event.reusedResponseCount} 家门店` : ""}` +
+        `${event.route ? `，线路：${event.route}` : ""}）：` +
         `${describeCycleSummary(event.snapshot)}。约 ${event.nextCheckInSecs} 秒后查询` +
         `${event.cooling ? "（当前保护冷却中，可选择立即重试）" : ""}。`,
       );
@@ -480,6 +499,49 @@ export async function refreshProducts(): Promise<void> {
     // 是哪来的了。
     await loadCatalog(locale);
     update({ refreshing: false });
+  }
+}
+
+/** 检查本机 Clash 控制接口、专用策略组和端口；不向 Apple 发请求。 */
+export async function testClashRoute(clash: ClashSettings): Promise<ClashRouteCheck | string> {
+  try {
+    const result = await invoke<ClashRouteCheck>("test_clash_route", { clash });
+    pushLog(
+      `Clash 线路检查：${result.version}，可用节点 ${result.nodes.length} 个` +
+      `${result.skipped > 0 ? `（已排除 ${result.skipped} 个）` : ""}，测速超时 ${result.timeoutCount} 个，` +
+      `当前 ${result.now ?? "未选择"}；` +
+      `端口 ${clash.proxyPort} ${result.portOpen ? "可连接" : "无法连接"}。`,
+    );
+    return result;
+  } catch (err) {
+    const message = String(err);
+    pushLog(`Clash 线路检查失败：${message}`);
+    return message;
+  }
+}
+
+/** 读取专用策略组的节点和测速结果。 */
+export async function listClashNodes(): Promise<RouteList | string> {
+  try {
+    return await invoke<RouteList>("list_clash_nodes");
+  } catch (err) {
+    return String(err);
+  }
+}
+
+/** 手动指定查询节点；之后被拒或连不通时仍会自动切换。 */
+export async function selectClashNode(node: string): Promise<boolean> {
+  try {
+    const delay = await invoke<number | null>("select_clash_node", { node });
+    pushLog(
+      `已手动切换到节点 ${node}` +
+      `${node === "DIRECT" ? "" : delay === null ? "（测速未通过，仍按指定切换）" : `（测速 ${delay} ms）`}` +
+      "，下一次查询生效。",
+    );
+    return true;
+  } catch (err) {
+    pushLog(`手动切换节点失败：${String(err)}`);
+    return false;
   }
 }
 

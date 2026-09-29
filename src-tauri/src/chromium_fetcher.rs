@@ -18,6 +18,7 @@ use apw_core::apple::{
     ApiError, CycleStats, DeliveryInfo as ProductDelivery, Fetcher, ScheduleHint,
     StoreAvailability, parse_pickup_message,
 };
+use apw_core::config::{NetworkMode, NetworkSettings};
 use apw_core::model::{DeliveryRegion, Region, Target};
 use apw_core::watcher::MAX_PARTS_PER_REQUEST;
 use futures_util::{SinkExt, StreamExt};
@@ -26,6 +27,9 @@ use serde_json::{Value, json};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
+
+use crate::clash::ClashController;
+use crate::route_pool::RoutePool;
 
 const CHROME_START_TIMEOUT: Duration = Duration::from_secs(12);
 const DEVTOOLS_SOCKET_TIMEOUT: Duration = Duration::from_secs(10);
@@ -194,14 +198,220 @@ fn reclaim_orphaned_profile_process(_profile_dir: &Path) -> Result<(), ApiError>
     Ok(())
 }
 
+/// 查询浏览器的网络启动参数。
+///
+/// 跟随系统代理时不加参数，与引入线路设置之前完全一致。Clash 模式只让这个
+/// 浏览器走专用端口，不改变系统代理。
+fn chromium_network_args(network: &NetworkSettings) -> Vec<String> {
+    match network.mode {
+        NetworkMode::System => Vec::new(),
+        NetworkMode::Pinned | NetworkMode::Clash => vec![format!(
+            "--proxy-server=http://127.0.0.1:{}",
+            network.clash.proxy_port
+        )],
+    }
+}
+
+/// 线路冷却按 Apple 站点主机名记账：港澳日新澳马共用 `www.apple.com`，
+/// 同一出口 IP 在这些地区之间的请求很可能合并计数。
+fn region_site(region: &Region) -> String {
+    reqwest::Url::parse(region.base_url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_string))
+        .unwrap_or_else(|| region.base_url.to_string())
+}
+
+/// 连续多少个不同节点都被 Apple 拒绝后，本轮停止切换。
+///
+/// 连不通的节点不计入。连续这么多个出口都被拒，多半不是单个 IP 的问题，
+/// 继续换只会把所有节点依次送进冷却。
+const MAX_CONSECUTIVE_REJECTIONS: u32 = 10;
+
+/// 节点自身连不通的浏览器网络错误。连不上本机代理端口
+/// （`ERR_PROXY_CONNECTION_FAILED`）是配置问题，不能算到节点头上。
+const NODE_FAILURE_ERRORS: &[&str] = &[
+    // 节点卡住时导航不会报网络错误，而是等到命令或页面加载超时。
+    "Page.navigate 超时",
+    "地区页面在等待时间内未完成加载",
+    "ERR_TUNNEL_CONNECTION_FAILED",
+    "ERR_CONNECTION_RESET",
+    "ERR_CONNECTION_CLOSED",
+    "ERR_TIMED_OUT",
+    "ERR_EMPTY_RESPONSE",
+    "ERR_SSL_PROTOCOL_ERROR",
+];
+
+fn is_node_failure(error: &ApiError) -> bool {
+    matches!(error, ApiError::Transport(detail)
+        if NODE_FAILURE_ERRORS.iter().any(|code| detail.contains(code)))
+}
+
+fn is_rejected_payload(payload: &BrowserPayload) -> bool {
+    match payload.status {
+        403 | 429 | 541 => true,
+        200 => payload
+            .body
+            .as_bytes()
+            .iter()
+            .find(|byte| !byte.is_ascii_whitespace())
+            .is_some_and(|byte| *byte != b'{' && *byte != b'['),
+        _ => false,
+    }
+}
+
+/// 按 Chromium 的规则生成 Client Hints 品牌列表（含 GREASE 干扰项）。
+///
+/// 真实浏览器的干扰项名称、版本和排列顺序都由主版本号决定。照搬某个旧版本的
+/// 写法会与内核版本对不上，这里复刻 Chromium `GenerateBrandVersionList` 的算法。
+fn brand_list(major: u32, vendor: &str) -> Vec<(String, String)> {
+    const GREASE_CHARS: [char; 11] = [' ', '(', ':', '-', '.', '/', ')', ';', '=', '?', '_'];
+    const GREASE_VERSIONS: [&str; 3] = ["8", "99", "24"];
+    const ORDERS: [[usize; 3]; 6] = [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ];
+    let seed = major as usize;
+    let grease = format!(
+        "Not{}A{}Brand",
+        GREASE_CHARS[seed % GREASE_CHARS.len()],
+        GREASE_CHARS[(seed + 1) % GREASE_CHARS.len()]
+    );
+    let base = [
+        (
+            grease,
+            GREASE_VERSIONS[seed % GREASE_VERSIONS.len()].to_string(),
+        ),
+        ("Chromium".to_string(), major.to_string()),
+        (vendor.to_string(), major.to_string()),
+    ];
+    let order = ORDERS[seed % ORDERS.len()];
+    let mut shuffled = vec![(String::new(), String::new()); 3];
+    for (index, entry) in base.into_iter().enumerate() {
+        shuffled[order[index]] = entry;
+    }
+    shuffled
+}
+
+/// 无头浏览器对外呈现的身份。
+///
+/// 无头 Chromium 的 UA 带 `HeadlessChrome`，Client Hints 的品牌列表也会暴露无头
+/// 身份，这是最直接的自动化特征。这里以浏览器自己报告的真实版本为准，只去掉
+/// 无头标记：写死版本号会与实际内核对不上，反而多出一个破绽。
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BrowserIdentity {
+    user_agent: String,
+    full_version: String,
+    major: String,
+    is_edge: bool,
+}
+
+impl BrowserIdentity {
+    fn from_version(version: &Value, is_edge: bool) -> Option<Self> {
+        let raw = version.get("userAgent")?.as_str()?;
+        let product = version.get("product")?.as_str()?;
+        let full_version = product.rsplit('/').next()?.to_string();
+        let major = full_version.split('.').next()?.to_string();
+        if major.parse::<u32>().is_err() {
+            return None;
+        }
+        Some(Self {
+            user_agent: raw.replace("HeadlessChrome", "Chrome"),
+            full_version,
+            major,
+            is_edge,
+        })
+    }
+
+    /// 无头模式的屏幕固定是 800×600，比 1440×900 的窗口还小，真实电脑上不可能
+    /// 出现。按窗口尺寸补上屏幕信息；Mac 屏幕的像素比通常为 2。
+    fn screen_params() -> Value {
+        json!({
+            "width": 0,
+            "height": 0,
+            "deviceScaleFactor": if cfg!(target_os = "macos") { 2 } else { 1 },
+            "mobile": false,
+            "screenWidth": 1440,
+            "screenHeight": 900,
+        })
+    }
+
+    fn override_params(&self) -> Value {
+        let vendor = if self.is_edge {
+            "Microsoft Edge"
+        } else {
+            "Google Chrome"
+        };
+        let major: u32 = self.major.parse().unwrap_or_default();
+        let brands = |full: bool| {
+            brand_list(major, vendor)
+                .into_iter()
+                .map(|(brand, version)| {
+                    let version = match (full, brand == vendor || brand == "Chromium") {
+                        (true, true) => self.full_version.clone(),
+                        (true, false) => format!("{version}.0.0.0"),
+                        (false, _) => version,
+                    };
+                    json!({"brand": brand, "version": version})
+                })
+                .collect::<Vec<_>>()
+        };
+        let platform = if cfg!(target_os = "macos") {
+            "macOS"
+        } else if cfg!(target_os = "windows") {
+            "Windows"
+        } else {
+            "Linux"
+        };
+        let architecture = if cfg!(target_arch = "aarch64") {
+            "arm"
+        } else {
+            "x86"
+        };
+        json!({
+            "userAgent": self.user_agent,
+            // 无头默认 en-US；本应用面向中文用户，与日常浏览器的语言保持一致。
+            // 只列语言本身，权重由 Chrome 生成；写成 `zh;q=0.9` 会原样出现在 navigator.languages。
+            "acceptLanguage": "zh-CN,zh",
+            "userAgentMetadata": {
+                "brands": brands(false),
+                "fullVersionList": brands(true),
+                "fullVersion": self.full_version,
+                "platform": platform,
+                "platformVersion": "",
+                "architecture": architecture,
+                "bitness": "64",
+                "model": "",
+                "mobile": false,
+                "wow64": false,
+            },
+        })
+    }
+}
+
 impl ChromiumSession {
+    #[cfg(test)]
     async fn start(profile_dir: PathBuf) -> Result<Self, ApiError> {
+        Self::start_with_args(profile_dir, &[]).await
+    }
+
+    async fn start_with_args(
+        profile_dir: PathBuf,
+        network_args: &[String],
+    ) -> Result<Self, ApiError> {
         let chrome = find_chromium().ok_or_else(|| {
             ApiError::Transport(
                 "未找到 Google Chrome 或 Microsoft Edge；Apple 当前库存接口要求完整 Chromium 浏览器会话"
                     .into(),
             )
         })?;
+        let is_edge = chrome
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .contains("edge");
         std::fs::create_dir_all(&profile_dir)
             .map_err(|e| ApiError::Transport(format!("无法创建 Chromium 专属资料目录：{e}")))?;
         reclaim_orphaned_profile_process(&profile_dir)?;
@@ -213,7 +423,7 @@ impl ChromiumSession {
         let debug_port = reserve_loopback_port()?;
         let debug_port_arg = format!("--remote-debugging-port={debug_port}");
         eprintln!(
-            "正在启动 Apple 专属 Chromium 会话：profile={}，mode=background-headed",
+            "正在启动 Apple 专属 Chromium 会话：profile={}，mode=headless",
             profile_dir.display()
         );
         let mut command = Command::new(chrome);
@@ -230,9 +440,15 @@ impl ChromiumSession {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        // 始终在后台建立会话。HTTP 541 或初始化失败也不能抢焦点、弹出页面；
-        // 错误留在应用日志中，并按用户设置的查询间隔重试。
-        command.arg("--start-minimized");
+        // 无头模式：不出现窗口和 Dock 图标，也不会抢焦点。无头浏览器的破绽由
+        // 启动后的 UA 与 Client Hints 覆盖补上，见 `apply_browser_identity`。
+        command.args([
+            "--headless=new",
+            // 无头默认 800×600，是常见的自动化特征；换成常见的笔记本分辨率。
+            "--window-size=1440,900",
+            "--disable-blink-features=AutomationControlled",
+        ]);
+        command.args(network_args);
         command.arg("about:blank");
         #[cfg(unix)]
         {
@@ -295,17 +511,22 @@ impl ChromiumSession {
             locale: None,
             established,
         };
-        if let Ok(version) = session.command("Browser.getVersion", json!({})).await {
-            let product = version
-                .get("product")
-                .and_then(Value::as_str)
-                .unwrap_or("未知版本");
-            let user_agent = version
-                .get("userAgent")
-                .and_then(Value::as_str)
-                .unwrap_or("未知 UA");
-            eprintln!("Apple 专属 Chromium 会话已连接：{product}，{user_agent}");
-        }
+        let version = session.command("Browser.getVersion", json!({})).await?;
+        let identity = BrowserIdentity::from_version(&version, is_edge)
+            .ok_or_else(|| ApiError::Transport("无法读取 Chromium 版本信息".into()))?;
+        session
+            .command("Emulation.setUserAgentOverride", identity.override_params())
+            .await?;
+        session
+            .command(
+                "Emulation.setDeviceMetricsOverride",
+                BrowserIdentity::screen_params(),
+            )
+            .await?;
+        eprintln!(
+            "Apple 专属 Chromium 会话已连接：{}，{}",
+            identity.full_version, identity.user_agent
+        );
         Ok(session)
     }
 
@@ -877,6 +1098,24 @@ fn find_chromium() -> Option<PathBuf> {
     })
 }
 
+/// 专用策略组的节点列表，供界面手动指定节点。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteList {
+    pub now: Option<String>,
+    pub nodes: Vec<RouteInfo>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteInfo {
+    pub name: String,
+    /// 批量测速延迟（毫秒）；超时或 DIRECT 为 `None`。
+    pub delay: Option<u32>,
+    /// 是否因被 Apple 拒绝而冷却，或暂时连不通。
+    pub resting: bool,
+}
+
 /// 可交给核心监控引擎的 Chromium 查询器。
 #[derive(Debug, Clone)]
 pub struct AppleChromiumFetcher {
@@ -1048,6 +1287,21 @@ struct QueryState {
     delivery_attempts: HashSet<DeliveryCacheKey>,
     gate: RequestGate,
     cycle_reused_response_count: u32,
+    network: NetworkSettings,
+    /// Clash 模式下的控制接口；地址无效时保存错误原因。
+    clash: Option<Result<ClashController, String>>,
+    routes: RoutePool,
+    /// 本轮是否已从 Clash 读取节点列表。每轮重读一次，跟上用户在 Clash 里的改动。
+    routes_loaded: bool,
+    /// 本轮 Clash 控制接口的故障，同轮不再重复访问。
+    route_failure: Option<String>,
+    route_switches: u32,
+    /// 本轮连续被 Apple 拒绝的节点数，拿到正常响应后清零。
+    consecutive_rejections: u32,
+    /// 订阅节点所属的订阅名，用于切换前测速。
+    route_providers: HashMap<String, String>,
+    /// 已经提示过「全部节点冷却」的站点，避免同一次冷却反复弹出告警。
+    cooling_announced: HashSet<String>,
 }
 
 impl QueryState {
@@ -1063,6 +1317,10 @@ impl QueryState {
             .retain(|_, entry| entry.fetched_at.elapsed() < EMPTY_DELIVERY_CACHE_TTL);
         self.gate.cycle_request_count = 0;
         self.cycle_reused_response_count = 0;
+        self.routes_loaded = false;
+        self.route_failure = None;
+        self.route_switches = 0;
+        self.consecutive_rejections = 0;
     }
 
     fn cached_delivery(
@@ -1128,11 +1386,380 @@ impl QueryState {
         );
     }
 
-    fn schedule_hint(&mut self, _locales: &[String]) -> ScheduleHint {
-        ScheduleHint::default()
+    fn schedule_hint(&mut self, locales: &[String]) -> ScheduleHint {
+        if self.network.mode != NetworkMode::Clash {
+            return ScheduleHint::default();
+        }
+        let now = Instant::now();
+        let sites: BTreeSet<String> = locales
+            .iter()
+            .filter_map(|locale| apw_core::model::region_by_locale(locale))
+            .map(region_site)
+            .collect();
+        let waits: Vec<Option<Duration>> = sites
+            .iter()
+            .map(|site| self.routes.wait_for(site, now))
+            .collect();
+        let cooling = waits.iter().any(Option::is_some);
+        // 只要还有一个站点能查，就按用户间隔继续；全部站点都没有可用节点时，
+        // 等到最早恢复的那条线路再开始下一轮。
+        let delay = if !waits.is_empty() && waits.iter().all(Option::is_some) {
+            waits.into_iter().flatten().min().unwrap_or_default()
+        } else {
+            Duration::ZERO
+        };
+        ScheduleHint { delay, cooling }
+    }
+
+    fn route_summary(&self) -> Option<String> {
+        match self.network.mode {
+            NetworkMode::System => None,
+            NetworkMode::Pinned => Some(format!("指定节点 {}", self.network.clash.pinned_node)),
+            NetworkMode::Clash => Some(if let Some(failure) = &self.route_failure {
+                failure.clone()
+            } else {
+                let node = self.routes.active().unwrap_or("尚未选定");
+                if self.route_switches > 0 {
+                    format!("Clash 节点 {node}（本轮切换 {} 次）", self.route_switches)
+                } else {
+                    format!("Clash 节点 {node}")
+                }
+            }),
+        }
+    }
+
+    /// 后台日志中标注当前出口，便于对照失败原因。
+    fn route_label(&self) -> String {
+        match self.network.mode {
+            NetworkMode::System => "系统代理".into(),
+            NetworkMode::Pinned => format!("指定节点 {}", self.network.clash.pinned_node),
+            NetworkMode::Clash => {
+                format!("Clash 节点 {}", self.routes.active().unwrap_or("尚未选定"))
+            }
+        }
+    }
+
+    fn set_network(&mut self, network: NetworkSettings) {
+        let uses_clash = matches!(network.mode, NetworkMode::Pinned | NetworkMode::Clash);
+        if self.network == network && self.clash.is_some() == uses_clash {
+            return;
+        }
+        if chromium_network_args(&self.network) != chromium_network_args(&network) {
+            // 代理参数只能在启动 Chromium 时指定，换线路方式必须重启浏览器。
+            self.session = None;
+            self.session_start_failure = None;
+        }
+        // 只改指定节点不影响轮换模式积累的冷却记录。
+        let pool_settings = |clash: &apw_core::config::ClashSettings| {
+            (
+                clash.controller.clone(),
+                clash.group.clone(),
+                clash.node_filter.clone(),
+            )
+        };
+        if pool_settings(&self.network.clash) != pool_settings(&network.clash) {
+            self.routes = RoutePool::default();
+            self.cooling_announced.clear();
+        }
+        self.clash = uses_clash.then(|| ClashController::new(&network.clash));
+        self.network = network;
+        self.routes_loaded = false;
+        self.route_failure = None;
+    }
+
+    /// 是否处于自动切换节点的轮换模式。指定节点模式只固定使用一个节点。
+    fn rotating(&self) -> bool {
+        self.network.mode == NetworkMode::Clash && self.clash.is_some()
+    }
+
+    fn clash_controller(&self) -> Result<ClashController, String> {
+        match &self.clash {
+            None => Err("当前查询线路没有使用 Clash".into()),
+            Some(Err(error)) => Err(error.clone()),
+            Some(Ok(clash)) => Ok(clash.clone()),
+        }
+    }
+
+    /// 从 Clash 重新读取节点列表，以 Clash 的实际选择为当前节点。
+    async fn reload_routes(&mut self, clash: &ClashController) -> Result<(), String> {
+        let group = self.network.clash.group.clone();
+        let nodes = clash
+            .group_nodes(&group, &self.network.clash.node_filter)
+            .await?;
+        if nodes.nodes.is_empty() {
+            return Err(format!("策略组「{group}」里没有可用于查询的节点"));
+        }
+        self.route_providers = nodes.providers;
+        self.routes.set_routes(nodes.nodes);
+        self.routes.set_active(nodes.now);
+        self.routes_loaded = true;
+        Ok(())
+    }
+
+    /// 用户手动指定节点：立即切换并解除该节点的冷却，自动切换规则继续生效。
+    /// 返回切换前的测速结果；DIRECT 或测速失败时为 `None`，但仍按用户意愿切换。
+    async fn select_route_manually(&mut self, node: &str) -> Result<Option<u32>, String> {
+        let clash = self.clash_controller()?;
+        if !self.routes.routes().iter().any(|route| route == node) {
+            self.reload_routes(&clash).await?;
+        }
+        if !self.routes.routes().iter().any(|route| route == node) {
+            return Err(format!("节点「{node}」不在策略组中，或被节点关键词排除"));
+        }
+        let delay = if node == "DIRECT" {
+            None
+        } else {
+            let provider = self.route_providers.get(node).map(String::as_str);
+            clash.node_delay(node, provider).await.ok()
+        };
+        let group = self.network.clash.group.clone();
+        clash
+            .select(&group, node)
+            .await
+            .map_err(|error| format!("切换 Clash 节点失败：{error}"))?;
+        if let Err(error) = clash.close_group_connections(&group).await {
+            eprintln!("手动切换节点后断开旧连接失败：{error}");
+        }
+        self.routes.clear_route(node);
+        self.routes.set_active(Some(node.to_string()));
+        self.consecutive_rejections = 0;
+        self.cooling_announced.clear();
+        self.route_failure = None;
+        if let Some(session) = self.session.as_mut() {
+            session.locale = None;
+        }
+        eprintln!("手动切换到 Clash 节点 {node}");
+        Ok(delay)
+    }
+
+    /// Clash 模式下，在真实请求前确认出口节点：必要时切换节点、断开旧连接，
+    /// 并让浏览器在新出口上重新打开地区页面完成校验。
+    async fn prepare_route(&mut self, region: &'static Region) -> Result<(), ApiError> {
+        let clash = match &self.clash {
+            None => return Ok(()),
+            Some(Err(error)) => return Err(ApiError::Transport(error.clone())),
+            Some(Ok(clash)) => clash.clone(),
+        };
+        if let Some(failure) = &self.route_failure {
+            return Err(ApiError::Transport(failure.clone()));
+        }
+        let group = self.network.clash.group.clone();
+        if !self.routes_loaded
+            && let Err(error) = self.reload_routes(&clash).await
+        {
+            let failure = format!("Clash 线路不可用：{error}");
+            self.route_failure = Some(failure.clone());
+            return Err(ApiError::Transport(failure));
+        }
+
+        if self.network.mode == NetworkMode::Pinned {
+            return self.apply_pinned_route(&clash).await;
+        }
+
+        let site = region_site(region);
+        // 切换前先测速：测不通的节点直接跳过并短暂标记，不切过去浪费一次 Apple 请求。
+        let chosen = loop {
+            let now = Instant::now();
+            let Some(candidate) = self.routes.choose(&site, now).map(str::to_string) else {
+                let remaining = self.routes.wait_for(&site, now).unwrap_or_default();
+                return Err(ApiError::CoolingDown {
+                    remaining_seconds: remaining.as_secs()
+                        + u64::from(remaining.subsec_nanos() > 0),
+                    detail: format!(
+                        "策略组「{group}」的 {} 个节点都被 Apple 拒绝或暂时连不通，正在等待",
+                        self.routes.routes().len()
+                    ),
+                    newly_started: self.cooling_announced.insert(site),
+                });
+            };
+            if self.routes.active() == Some(candidate.as_str()) {
+                return Ok(());
+            }
+            if self.consecutive_rejections >= MAX_CONSECUTIVE_REJECTIONS {
+                return Err(ApiError::Blocked(format!(
+                    "连续 {MAX_CONSECUTIVE_REJECTIONS} 个节点都被 Apple 拒绝，可能不只是 IP 问题，本轮暂停切换"
+                )));
+            }
+            // 国内直连访问测速地址本来就不通，DIRECT 不参与测速。
+            if candidate == "DIRECT" {
+                break candidate;
+            }
+            let provider = self.route_providers.get(&candidate).map(String::as_str);
+            match clash.node_delay(&candidate, provider).await {
+                Ok(delay) => {
+                    eprintln!("Clash 节点 {candidate} 测速 {delay} ms");
+                    break candidate;
+                }
+                Err(error) => {
+                    eprintln!("Clash 节点 {candidate} {error}，跳过");
+                    self.routes.mark_unreachable(&candidate, Instant::now());
+                }
+            }
+        };
+
+        clash
+            .select(&group, &chosen)
+            .await
+            .map_err(|error| ApiError::Transport(format!("切换 Clash 节点失败：{error}")))?;
+        match clash.close_group_connections(&group).await {
+            Ok(closed) => eprintln!("Apple 查询切换到 Clash 节点 {chosen}，断开旧连接 {closed} 条"),
+            Err(error) => {
+                eprintln!("Apple 查询切换到 Clash 节点 {chosen}，但断开旧连接失败：{error}")
+            }
+        }
+        self.routes.set_active(Some(chosen));
+        self.route_switches = self.route_switches.saturating_add(1);
+        if let Some(session) = self.session.as_mut() {
+            // 新出口需要重新打开地区页面，让 Apple 的页面校验在新 IP 上完成。
+            session.locale = None;
+        }
+        Ok(())
+    }
+
+    /// 指定节点模式：确保 Clash 专用组选中用户指定的节点，不做测速和自动切换。
+    async fn apply_pinned_route(&mut self, clash: &ClashController) -> Result<(), ApiError> {
+        let node = self.network.clash.pinned_node.clone();
+        if self.routes.active() == Some(node.as_str()) {
+            return Ok(());
+        }
+        if !self.routes.routes().contains(&node) {
+            let failure = format!("指定节点「{node}」不在策略组中，或被节点关键词排除");
+            self.route_failure = Some(failure.clone());
+            return Err(ApiError::Transport(failure));
+        }
+        let group = self.network.clash.group.clone();
+        clash
+            .select(&group, &node)
+            .await
+            .map_err(|error| ApiError::Transport(format!("切换 Clash 节点失败：{error}")))?;
+        if let Err(error) = clash.close_group_connections(&group).await {
+            eprintln!("切换到指定节点后断开旧连接失败：{error}");
+        }
+        eprintln!("Apple 查询使用指定节点 {node}");
+        self.routes.set_active(Some(node));
+        if let Some(session) = self.session.as_mut() {
+            session.locale = None;
+        }
+        Ok(())
+    }
+
+    /// 记录当前节点被 Apple 拒绝，返回是否还能换节点立即重试。
+    fn route_rejected(&mut self, region: &'static Region) -> bool {
+        if !self.rotating() {
+            return false;
+        }
+        let Some(active) = self.routes.active().map(str::to_string) else {
+            return false;
+        };
+        let site = region_site(region);
+        let cooldown = self.routes.block(&active, &site, Instant::now());
+        self.consecutive_rejections = self.consecutive_rejections.saturating_add(1);
+        eprintln!(
+            "Clash 节点 {active} 在 {site} 被 Apple 拒绝，冷却 {} 分钟",
+            cooldown.as_secs().div_ceil(60)
+        );
+        self.can_switch_route(region)
+    }
+
+    /// 记录当前节点连不通，返回是否还能换节点立即重试。不计入连续被拒次数。
+    fn route_unreachable(&mut self, region: &'static Region) -> bool {
+        if !self.rotating() {
+            return false;
+        }
+        let Some(active) = self.routes.active().map(str::to_string) else {
+            return false;
+        };
+        self.routes.mark_unreachable(&active, Instant::now());
+        eprintln!("Clash 节点 {active} 连不通，暂时跳过");
+        self.can_switch_route(region)
+    }
+
+    /// Clash 模式下本轮是否还能换到另一个节点。
+    fn can_switch_route(&self, region: &'static Region) -> bool {
+        self.rotating()
+            && self.consecutive_rejections < MAX_CONSECUTIVE_REJECTIONS
+            && self
+                .routes
+                .choose(&region_site(region), Instant::now())
+                .is_some()
+    }
+
+    fn route_succeeded(&mut self, region: &'static Region) {
+        if !self.rotating() {
+            return;
+        }
+        let site = region_site(region);
+        if let Some(active) = self.routes.active().map(str::to_string) {
+            self.routes.succeed(&active, &site);
+        }
+        self.consecutive_rejections = 0;
+        self.cooling_announced.remove(&site);
+    }
+
+    /// 发出一次取货请求。Clash 模式下被拒或连不通时换节点继续，直到拿到结果、
+    /// 没有可用节点或连续被拒达到上限。
+    async fn fetch_pickup(
+        &mut self,
+        region: &'static Region,
+        scope: &PickupScope,
+        parts: &[String],
+    ) -> Result<BrowserPayload, ApiError> {
+        // 每次重试都会让一个节点进入冷却或短暂跳过，节点数就是天然上限；
+        // 再加一道保险，防止短暂跳过到期后在同一请求里无限循环。节点列表在
+        // `prepare_route` 里才加载，上限必须在它之后按最新节点数计算。
+        let mut attempts = 0usize;
+        loop {
+            self.prepare_route(region).await?;
+            let result = {
+                let QueryState { session, gate, .. } = &mut *self;
+                session
+                    .as_mut()
+                    .expect("取货查询前 Chromium 会话应当存在")
+                    .fetch(region, scope, parts, gate)
+                    .await
+            };
+            attempts += 1;
+            let result = result.map_err(|error| self.explain_proxy_error(error));
+            let switch = match &result {
+                Err(ApiError::Blocked(_) | ApiError::RateLimited(_)) => self.route_rejected(region),
+                Ok(payload) if is_rejected_payload(payload) => self.route_rejected(region),
+                Err(error) if self.rotating() && is_node_failure(error) => {
+                    self.route_unreachable(region)
+                }
+                Ok(payload) => {
+                    if payload.status == 200 {
+                        self.route_succeeded(region);
+                    }
+                    false
+                }
+                Err(_) => false,
+            };
+            if switch && attempts < self.routes.routes().len().max(1) * 2 {
+                continue;
+            }
+            return result;
+        }
+    }
+
+    /// 连不上本机专用端口时给出可操作的说明，而不是浏览器的原始错误码。
+    fn explain_proxy_error(&self, error: ApiError) -> ApiError {
+        match &error {
+            ApiError::Transport(detail)
+                if self.clash.is_some() && detail.contains("ERR_PROXY_CONNECTION_FAILED") =>
+            {
+                ApiError::Transport(format!(
+                    "无法连接 Clash 专用端口 {}，请确认 Clash 正在运行并已加载果到雷达的扩展脚本",
+                    self.network.clash.proxy_port
+                ))
+            }
+            _ => error,
+        }
     }
 
     fn retry_now(&mut self) {
+        self.routes.release_waits(Instant::now());
+        self.route_failure = None;
+        self.cooling_announced.clear();
         self.session_start_failure = None;
         self.pickup_cache.clear();
         self.unavailable_nearby.clear();
@@ -1153,6 +1780,10 @@ impl QueryState {
         region: &'static Region,
         rejection: CyclePickupRejection,
     ) {
+        // Clash 模式下还能换到未冷却的节点时，同地区其他门店继续查询。
+        if self.can_switch_route(region) {
+            return;
+        }
         self.pickup_rejections
             .entry(region.locale)
             .or_insert(rejection);
@@ -1182,6 +1813,44 @@ impl AppleChromiumFetcher {
     /// `ChromiumSession::drop` 在进程退出的最后一刻碰运气。
     pub async fn shutdown(&self) {
         self.state.lock().await.session = None;
+    }
+
+    /// 手动指定 Clash 节点。
+    pub async fn select_route(&self, node: &str) -> Result<Option<u32>, String> {
+        self.state.lock().await.select_route_manually(node).await
+    }
+
+    /// 列出专用策略组的节点、测速结果和冷却状态。测速在锁外进行，不阻塞查询。
+    pub async fn list_routes(&self) -> Result<RouteList, String> {
+        let (clash, group, filter) = {
+            let state = self.state.lock().await;
+            (
+                state.clash_controller()?,
+                state.network.clash.group.clone(),
+                state.network.clash.node_filter.clone(),
+            )
+        };
+        let nodes = clash.group_nodes(&group, &filter).await?;
+        let delays = clash.group_delays(&group).await.unwrap_or_default();
+        let state = self.state.lock().await;
+        let now = Instant::now();
+        Ok(RouteList {
+            now: nodes.now,
+            nodes: nodes
+                .nodes
+                .into_iter()
+                .map(|name| RouteInfo {
+                    delay: delays.get(&name).copied(),
+                    resting: state.routes.is_resting(&name, now),
+                    name,
+                })
+                .collect(),
+        })
+    }
+
+    /// 应用新的线路设置。代理参数变化时，下一次查询会重启专属浏览器。
+    pub async fn set_network(&self, network: NetworkSettings) {
+        self.state.lock().await.set_network(network);
     }
 
     async fn pickup(
@@ -1260,7 +1929,10 @@ impl AppleChromiumFetcher {
             (BrowserPayload { status: 200, body }, true)
         } else {
             if guard.session.is_none() {
-                match ChromiumSession::start(self.profile_dir.clone()).await {
+                let network_args = chromium_network_args(&guard.network);
+                match ChromiumSession::start_with_args(self.profile_dir.clone(), &network_args)
+                    .await
+                {
                     Ok(session) => guard.session = Some(session),
                     Err(error) => {
                         let detail = match &error {
@@ -1277,23 +1949,17 @@ impl AppleChromiumFetcher {
             } else {
                 PickupScope::Store(store_number.to_string())
             };
-            let fetched = {
-                let QueryState { session, gate, .. } = &mut *guard;
-                session
-                    .as_mut()
-                    .expect("刚初始化的 Chromium 会话应当存在")
-                    .fetch(
-                        region,
-                        &scope,
-                        if matches!(scope, PickupScope::Nearby(_)) {
-                            &nearby_parts
-                        } else {
-                            &parts
-                        },
-                        gate,
-                    )
-                    .await
-            };
+            let fetched = guard
+                .fetch_pickup(
+                    region,
+                    &scope,
+                    if matches!(scope, PickupScope::Nearby(_)) {
+                        &nearby_parts
+                    } else {
+                        &parts
+                    },
+                )
+                .await;
             let payload = match fetched {
                 Ok(payload) => payload,
                 Err(error) => {
@@ -1336,14 +2002,7 @@ impl AppleChromiumFetcher {
                 guard.unavailable_nearby.insert(cache_key.clone());
             }
             let fallback_scope = PickupScope::Store(store_number.to_string());
-            let fallback = {
-                let QueryState { session, gate, .. } = &mut *guard;
-                session
-                    .as_mut()
-                    .expect("附近查询期间 Chromium 会话应当存在")
-                    .fetch(region, &fallback_scope, &parts, gate)
-                    .await
-            };
+            let fallback = guard.fetch_pickup(region, &fallback_scope, &parts).await;
             payload = match fallback {
                 Ok(payload) => payload,
                 Err(error) => {
@@ -1560,6 +2219,7 @@ impl Fetcher for AppleChromiumFetcher {
         CycleStats {
             request_count: state.gate.cycle_request_count,
             reused_response_count: state.cycle_reused_response_count,
+            route: state.route_summary(),
         }
     }
 
@@ -1578,8 +2238,17 @@ impl Fetcher for AppleChromiumFetcher {
         targets: &[Target],
         delivery_region: Option<&DeliveryRegion>,
     ) -> Result<StoreAvailability, ApiError> {
-        self.pickup(region, store_number, targets, delivery_region)
-            .await
+        let result = self
+            .pickup(region, store_number, targets, delivery_region)
+            .await;
+        // 冷却中的门店每轮都会重复同一句，界面已有汇总，这里不再刷屏。
+        if let Err(error) = &result
+            && !matches!(error, ApiError::CoolingDown { .. })
+        {
+            let route = self.state.lock().await.route_label();
+            eprintln!("门店 {store_number} 查询失败（{route}）：{error}");
+        }
+        result
     }
 }
 
@@ -2033,6 +2702,7 @@ mod tests {
                 CycleStats {
                     request_count: 1,
                     reused_response_count: 5,
+                    route: None,
                 }
             );
         }
@@ -2073,7 +2743,8 @@ mod tests {
             fetcher.cycle_stats().await,
             CycleStats {
                 request_count: 2,
-                reused_response_count: 1
+                reused_response_count: 1,
+                route: None,
             }
         );
         let requests = requests.lock().await;
@@ -2344,6 +3015,7 @@ mod tests {
             CycleStats {
                 request_count: 0,
                 reused_response_count: 1,
+                route: None,
             }
         );
     }
@@ -3561,6 +4233,7 @@ mod tests {
             CycleStats {
                 request_count: 1,
                 reused_response_count: 5,
+                route: None,
             }
         );
     }
@@ -3636,5 +4309,557 @@ mod tests {
             );
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
+    }
+
+    /// 模拟 Clash 外部控制接口：固定的策略组，记录切换与断开连接的请求。
+    async fn fake_clash(
+        nodes: &[&str],
+        now: &str,
+    ) -> (apw_core::config::ClashSettings, Arc<Mutex<Vec<String>>>) {
+        fake_clash_with_dead(nodes, now, &[]).await
+    }
+
+    /// `dead` 中的节点测速超时。
+    async fn fake_clash_with_dead(
+        nodes: &[&str],
+        now: &str,
+        dead: &[&str],
+    ) -> (apw_core::config::ClashSettings, Arc<Mutex<Vec<String>>>) {
+        let dead: Vec<String> = dead.iter().map(|node| urlencode_segment(node)).collect();
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let recorded = log.clone();
+        // 与真实 Clash 一样记住 PUT 切换后的选择。
+        let nodes: Vec<String> = nodes.iter().map(|node| node.to_string()).collect();
+        let current = Arc::new(std::sync::Mutex::new(now.to_string()));
+        let proxies = {
+            let current = current.clone();
+            move || {
+                let mut proxies = serde_json::Map::new();
+                proxies.insert(
+                    "果到雷达".into(),
+                    json!({"type": "Selector", "all": nodes, "now": *current.lock().unwrap()}),
+                );
+                for node in &nodes {
+                    proxies.insert(node.clone(), json!({"type": "Trojan"}));
+                }
+                json!({ "proxies": proxies }).to_string()
+            }
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
+                };
+                let mut raw = Vec::new();
+                let mut buffer = [0u8; 4096];
+                // 请求都很小：读到头部结束并收齐 Content-Length 即可。
+                loop {
+                    let n = stream.read(&mut buffer).await.unwrap_or(0);
+                    if n == 0 {
+                        break;
+                    }
+                    raw.extend_from_slice(&buffer[..n]);
+                    let text = String::from_utf8_lossy(&raw);
+                    if let Some(head_end) = text.find("\r\n\r\n") {
+                        let length = text[..head_end]
+                            .lines()
+                            .find_map(|line| {
+                                line.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|value| value.trim().parse::<usize>().unwrap_or(0))
+                            })
+                            .unwrap_or(0);
+                        if raw.len() >= head_end + 4 + length {
+                            break;
+                        }
+                    }
+                }
+                let text = String::from_utf8_lossy(&raw).to_string();
+                let request_line = text.lines().next().unwrap_or_default().to_string();
+                let body = text
+                    .split("\r\n\r\n")
+                    .nth(1)
+                    .unwrap_or_default()
+                    .to_string();
+                let path = request_line.split(' ').nth(1).unwrap_or_default();
+                let (status, response) =
+                    if request_line.starts_with("GET /proxies/") && path.contains("/delay") {
+                        let node = path
+                            .trim_start_matches("/proxies/")
+                            .split('/')
+                            .next()
+                            .unwrap_or_default();
+                        if dead.iter().any(|dead| dead == node) {
+                            (
+                                "504 Gateway Timeout",
+                                json!({"message": "Timeout"}).to_string(),
+                            )
+                        } else {
+                            ("200 OK", json!({"delay": 120}).to_string())
+                        }
+                    } else if request_line.starts_with("GET /providers/proxies") {
+                        ("200 OK", json!({"providers": {}}).to_string())
+                    } else if request_line.starts_with("GET /proxies") {
+                        ("200 OK", proxies())
+                    } else if request_line.starts_with("GET /connections") {
+                        (
+                            "200 OK",
+                            json!({"connections": [
+                                {"id": "c1", "chains": ["香港01", "果到雷达"]},
+                                {"id": "other", "chains": ["日本01", "节点选择"]}
+                            ]})
+                            .to_string(),
+                        )
+                    } else {
+                        if request_line.starts_with("PUT /proxies/")
+                            && let Ok(value) = serde_json::from_str::<Value>(&body)
+                            && let Some(name) = value.get("name").and_then(Value::as_str)
+                        {
+                            *current.lock().unwrap() = name.to_string();
+                        }
+                        recorded.lock().await.push(format!(
+                            "{} {} {}",
+                            request_line.split(' ').next().unwrap_or_default(),
+                            path,
+                            body
+                        ));
+                        ("204 No Content", String::new())
+                    };
+                let reply = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}",
+                    response.len()
+                );
+                let _ = stream.write_all(reply.as_bytes()).await;
+            }
+        });
+        (
+            apw_core::config::ClashSettings {
+                controller: format!("http://{address}"),
+                ..apw_core::config::ClashSettings::default()
+            },
+            log,
+        )
+    }
+
+    fn urlencode_segment(segment: &str) -> String {
+        let mut url = reqwest::Url::parse("http://x/").unwrap();
+        url.path_segments_mut().unwrap().push(segment);
+        url.path().trim_start_matches('/').to_string()
+    }
+
+    /// 直接写入 Clash 线路状态，不经过 `set_network`，以免测试里重启真实浏览器。
+    async fn use_clash(fetcher: &AppleChromiumFetcher, clash: apw_core::config::ClashSettings) {
+        let mut state = fetcher.state.lock().await;
+        state.clash = Some(ClashController::new(&clash));
+        state.network = NetworkSettings {
+            mode: NetworkMode::Clash,
+            clash,
+        };
+    }
+
+    fn navigate_response() -> Value {
+        json!({"result": {"frameId": "main"}})
+    }
+
+    fn ready_response() -> Value {
+        json!({"result": {"result": {"value": "{\"readyState\":\"complete\"}"}}})
+    }
+
+    #[tokio::test]
+    async fn clash节点被拒后冷却并换下一个节点重试() {
+        let (clash, log) = fake_clash(&["香港01", "日本01"], "香港01").await;
+        let (fetcher, _peer) = cdp_responses(vec![
+            http_response(541),
+            navigate_response(),
+            ready_response(),
+            pickup_response(&["R390"], "MG6X4CH/A", "available"),
+        ])
+        .await;
+        use_clash(&fetcher, clash).await;
+        let region = region_by_locale("zh_CN").unwrap();
+
+        fetcher.begin_cycle().await;
+        let result = fetcher
+            .pickup_message(region, "R390", &[test_target("MG6X4CH/A")], None)
+            .await
+            .expect("换节点后应拿到正常响应");
+        assert!(result.parts["MG6X4CH/A"].availability.is_in_stock());
+
+        let log = log.lock().await.clone();
+        assert!(
+            log.contains(
+                &r#"PUT /proxies/%E6%9E%9C%E5%88%B0%E9%9B%B7%E8%BE%BE {"name":"日本01"}"#
+                    .to_string()
+            ),
+            "应切换专用策略组：{log:?}"
+        );
+        assert!(
+            log.contains(&"DELETE /connections/c1 ".to_string()),
+            "应断开专用组的旧连接：{log:?}"
+        );
+        assert!(
+            !log.iter().any(|entry| entry.contains("/connections/other")),
+            "不能断开其他策略组的连接：{log:?}"
+        );
+
+        let state = fetcher.state.lock().await;
+        assert_eq!(state.routes.active(), Some("日本01"));
+        assert!(
+            !state
+                .routes
+                .is_available("香港01", "www.apple.com.cn", Instant::now())
+        );
+        drop(state);
+        let stats = fetcher.cycle_stats().await;
+        assert_eq!(
+            stats.route.as_deref(),
+            Some("Clash 节点 日本01（本轮切换 1 次）")
+        );
+    }
+
+    #[tokio::test]
+    async fn clash节点全部被拒后进入冷却并推迟下一轮() {
+        let (clash, _log) = fake_clash(&["香港01"], "香港01").await;
+        let (fetcher, _peer) = cdp_responses(vec![http_response(541)]).await;
+        use_clash(&fetcher, clash).await;
+        let region = region_by_locale("zh_CN").unwrap();
+
+        fetcher.begin_cycle().await;
+        let first = fetcher
+            .pickup_message(region, "R390", &[test_target("MG6X4CH/A")], None)
+            .await;
+        assert!(matches!(first, Err(ApiError::Blocked(_))));
+
+        // 下一轮不再向 Apple 发请求，直接给出冷却状态；告警只在第一次出现。
+        fetcher.begin_cycle().await;
+        let second = fetcher
+            .pickup_message(region, "R390", &[test_target("MG6X4CH/A")], None)
+            .await;
+        assert!(matches!(
+            second,
+            Err(ApiError::CoolingDown { newly_started: true, remaining_seconds, .. })
+                if remaining_seconds > 290
+        ));
+        let third = fetcher
+            .pickup_message(region, "R683", &[test_target("MG6X4CH/A")], None)
+            .await;
+        assert!(matches!(
+            third,
+            Err(ApiError::CoolingDown {
+                newly_started: false,
+                ..
+            })
+        ));
+
+        let hint = fetcher.schedule_hint(&["zh_CN".into()]).await;
+        assert!(hint.cooling);
+        assert!(hint.delay > Duration::from_secs(290));
+        // 另一个站点仍有可用节点时，不推迟整轮。
+        let mixed = fetcher
+            .schedule_hint(&["zh_CN".into(), "ja_JP".into()])
+            .await;
+        assert!(mixed.cooling);
+        assert_eq!(mixed.delay, Duration::ZERO);
+
+        fetcher.retry_now().await;
+        assert_eq!(
+            fetcher.schedule_hint(&["zh_CN".into()]).await.delay,
+            Duration::ZERO
+        );
+    }
+
+    #[tokio::test]
+    async fn 更换代理参数后重启浏览器会话() {
+        let (fetcher, _peer) = cdp_responses(vec![]).await;
+        let mut state = fetcher.state.lock().await;
+        state.set_network(NetworkSettings::default());
+        assert!(state.session.is_some(), "设置没有变化时不能重启浏览器");
+        state.set_network(NetworkSettings {
+            mode: NetworkMode::Clash,
+            ..NetworkSettings::default()
+        });
+        assert!(state.session.is_none(), "改为 Clash 端口后必须重启浏览器");
+        assert_eq!(
+            chromium_network_args(&state.network),
+            vec!["--proxy-server=http://127.0.0.1:7899".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn clash节点连不通时冷却并换节点() {
+        let (clash, log) = fake_clash(&["香港01", "日本01"], "香港01").await;
+        let (fetcher, _peer) = cdp_responses(vec![
+            json!({"result": {"frameId": "main", "errorText": "net::ERR_TUNNEL_CONNECTION_FAILED"}}),
+            navigate_response(),
+            ready_response(),
+            pickup_response(&["R390"], "MG6X4CH/A", "unavailable"),
+        ])
+        .await;
+        use_clash(&fetcher, clash).await;
+        fetcher.state.lock().await.session.as_mut().unwrap().locale = None;
+        let region = region_by_locale("zh_CN").unwrap();
+
+        fetcher.begin_cycle().await;
+        fetcher
+            .pickup_message(region, "R390", &[test_target("MG6X4CH/A")], None)
+            .await
+            .expect("坏节点应被跳过");
+        assert_eq!(fetcher.state.lock().await.routes.active(), Some("日本01"));
+        assert_eq!(log.lock().await.len(), 2, "一次切换加一次断开旧连接");
+    }
+
+    #[tokio::test]
+    async fn 本机代理端口不通不算节点故障() {
+        let error =
+            ApiError::Transport("Apple 地区页面导航失败：net::ERR_PROXY_CONNECTION_FAILED".into());
+        assert!(!is_node_failure(&error));
+        assert!(is_node_failure(&ApiError::Transport(
+            "Apple 地区页面导航失败：net::ERR_TIMED_OUT".into()
+        )));
+        assert!(is_node_failure(&ApiError::Transport(
+            "Chromium 命令 Page.navigate 超时".into()
+        )));
+        assert!(is_node_failure(&ApiError::Transport(
+            "Apple 地区页面在等待时间内未完成加载".into()
+        )));
+    }
+
+    #[tokio::test]
+    async fn 连续多个节点被拒后本轮停止切换() {
+        let (clash, _log) = fake_clash(&["香港01", "日本01", "新加坡01"], "香港01").await;
+        let (fetcher, _peer) = cdp_responses(vec![]).await;
+        use_clash(&fetcher, clash).await;
+        let region = region_by_locale("zh_CN").unwrap();
+        let mut state = fetcher.state.lock().await;
+        state.prepare_route(region).await.expect("首次读取节点");
+        state.consecutive_rejections = MAX_CONSECUTIVE_REJECTIONS - 1;
+        assert!(
+            !state.route_rejected(region),
+            "达到连续被拒上限后不再换节点"
+        );
+        assert!(matches!(
+            state.prepare_route(region).await,
+            Err(ApiError::Blocked(detail)) if detail.contains("连续")
+        ));
+        // 连不通不计入连续被拒次数；新一轮恢复切换。
+        state.begin_cycle();
+        assert!(state.route_unreachable(region));
+        assert_eq!(state.consecutive_rejections, 0);
+    }
+
+    #[tokio::test]
+    async fn 切换前测速跳过连不通的节点() {
+        let (clash, log) =
+            fake_clash_with_dead(&["香港01", "日本01", "新加坡01"], "香港01", &["日本01"]).await;
+        let (fetcher, _peer) = cdp_responses(vec![
+            http_response(541),
+            navigate_response(),
+            ready_response(),
+            pickup_response(&["R390"], "MG6X4CH/A", "unavailable"),
+        ])
+        .await;
+        use_clash(&fetcher, clash).await;
+        let region = region_by_locale("zh_CN").unwrap();
+
+        fetcher.begin_cycle().await;
+        fetcher
+            .pickup_message(region, "R390", &[test_target("MG6X4CH/A")], None)
+            .await
+            .expect("应跳过测速超时的节点");
+        let log = log.lock().await.clone();
+        assert!(
+            log.iter().any(|entry| entry.contains("新加坡01")),
+            "应切到测速正常的节点：{log:?}"
+        );
+        assert!(
+            !log.iter()
+                .any(|entry| entry.starts_with("PUT") && entry.contains("日本01")),
+            "不能切到测速超时的节点：{log:?}"
+        );
+        let state = fetcher.state.lock().await;
+        assert_eq!(state.routes.active(), Some("新加坡01"));
+        assert!(
+            !state
+                .routes
+                .is_available("日本01", "www.apple.com.cn", Instant::now())
+        );
+    }
+
+    #[tokio::test]
+    async fn 手动指定节点立即切换并解除冷却() {
+        let (clash, log) = fake_clash(&["香港01", "日本01"], "香港01").await;
+        let (fetcher, _peer) = cdp_responses(vec![]).await;
+        use_clash(&fetcher, clash).await;
+        {
+            let mut state = fetcher.state.lock().await;
+            state
+                .routes
+                .set_routes(vec!["香港01".into(), "日本01".into()]);
+            state
+                .routes
+                .block("日本01", "www.apple.com.cn", Instant::now());
+            state.consecutive_rejections = 3;
+        }
+        let delay = fetcher.select_route("日本01").await.expect("应能手动切换");
+        assert_eq!(delay, Some(120));
+        let log = log.lock().await.clone();
+        assert!(
+            log.iter()
+                .any(|entry| entry.starts_with("PUT") && entry.contains("日本01")),
+            "{log:?}"
+        );
+        let state = fetcher.state.lock().await;
+        assert_eq!(state.routes.active(), Some("日本01"));
+        assert!(!state.routes.is_resting("日本01", Instant::now()));
+        assert_eq!(state.consecutive_rejections, 0);
+        assert_eq!(
+            state.session.as_ref().unwrap().locale,
+            None,
+            "新出口需要重新打开地区页面"
+        );
+        drop(state);
+        assert!(fetcher.select_route("不存在").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn 指定节点模式固定使用该节点且被拒后不自动切换() {
+        let (mut clash, log) = fake_clash(&["香港01", "日本01"], "香港01").await;
+        clash.pinned_node = "日本01".into();
+        let (fetcher, _peer) = cdp_responses(vec![
+            navigate_response(),
+            ready_response(),
+            http_response(541),
+            http_response(541),
+        ])
+        .await;
+        {
+            let mut state = fetcher.state.lock().await;
+            state.clash = Some(ClashController::new(&clash));
+            state.network = NetworkSettings {
+                mode: NetworkMode::Pinned,
+                clash,
+            };
+        }
+        let region = region_by_locale("zh_CN").unwrap();
+
+        fetcher.begin_cycle().await;
+        let first = fetcher
+            .pickup_message(region, "R390", &[test_target("MG6X4CH/A")], None)
+            .await;
+        assert!(matches!(first, Err(ApiError::Blocked(_))));
+        let puts: Vec<String> = log
+            .lock()
+            .await
+            .iter()
+            .filter(|entry| entry.starts_with("PUT"))
+            .cloned()
+            .collect();
+        assert_eq!(puts.len(), 1, "只切到指定节点一次：{puts:?}");
+        assert!(puts[0].contains("日本01"));
+        {
+            let state = fetcher.state.lock().await;
+            assert_eq!(state.routes.active(), Some("日本01"));
+            assert!(
+                !state.routes.is_resting("日本01", Instant::now()),
+                "指定节点被拒后不冷却"
+            );
+        }
+        assert_eq!(
+            fetcher.schedule_hint(&["zh_CN".into()]).await,
+            ScheduleHint::default()
+        );
+
+        // 下一轮仍用同一节点重试，不换节点。
+        fetcher.begin_cycle().await;
+        fetcher.state.lock().await.gate.last_sent = None;
+        let second = fetcher
+            .pickup_message(region, "R390", &[test_target("MG6X4CH/A")], None)
+            .await;
+        assert!(matches!(second, Err(ApiError::Blocked(_))));
+        assert_eq!(
+            log.lock()
+                .await
+                .iter()
+                .filter(|entry| entry.starts_with("PUT"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            fetcher.cycle_stats().await.route.as_deref(),
+            Some("指定节点 日本01")
+        );
+    }
+
+    #[test]
+    fn 无头浏览器身份去掉无头标记并沿用真实版本() {
+        let version = json!({
+            "product": "HeadlessChrome/153.0.8010.53",
+            "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36"
+        });
+        let identity = BrowserIdentity::from_version(&version, false).expect("应能解析版本");
+        assert!(!identity.user_agent.contains("Headless"));
+        assert!(identity.user_agent.contains("Chrome/153.0.0.0"));
+        assert_eq!(identity.full_version, "153.0.8010.53");
+        let params = identity.override_params();
+        assert!(
+            !params.to_string().contains("Headless"),
+            "Client Hints 不能暴露无头身份"
+        );
+        // 与本机真实 Chrome 153 的 navigator.userAgentData.brands 完全一致。
+        assert_eq!(
+            params.pointer("/userAgentMetadata/brands"),
+            Some(&json!([
+                {"brand": "Google Chrome", "version": "153"},
+                {"brand": "Not_A Brand", "version": "8"},
+                {"brand": "Chromium", "version": "153"}
+            ]))
+        );
+        assert_eq!(
+            params.pointer("/userAgentMetadata/fullVersionList"),
+            Some(&json!([
+                {"brand": "Google Chrome", "version": "153.0.8010.53"},
+                {"brand": "Not_A Brand", "version": "8.0.0.0"},
+                {"brand": "Chromium", "version": "153.0.8010.53"}
+            ]))
+        );
+        assert_eq!(params.get("acceptLanguage"), Some(&json!("zh-CN,zh")));
+
+        let edge = BrowserIdentity::from_version(&version, true)
+            .unwrap()
+            .override_params();
+        assert_eq!(
+            edge.pointer("/userAgentMetadata/brands/0/brand"),
+            Some(&json!("Microsoft Edge"))
+        );
+        assert!(BrowserIdentity::from_version(&json!({"product": "x"}), false).is_none());
+    }
+
+    #[tokio::test]
+    async fn 首次查询节点列表未加载时也能连续换多个节点() {
+        let (clash, _log) = fake_clash(&["香港01", "日本01", "新加坡01"], "香港01").await;
+        let (fetcher, _peer) = cdp_responses(vec![
+            http_response(541),
+            navigate_response(),
+            ready_response(),
+            http_response(541),
+            navigate_response(),
+            ready_response(),
+            pickup_response(&["R390"], "MG6X4CH/A", "unavailable"),
+        ])
+        .await;
+        use_clash(&fetcher, clash).await;
+        assert!(fetcher.state.lock().await.routes.routes().is_empty());
+        let region = region_by_locale("zh_CN").unwrap();
+
+        fetcher.begin_cycle().await;
+        fetcher
+            .pickup_message(region, "R390", &[test_target("MG6X4CH/A")], None)
+            .await
+            .expect("连续两个节点被拒后第三个节点应能拿到结果");
+        assert_eq!(fetcher.state.lock().await.routes.active(), Some("新加坡01"));
     }
 }
