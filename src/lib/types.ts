@@ -152,6 +152,15 @@ export interface ClashRouteCheck {
   timeoutCount: number;
 }
 
+/** 一次门店与型号目录刷新的结果。 */
+export interface CatalogRefresh {
+  /** 抓到的型号数（不同零件号）。 */
+  products: number;
+  /** 刷新到的门店数；门店刷新失败时为 null。 */
+  stores: number | null;
+  errors: string[];
+}
+
 /** 专用策略组中的一个节点。 */
 export interface RouteInfo {
   name: string;

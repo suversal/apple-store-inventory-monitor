@@ -489,25 +489,43 @@ fn list_products(
     state.catalog.products(&locale).map_err(|e| e.to_string())
 }
 
-/// 从 Apple 官网抓最新型号，替换该地区该品类的内存副本，返回抓到的型号数。
-///
-/// `category` 为 `None` 时抓该地区的全部购买页。界面传的是当前选中的品类：
-/// 一次只抓那几页，用户想看新出的 Mac 不必等 iPhone、iPad、Watch 一起抓完。
-#[tauri::command]
-async fn refresh_products(
-    state: tauri::State<'_, AppState>,
-    locale: String,
-    category: Option<Category>,
-) -> Result<usize, String> {
-    let region = region_by_locale(&locale).ok_or_else(|| format!("认不出地区 {locale}"))?;
-    let count = state
-        .catalog
-        .refresh_products(region, category, &state.http)
-        .await
-        .map_err(|e| e.to_string())?;
+/// 一次目录刷新的结果。部分失败时已成功的部分照常生效。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CatalogRefresh {
+    /// 抓到的型号数（不同零件号）。
+    products: usize,
+    /// 刷新到的门店数；门店刷新失败时为 `None`。
+    stores: Option<usize>,
+    errors: Vec<String>,
+}
 
-    // 目录更新后同步修复已有 Watch 目标的展示元数据。目标键只由地区、门店和
-    // 零件号决定，因此这里不会增加、删除或换掉用户正在监控的 SKU。
+/// 目录刷新使用的 HTTP 客户端：与库存查询走同一个出口。
+///
+/// 「指定节点」和「Clash 节点轮换」下经 Clash 专用端口，出口就是专用策略组
+/// 当前选中的节点；跟随系统代理时沿用宿主长期持有的客户端。
+fn catalog_http(state: &AppState) -> reqwest::Client {
+    let network = state.settings_snapshot().network;
+    if network.mode == apw_core::config::NetworkMode::System {
+        return state.http.clone();
+    }
+    reqwest::Proxy::all(format!("http://127.0.0.1:{}", network.clash.proxy_port))
+        .and_then(|proxy| reqwest::Client::builder().proxy(proxy).build())
+        .unwrap_or_else(|_| state.http.clone())
+}
+
+/// 探测客户端能否连上某个站点。拿到任何 HTTP 响应都算连通，状态码不重要。
+async fn site_reachable(http: &reqwest::Client, base_url: &str) -> bool {
+    http.get(format!("{base_url}/"))
+        .timeout(Duration::from_secs(8))
+        .send()
+        .await
+        .is_ok()
+}
+
+/// 目录更新后同步修复已有目标的展示元数据。目标键只由地区、门店和零件号决定，
+/// 因此这里不会增加、删除或换掉用户正在监控的 SKU。
+async fn apply_catalog_to_targets(state: &AppState) -> Result<(), String> {
     let mut next = state.settings_snapshot();
     let before = next.targets.clone();
     state.catalog.hydrate_watch_targets(&mut next.targets);
@@ -517,7 +535,99 @@ async fn refresh_products(
         state.put_settings(next.clone())?;
         state.watcher.set_targets(next.targets).await;
     }
-    Ok(count)
+    Ok(())
+}
+
+/// 从 Apple 官网刷新门店列表和型号目录。`category` 为 `None` 时刷新全部品类。
+async fn refresh_catalog(
+    state: &AppState,
+    locale: &str,
+    category: Option<Category>,
+) -> Result<CatalogRefresh, String> {
+    let region = region_by_locale(locale).ok_or_else(|| format!("认不出地区 {locale}"))?;
+    let http = catalog_http(state);
+    // 查询线路的当前节点可能根本连不上某个站点（例如家宽直连访问 www.apple.com
+    // 被断开）。经线路完全失败时改用系统网络再试一次，刷新目录不该被节点拖累。
+    let via_route = state.settings_snapshot().network.mode != apw_core::config::NetworkMode::System;
+    let mut errors = Vec::new();
+
+    let mut stores_result = state.catalog.refresh_stores(region, &http).await;
+    if via_route && stores_result.is_err() {
+        stores_result = state.catalog.refresh_stores(region, &state.http).await;
+        if stores_result.is_ok() {
+            errors.push("门店经查询线路失败，已改用系统网络".to_string());
+        }
+    }
+    let stores = match stores_result {
+        Ok(count) => Some(count),
+        Err(error) => {
+            errors.push(format!("门店列表：{error}"));
+            None
+        }
+    };
+
+    let completely_failed = |result: &Result<usize, apw_core::catalog::CatalogError>| {
+        matches!(
+            result,
+            Err(apw_core::catalog::CatalogError::RefreshFailed { fetched: 0, .. })
+                | Err(apw_core::catalog::CatalogError::Fetch(_))
+        )
+    };
+    // 型号要逐页抓十几页，节点不通时逐页重试会拖很久；先用一次请求探测
+    // 当前节点能否访问该地区官网，不通就直接改用系统网络。
+    let route_reaches_site = !via_route || site_reachable(&http, region.base_url).await;
+    let product_http = if route_reaches_site {
+        http.clone()
+    } else {
+        errors.push("当前节点无法访问该地区官网，型号已改用系统网络刷新".to_string());
+        state.http.clone()
+    };
+    let mut products_result = state
+        .catalog
+        .refresh_products(region, category, &product_http)
+        .await;
+    if via_route && route_reaches_site && completely_failed(&products_result) {
+        products_result = state
+            .catalog
+            .refresh_products(region, category, &state.http)
+            .await;
+        if !completely_failed(&products_result) {
+            errors.push("型号经查询线路失败，已改用系统网络".to_string());
+        }
+    }
+    let products = match products_result {
+        Ok(count) => count,
+        Err(apw_core::catalog::CatalogError::RefreshFailed { fetched, .. }) if fetched > 0 => {
+            errors.push("部分型号页刷新失败，其余已更新".to_string());
+            fetched
+        }
+        Err(error) => {
+            errors.push(format!("型号目录：{error}"));
+            0
+        }
+    };
+    apply_catalog_to_targets(state).await?;
+    if stores.is_none() && products == 0 {
+        return Err(errors.join("；"));
+    }
+    Ok(CatalogRefresh {
+        products,
+        stores,
+        errors,
+    })
+}
+
+/// 手动刷新：门店列表 + 当前品类的型号。
+///
+/// 界面传的是当前选中的品类：一次只抓那几页，用户想看新出的 Mac 不必等 iPhone、
+/// iPad、Watch 一起抓完。
+#[tauri::command]
+async fn refresh_products(
+    state: tauri::State<'_, AppState>,
+    locale: String,
+    category: Option<Category>,
+) -> Result<CatalogRefresh, String> {
+    refresh_catalog(&state, &locale, category).await
 }
 
 #[tauri::command]
@@ -1154,7 +1264,13 @@ pub fn run() {
         .setup(|app| {
             let mut notices = Vec::new();
             let (mut settings, store) = load_settings(&mut notices);
-            let catalog = Catalog::new();
+            // 在线刷新过的门店和型号缓存在设置目录旁边，重启后优先使用。
+            let catalog = Catalog::with_cache_dir(
+                dirs::config_dir()
+                    .unwrap_or_else(std::env::temp_dir)
+                    .join("apple-store-inventory-monitor")
+                    .join("catalog-cache"),
+            );
             let saved_targets = settings.targets.clone();
             catalog.hydrate_watch_targets(&mut settings.targets);
             catalog.hydrate_store_targets(&mut settings.targets);

@@ -1,13 +1,13 @@
 # 果到雷达
 
 [![CI](https://github.com/suversal/apple-store-inventory-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/suversal/apple-store-inventory-monitor/actions/workflows/ci.yml)
-[![源码版本: v1.0.18](https://img.shields.io/badge/source-v1.0.18-blue)](package.json)
+[![源码版本: v1.0.19](https://img.shields.io/badge/source-v1.0.19-blue)](package.json)
 [下载与发布记录](https://github.com/suversal/apple-store-inventory-monitor/releases)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 
 果到雷达是一款 Apple 直营店取货库存监控工具。选好地区、门店和具体型号后，它会定时检查库存；检测到有货时，可以播放提示音、推送 Bark，并按你的选择打开 Apple 购物袋或商品详情。
 
-支持 macOS、Windows 和 Linux，使用 Rust、Tauri 2 和 React 编写。果到雷达的正式版本从 **1.0.0** 开始，本 README 对应 `1.0.18` 源码。应用名称为 **果到雷达**，仓库名为 `apple-store-inventory-monitor`。
+支持 macOS、Windows 和 Linux，使用 Rust、Tauri 2 和 React 编写。果到雷达的正式版本从 **1.0.0** 开始，本 README 对应 `1.0.19` 源码。应用名称为 **果到雷达**，仓库名为 `apple-store-inventory-monitor`。
 
 基于 [ENCHIGO/apple-pickup-watcher v0.3.2](https://github.com/ENCHIGO/apple-pickup-watcher/tree/v0.3.2) 继续开发，按 GPL-3.0-or-later 发布。来源与修改记录见 [NOTICE](NOTICE)。
 
@@ -75,7 +75,7 @@ Apple 可能限流或调整接口，库存也可能在提醒后立即变化。�
 1. 打开 `.dmg`，把 `果到雷达.app` 拖进「应用程序」，不要直接在磁盘映像中长期运行。
 2. 应用包已经过完整的 ad-hoc 签名，但暂未使用 Developer ID 证书，也未经过 Apple 公证。如果系统提示无法验证开发者，可以在 Finder 中按住 Control 点击应用并选择「打开」，或到「系统设置 → 隐私与安全性」确认被拦截的是本应用，再选择「仍要打开」。
 
-`v1.0.2` 的 macOS 包曾因应用签名不完整而被系统误报为“已损坏”，此问题已在 `v1.0.3` 修复。如果新版仍显示旧提示，请先删除旧应用和旧 DMG，确认重新下载的文件名包含 `1.0.18`。确认安装包来自本仓库 Release 后，仍可执行：
+`v1.0.2` 的 macOS 包曾因应用签名不完整而被系统误报为“已损坏”，此问题已在 `v1.0.3` 修复。如果新版仍显示旧提示，请先删除旧应用和旧 DMG，确认重新下载的文件名包含 `1.0.19`。确认安装包来自本仓库 Release 后，仍可执行：
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/果到雷达.app"
@@ -96,7 +96,7 @@ Release 提供 x64 的 `.deb` 和 `.AppImage`。安装包在 Ubuntu 24.04 上构
 **Debian / Ubuntu：**
 
 ```bash
-sudo apt install "./apple-store-inventory-monitor_1.0.18_amd64.deb"
+sudo apt install "./apple-store-inventory-monitor_1.0.19_amd64.deb"
 ```
 
 `apt` 会同时安装包声明的依赖。音频播放和托盘还需要 ALSA 与 AppIndicator 运行库。
@@ -104,14 +104,14 @@ sudo apt install "./apple-store-inventory-monitor_1.0.18_amd64.deb"
 **AppImage：**
 
 ```bash
-chmod +x "./apple-store-inventory-monitor_1.0.18_amd64.AppImage"
-"./apple-store-inventory-monitor_1.0.18_amd64.AppImage"
+chmod +x "./apple-store-inventory-monitor_1.0.19_amd64.AppImage"
+"./apple-store-inventory-monitor_1.0.19_amd64.AppImage"
 ```
 
 AppImage 需要 FUSE 2。Ubuntu 24.04 可以用 `sudo apt install libfuse2t64` 安装；也可以不安装 FUSE，直接解包运行：
 
 ```bash
-"./apple-store-inventory-monitor_1.0.18_amd64.AppImage" --appimage-extract-and-run
+"./apple-store-inventory-monitor_1.0.19_amd64.AppImage" --appimage-extract-and-run
 ```
 
 Linux 还需要自行安装 Chrome、Edge 或 Chromium。使用 Chromium 时，请确认终端可以运行 `chromium` 或 `chromium-browser`。
@@ -131,7 +131,7 @@ Linux 还需要自行安装 Chrome、Edge 或 Chromium。使用 Chromium 时，�
 - 有货时可以选择不自动打开页面、打开对应地区的 Apple 购物袋，或打开对应型号的商品详情；也可以点击监控列表中的型号手动打开商品详情。
 - 可通过 Clash 为库存查询单独指定出口，或在多个节点之间自动轮换，减少被 Apple 拦截；不影响电脑本身使用的节点。详见[查询线路与 Clash 配置](#查询线路与-clash-配置)。
 - 窗口关闭后可继续在系统托盘运行。
-- 型号目录可以从 Apple 官网刷新；网络失败时仍可使用内嵌目录。
+- 默认使用内置的门店列表和型号目录；点击刷新按钮可从 Apple 官网更新门店和当前品类的型号，更新结果保存在本机，重启后继续使用。网络失败时继续使用已有目录。
 - 活动日志逐轮显示每项状态、门店编号、商品零件号及 Apple 返回的取货、购买和配送说明，并按状态汇总。
 - 支持应用内检查更新。
 
@@ -156,7 +156,7 @@ Linux 还需要自行安装 Chrome、Edge 或 Chromium。使用 Chromium 时，�
 
 门店和型号会按组合添加。例如，选择 2 家门店和 3 个型号，会生成 6 条监控。已存在的组合会被跳过。
 
-找不到刚发布的型号时，点击「添加监控」旁边的刷新按钮。刷新会从当前地区的 Apple 官网重新获取型号目录，但不会替换已经保存的监控项。机型出现在列表中不代表它已经开放预购或门店取货；旧型号已下架或 Apple 暂时没有取货数据时，可能显示「暂无数据」。
+门店和型号默认使用应用内置的目录。找不到刚发布的型号或新开的门店时，点击「添加监控」旁边的刷新按钮，从 Apple 官网更新门店列表和当前品类的型号，活动日志会显示更新结果。刷新结果保存在本机，重启后继续使用；刷新不会替换已经保存的监控项。使用「指定节点」或「Clash 节点轮换」时，刷新请求也经由相同的 Clash 专用端口；如果当前节点无法访问该地区官网（例如家庭宽带直连访问 `www.apple.com` 被断开），会自动改用系统网络刷新，并在日志中说明。机型出现在列表中不代表它已经开放预购或门店取货；旧型号已下架或 Apple 暂时没有取货数据时，可能显示「暂无数据」。
 
 切换地区会清空上方尚未添加的门店和型号选择，但不会删除已经在监控列表中的项目。
 
@@ -366,7 +366,7 @@ function main(config, profileName) {
 
    | 项目 | 填写 |
    | --- | --- |
-   | 控制接口 | `http://127.0.0.1:9097`（与第一步的监听地址一致） |
+   | 控制接口 | 第一步的监听地址，例如 `127.0.0.1:9097`，可直接粘贴，程序会自动补上 `http://` |
    | 密钥 | 第一步设置的 API 访问密钥 |
    | 专用端口 | `7899`（与脚本中的 `port` 一致） |
    | 策略组 | `果到雷达`（与脚本中的 `APW_GROUP` 一致） |
@@ -376,7 +376,7 @@ function main(config, profileName) {
 4. 在「当前节点」（指定节点模式下为「指定节点」）下拉框中查看各节点的延迟，需要时手动选择。
 5. 点「开始监控」。活动日志每轮结束时会显示「线路：Clash 节点 …」，被拒或切换节点时也会记录。
 
-设置面板中「Clash 配置脚本」按钮可以随时查看并复制与当前端口、策略组对应的脚本。
+「查询线路」面板中的「配置教程」按钮包含与本节相同的分步说明，并可一键复制与当前端口、策略组对应的脚本。
 
 #### 使用建议
 
@@ -475,7 +475,9 @@ macOS 应用包使用完整的 ad-hoc 签名，但没有 Developer ID 证书且�
 | Windows | `%APPDATA%\apple-store-inventory-monitor\settings.v2.json` |
 | Linux | `~/.config/apple-store-inventory-monitor/settings.v2.json`；设置了有效的绝对路径 `$XDG_CONFIG_HOME` 时，改用该目录下的 `apple-store-inventory-monitor/settings.v2.json` |
 
-设置文件包含监控目标、查询间隔和提醒选项。Bark 地址也会保存在本机，请不要将该文件上传到公开 issue 或提交进 Git 仓库。
+设置文件包含监控目标、查询间隔、提醒选项和查询线路设置。Bark 地址和 Clash 控制接口密钥也会以明文保存在本机，请不要将该文件上传到公开 issue 或提交进 Git 仓库。
+
+点击刷新按钮后从 Apple 官网更新的门店列表和型号目录保存在同一目录下的 `catalog-cache/` 中，每个地区一个文件。删除这个目录不会影响监控项，应用会退回内置目录。
 
 项目没有接入分析统计或崩溃上报。正常运行时会访问 Apple 官网；启用 Bark 时会访问用户填写的 Bark 服务；检查更新时会访问本仓库的 GitHub Releases。
 
@@ -528,7 +530,7 @@ macOS 应用包使用完整的 ad-hoc 签名，但没有 Developer ID 证书且�
 
 下面只比较本项目与直接上游 `ENCHIGO/apple-pickup-watcher v0.3.2` 的差异。Rust、Tauri、三态库存、四个产品品类、系统托盘和应用内更新等能力已经由上游完成，不算作本项目新增。
 
-| 项目 | 直接上游 v0.3.2 | 果到雷达 v1.0.18 |
+| 项目 | 直接上游 v0.3.2 | 果到雷达 v1.0.19 |
 | --- | --- | --- |
 | Apple 查询会话 | 普通 HTTP 客户端先访问商品页获取 Cookie，再查询库存 | 启动应用专属的持久 Chromium 会话，在 Apple 页面环境中完成校验和库存请求；同轮对被拦截地区停止重复请求，下轮按用户设置的间隔重试 |
 | 批量添加监控 | 每次选择一家门店和一个型号 | 门店、型号都可以多选，一次生成全部组合；重复组合会自动跳过 |
@@ -666,7 +668,7 @@ pnpm tauri build --no-sign
 
 产物位于 `target/release/bundle/`。自动更新包需要仓库维护者配置 `TAURI_SIGNING_PRIVATE_KEY`；私钥设置了密码时还要配置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。没有私钥时不能生成可被现有客户端验证的更新签名。
 
-正式版本由 [Release 工作流](.github/workflows/release.yml) 构建，标签使用 `v1.0.18` 这样的格式。发版前应确认 `package.json`、工作区 `Cargo.toml`、`src-tauri/tauri.conf.json` 与标签的版本一致。macOS 专用配置在 `src-tauri/tauri.macos.conf.json` 中启用 ad-hoc 签名；发布流水线会同时验证自动更新归档和 DMG 内的应用签名。
+正式版本由 [Release 工作流](.github/workflows/release.yml) 构建，标签使用 `v1.0.19` 这样的格式。发版前应确认 `package.json`、工作区 `Cargo.toml`、`src-tauri/tauri.conf.json` 与标签的版本一致。macOS 专用配置在 `src-tauri/tauri.macos.conf.json` 中启用 ad-hoc 签名；发布流水线会同时验证自动更新归档和 DMG 内的应用签名。
 
 推送 `v*` 标签后，GitHub Actions 会生成 macOS、Windows 和 Linux 安装包，并先创建草稿 Release；确认四个平台全部成功后再公开发布，避免用户下载到缺少部分平台或 `latest.json` 尚未完整生成的版本。手动运行 `workflow_dispatch` 只生成 Actions 构建产物，不会创建公开 Release。
 
@@ -676,19 +678,21 @@ pnpm tauri build --no-sign
 crates/apw-core/src/
   apple.rs                HTTP 错误分类与库存响应解析
   apple_catalog.rs        从 Apple 购买页解析型号目录
-  catalog.rs              在线目录与内嵌快照
+  catalog.rs              在线目录、本地缓存与内嵌快照
   config.rs               设置保存、迁移与损坏保护
   model.rs                地区、商品、门店和三态库存模型
   notify.rs               Bark 与提示音
   watcher.rs              监控调度、分组查询、事件与退避
 
 src-tauri/
-  src/chromium_fetcher.rs  临时 Chromium 会话与真实库存请求
+  src/chromium_fetcher.rs  无头 Chromium 会话、查询线路与真实库存请求
+  src/clash.rs             Clash / mihomo 控制接口：读取节点、测速、切换节点
+  src/route_pool.rs        出口线路池：按节点和站点记录冷却并选择节点
   src/lib.rs               Tauri 命令、托盘、更新和通知装配
 
 src/
   App.tsx                  主界面
-  components/              界面组件
+  components/              界面组件（NetworkSettings.tsx 为查询线路与 Clash 配置教程）
   lib/store.ts             前端状态与事件日志
   lib/types.ts             Rust/TypeScript 边界类型
   lib/monitorLog.ts        业务状态、配色语义与逐轮日志
