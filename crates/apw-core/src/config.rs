@@ -412,7 +412,7 @@ pub fn is_apple_bag_url(value: &str) -> bool {
     let Ok(url) = reqwest::Url::parse(value) else {
         return false;
     };
-    let path = url.path().trim_end_matches('/');
+    let path = url.path().strip_suffix('/').unwrap_or(url.path());
     let valid_path = path == "/shop/bag"
         || path.strip_suffix("/shop/bag").is_some_and(|prefix| {
             let region = prefix.strip_prefix('/').unwrap_or_default();

@@ -1328,9 +1328,14 @@ impl CheckoutRunner {
             include_str!("checkout_browser_refresh.js"),
             js_string(&settings.url)
         );
-        let result = session.evaluate(&script, false).await.map_err(|_| {
-            "浏览器连接已断开或页面正在跳转，请检查下单浏览器；不会自动重新打开窗口".to_string()
-        })?;
+        // Bound the session lock so a stalled refresh cannot hold up a stock hit
+        // for the normal CDP command timeout. Later commands ignore old reply IDs.
+        let result = tokio::time::timeout(Duration::from_secs(3), session.evaluate(&script, false))
+            .await
+            .map_err(|_| "刷新等待超过 3 秒，已释放下单浏览器供结账使用".to_string())?
+            .map_err(|_| {
+                "浏览器连接已断开或页面正在跳转，请检查下单浏览器；不会自动重新打开窗口".to_string()
+            })?;
         result
             .as_str()
             .map(str::to_owned)
