@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { listClashNodes, saveSettings, selectClashNode, testClashRoute } from "@/lib/store";
 import type {
   ClashRouteCheck,
@@ -417,6 +418,26 @@ export function NetworkSettings({
         <p className="text-[11px] leading-4 break-words text-muted-foreground">
           {MODE_HINTS[network.mode]}
           {running ? " 修改后会在下一次查询时重启查询浏览器。" : ""}
+        </p>
+      </div>
+
+      <div className="mt-3 grid gap-2">
+        <div className="setting-row">
+          <Label htmlFor="rebuild-session" className="text-sm font-normal">被 Apple 拒绝后重建浏览器会话</Label>
+          <Switch
+            id="rebuild-session"
+            aria-label="被 Apple 拒绝后重建浏览器会话"
+            checked={network.rebuildSessionOnRejection}
+            onCheckedChange={(value) => {
+              setCheck(null);
+              void saveSettings({ network: { ...network, rebuildSessionOnRejection: value } });
+            }}
+          />
+        </div>
+        <p className="text-[11px] leading-4 break-words text-muted-foreground">
+          {network.rebuildSessionOnRejection
+            ? "被拒绝（HTTP 541/403/429 或返回验证页）不会马上重建：最近 10 次真实查询里被拒超过半数（至少累计 4 次查询）时才关闭当前查询浏览器，之后的查询改用新建的会话；未过半时继续复用原会话。重建需要几秒钟重新启动浏览器。"
+            : "默认关闭：被拒绝后保留当前会话和 Cookie，按设定间隔复用同一会话继续探测。"}
         </p>
       </div>
 
