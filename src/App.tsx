@@ -30,6 +30,7 @@ import { describeUpdateProgress, updatePercent } from "@/lib/updateStatus";
 import { Combobox } from "@/components/Combobox";
 import { MultiCombobox } from "@/components/MultiCombobox";
 import { CollapsiblePanel } from "@/components/CollapsiblePanel";
+import { BarkPushSettings } from "@/components/BarkPushSettings";
 import { CheckoutSettings } from "@/components/CheckoutSettings";
 import { NetworkSettings } from "@/components/NetworkSettings";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -1346,6 +1347,8 @@ export default function App() {
                     监控列表可为某个型号指定其他人的 Bark 地址。
                   </p>
                 </div>
+
+                <BarkPushSettings options={ui.settings.barkOptions} />
 
                 <div className="mt-4 space-y-1 rounded-xl border border-border/55 bg-background/30 p-1">
                   <div className="setting-row">

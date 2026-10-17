@@ -15,7 +15,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use apw_core::catalog::Catalog;
 use apw_core::config::{ClashSettings, MIN_INTERVAL_SECONDS, OpenOnHit, Settings, SettingsStore};
 use apw_core::model::{Category, Product, REGIONS, Store, Target, region_by_locale};
-use apw_core::notify::{Bark, Multi, Notification, Notifier, Sound};
+use apw_core::notify::{Bark, BarkPush, Multi, Notification, Notifier, Sound};
 use apw_core::watcher::{Event, TargetState, Watcher, WatcherConfig};
 use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuItem};
@@ -28,6 +28,7 @@ mod checkout;
 mod checkout_login;
 mod chromium_fetcher;
 mod clash;
+mod reminders;
 mod route_pool;
 #[cfg(windows)]
 mod windows_chromium;
@@ -314,6 +315,8 @@ struct AppState {
     settings: RwLock<Settings>,
     /// 为 `None` 表示配置不可持久化（目录不可写，或上次读取失败已放弃写盘）。
     store: Option<SettingsStore>,
+    /// 到货后的重复提醒调度（只存世代号；任务本身跑在独立 tokio 任务里）。
+    reminders: reminders::RepeatScheduler,
 }
 
 impl AppState {
@@ -734,6 +737,7 @@ async fn test_clash_route(clash: ClashSettings) -> Result<ClashRouteCheck, Strin
     let mut network = apw_core::config::NetworkSettings {
         mode: apw_core::config::NetworkMode::Clash,
         clash,
+        ..Default::default()
     };
     let mut settings = Settings {
         network: network.clone(),
@@ -823,6 +827,9 @@ async fn start_watching(state: tauri::State<'_, AppState>) -> Result<(), String>
 #[tauri::command]
 async fn stop_watching(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.watcher.stop().await;
+    // 手动停止：在飞的重复提醒立即作废。自动的「到货后暂停监控」不经过这里，
+    // 那种场景下重复提醒要继续响完窗口，直到用户注意到。
+    state.reminders.cancel_all();
     Ok(())
 }
 
@@ -1069,7 +1076,13 @@ async fn dispatch_notification(
             .unwrap_or_default();
         // Bark 每次现构造：地址是用户随时可改的设置项，缓存实例会在改完地址后
         // 继续往旧地址推。共享的 http 客户端一并传进去，连接池仍然复用。
-        channels.push(Bark::new(bark_url.to_owned(), http));
+        let push = BarkPush {
+            level: settings.bark_options.level,
+            sound: settings.bark_options.sound.clone(),
+            volume: settings.bark_options.volume,
+            call: settings.bark_options.call,
+        };
+        channels.push(Bark::new(bark_url.to_owned(), http).with_push(push));
     }
     if channels.is_empty() {
         return Ok(());
@@ -1434,12 +1447,32 @@ async fn pump_events(app: AppHandle, mut events: tokio::sync::mpsc::Receiver<Eve
                 }
             }
 
-            if let Err(err) = dispatch_notification(&app, notification, &bark_url).await {
-                // 提醒没发出去是遗憾，但绝不能让监控本身停下来。
-                let _ = app.emit(NOTICE_CHANNEL, format!("发送提醒时出错：{err}"));
+            // 发送提醒放到独立任务：Bark 服务器慢时要等满 10 秒超时，提示音还要
+            // 等播放结束；原地等待会拖住事件循环对后续到货事件的处理。发送结果
+            // 只写日志，无论成败都不影响监控与查询节奏。
+            let repeat_note = if settings.bark_options.repeat_seconds > 0 {
+                format!(
+                    "；重复提醒已开启（{} 秒内每 {} 秒一次）",
+                    settings.bark_options.repeat_seconds,
+                    settings.bark_options.repeat_interval_seconds
+                )
             } else {
+                String::new()
+            };
+            let dispatch_app = app.clone();
+            let target_store = target.store_title.clone();
+            let target_product = target.product_name.clone();
+            let sound_enabled = settings.sound_enabled;
+            tauri::async_runtime::spawn(async move {
+                if let Err(err) =
+                    dispatch_notification(&dispatch_app, notification, &bark_url).await
+                {
+                    // 提醒没发出去是遗憾，但绝不能让监控本身停下来。
+                    let _ = dispatch_app.emit(NOTICE_CHANNEL, format!("发送提醒时出错：{err}"));
+                    return;
+                }
                 let mut actions = Vec::new();
-                if settings.sound_enabled {
+                if sound_enabled {
                     actions.push("提示音");
                 }
                 if !bark_url.trim().is_empty() {
@@ -1458,18 +1491,19 @@ async fn pump_events(app: AppHandle, mut events: tokio::sync::mpsc::Receiver<Eve
                     }
                 }
                 if actions.is_empty() {
-                    continue;
+                    return;
                 }
-                let _ = app.emit(
+                let _ = dispatch_app.emit(
                     NOTICE_CHANNEL,
                     format!(
-                        "到货提醒已执行：{} {}（{}）",
-                        target.store_title,
-                        target.product_name,
+                        "到货提醒已执行：{target_store} {target_product}（{}）{repeat_note}",
                         actions.join("、")
                     ),
                 );
-            }
+            });
+
+            // 每次有货事件都重启该目标的重复提醒窗口（未开启时不做任何事）。
+            reminders::schedule(&app, target.clone());
         }
     }
 }
@@ -1667,6 +1701,7 @@ pub fn run() {
                 http: reqwest::Client::new(),
                 settings: RwLock::new(settings),
                 store,
+                reminders: reminders::RepeatScheduler::default(),
             });
 
             let handle: AppHandle = app.handle().clone();

@@ -88,6 +88,14 @@ const DEFAULT_SETTINGS: Settings = {
   intervalSeconds: 30,
   barkUrl: "",
   productBarkUrls: {},
+  barkOptions: {
+    level: "default",
+    sound: "",
+    volume: null,
+    call: false,
+    repeatSeconds: 0,
+    repeatIntervalSeconds: 0,
+  },
   soundEnabled: true,
   openOnHit: "bag",
   stopOnHit: false,
@@ -101,6 +109,7 @@ const DEFAULT_SETTINGS: Settings = {
       nodeFilter: "",
       pinnedNode: "DIRECT",
     },
+    rebuildSessionOnRejection: false,
   },
   checkout: {
     enabled: false,

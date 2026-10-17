@@ -27,9 +27,11 @@ const defaults = {
   deliveryRegion: null,
   barkUrl: "https://example.invalid/old", soundEnabled: true, openOnHit: "bag", stopOnHit: false,
   productBarkUrls: {},
+  barkOptions: { level: "default", sound: "", volume: null, call: false, repeatSeconds: 0, repeatIntervalSeconds: 0 },
   network: {
     mode: "system",
     clash: { controller: "http://127.0.0.1:9097", secret: "", group: "果到雷达", proxyPort: 7899, nodeFilter: "", pinnedNode: "DIRECT" },
+    rebuildSessionOnRejection: false,
   },
   checkout: {
     enabled: false, nationalIdSuffix: "", payment: "alipay",

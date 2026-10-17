@@ -3,12 +3,14 @@
 //! Apple 当前会在商品页执行 `shop/shld/v2_1/verify.js`，完成浏览器环境校验后才
 //! 接受库存请求。普通 HTTP 客户端或 WKWebView 即便拿到了部分 Cookie，仍会收到
 //! HTTP 541；真正的 Chromium 会话则能得到正常 JSON。这里启动一个使用应用专属
-//! 持久资料目录的浏览器，通过 DevTools 协议复用同一会话查询所有门店。
+//! 持久资料目录的浏览器，通过 DevTools 协议复用同一会话查询所有门店；查询被
+//! Apple 拒绝且用户开启「被拒绝后重建浏览器会话」时，最近查询里被拒次数超过
+//! 半数才会丢弃旧会话、改用新建的会话继续，偶发被拒仍复用原会话。
 //!
 //! 这个实现不会读取用户现有 Chrome 的个人资料、Cookie 或浏览记录。专属会话
 //! 始终在后台启动，不会因查询失败自动弹出页面；浏览器进程由应用持有并在退出时终止。
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
@@ -1291,7 +1293,6 @@ pub struct RouteInfo {
 #[derive(Debug, Clone)]
 pub struct AppleChromiumFetcher {
     state: Arc<Mutex<QueryState>>,
-    profile_dir: PathBuf,
 }
 
 type PickupCacheKey = (&'static str, Vec<String>, String);
@@ -1432,6 +1433,12 @@ impl CyclePickupRejection {
 #[derive(Debug, Default)]
 struct QueryState {
     session: Option<ChromiumSession>,
+    /// 最近 [`REBUILD_SESSION_WINDOW`] 次真实查询的结果（true 表示被 Apple
+    /// 拒绝），用于「被拒过半才重建会话」判定；命中缓存与同轮短路的请求不入账，
+    /// 新会话启动时清空。
+    rejection_window: VecDeque<bool>,
+    /// 查询浏览器的专属持久资料目录；首次启动与被拒后的重建都用它。
+    profile_dir: PathBuf,
     /// 本轮启动浏览器会话失败后不再为每个门店重复启动。
     /// 新一轮会清空并再次尝试，重试节奏仍由用户设置决定。
     session_start_failure: Option<String>,
@@ -1475,6 +1482,12 @@ struct QueryState {
     cooling_announced: HashSet<String>,
 }
 
+/// 「被拒绝后重建会话」判定的窗口：只记住最近这么多次真实查询的结果。
+const REBUILD_SESSION_WINDOW: usize = 10;
+/// 窗口里至少累计这么多次查询，才允许判定「过半被拒」并重建会话；
+/// 样本太少时不重建，新会话不会因为头一两次被拒就推倒重来。
+const REBUILD_SESSION_MIN_SAMPLES: usize = 4;
+
 impl QueryState {
     fn begin_cycle(&mut self) {
         self.session_start_failure = None;
@@ -1492,6 +1505,83 @@ impl QueryState {
         self.route_failure = None;
         self.route_switches = 0;
         self.consecutive_rejections = 0;
+    }
+
+    /// 启动一个新的查询浏览器会话。
+    ///
+    /// 失败时记入 `session_start_failure`：本轮不再为每个门店重复尝试启动。
+    /// 首次查询与被拒后的重建共用这条路径，保证两者行为一致。
+    async fn start_session(&mut self) -> Result<(), ApiError> {
+        let network_args = chromium_network_args(&self.network);
+        match ChromiumSession::start_with_args(self.profile_dir.clone(), &network_args).await {
+            Ok(session) => {
+                self.session = Some(session);
+                // 新会话从零开始记账：上一份会话积累的判定窗口就此作废。
+                self.rejection_window.clear();
+                Ok(())
+            }
+            Err(error) => {
+                let detail = match &error {
+                    ApiError::Transport(detail) | ApiError::BrowserUnavailable(detail) => {
+                        detail.clone()
+                    }
+                    _ => error.to_string(),
+                };
+                self.session_start_failure = Some(detail);
+                Err(error)
+            }
+        }
+    }
+
+    /// 记录一次真实查询的最终结果（`rejected` 为 true 表示被 Apple 拒绝）。
+    ///
+    /// 只保留最近 [`REBUILD_SESSION_WINDOW`] 次；命中缓存、同轮短路等没有真正
+    /// 发出请求的路径不会走到这里，每个请求只记一次。
+    fn note_request_outcome(&mut self, rejected: bool) {
+        if self.rejection_window.len() == REBUILD_SESSION_WINDOW {
+            self.rejection_window.pop_front();
+        }
+        self.rejection_window.push_back(rejected);
+    }
+
+    /// 最近查询里被拒次数是否超过半数（且样本不少于 [`REBUILD_SESSION_MIN_SAMPLES`] 次）。
+    ///
+    /// 刚启动或刚重建的新会话不会因为头一两次被拒就再次推倒重来；「恰好半数」
+    /// 也不算超过。
+    fn rejection_majority(&self) -> bool {
+        let total = self.rejection_window.len();
+        total >= REBUILD_SESSION_MIN_SAMPLES
+            && self
+                .rejection_window
+                .iter()
+                .filter(|rejected| **rejected)
+                .count()
+                * 2
+                > total
+    }
+
+    /// 被 Apple 拒绝时的统一处置：记一次被拒，并按「过半被拒」判定是否重建。
+    ///
+    /// 「被拒绝后重建浏览器会话」开启时不是被拒一次就重建：只有最近
+    /// [`REBUILD_SESSION_WINDOW`] 次真实查询里被拒次数超过半数（且样本不少于
+    /// [`REBUILD_SESSION_MIN_SAMPLES`] 次）才丢弃当前会话（Chromium 进程随析构
+    /// 回收），下次真正发请求前由 [`QueryState::start_session`] 新建；被拒未过半
+    /// 或开关关闭时保持原行为，保留会话与 Cookie 继续复用。
+    fn discard_session_on_rejection(&mut self) {
+        self.note_request_outcome(true);
+        if self.network.rebuild_session_on_rejection && self.rejection_majority() {
+            let rejected = self
+                .rejection_window
+                .iter()
+                .filter(|rejected| **rejected)
+                .count();
+            eprintln!(
+                "最近 {} 次查询里被拒 {} 次，超过半数，重建查询浏览器会话",
+                self.rejection_window.len(),
+                rejected
+            );
+            self.session = None;
+        }
     }
 
     fn cached_delivery(
@@ -1881,6 +1971,11 @@ impl QueryState {
         let mut attempts = 0usize;
         loop {
             self.prepare_route(region).await?;
+            // 「被拒绝后重建浏览器会话」开启且已判定过半被拒时会话已被丢弃：
+            // 真正发请求前先按当前线路新建一个。
+            if self.session.is_none() {
+                self.start_session().await?;
+            }
             let result = {
                 let QueryState { session, gate, .. } = &mut *self;
                 session
@@ -1892,6 +1987,8 @@ impl QueryState {
             attempts += 1;
             let result = result.map_err(|error| self.explain_proxy_error(error));
             let switch = match &result {
+                // 记账与「是否重建会话」统一在守卫层按最终结果处理；这里只负责
+                // 把被拒的节点放冷却，必要时换下一个节点继续。
                 Err(ApiError::Blocked(_) | ApiError::RateLimited(_)) => self.route_rejected(region),
                 Ok(payload) if is_rejected_payload(payload) => self.route_rejected(region),
                 Err(error) if self.rotating() && is_node_failure(error) => {
@@ -1973,8 +2070,10 @@ impl QueryState {
 impl AppleChromiumFetcher {
     pub fn new() -> Self {
         Self {
-            state: Arc::new(Mutex::new(QueryState::default())),
-            profile_dir: chromium_profile_dir(),
+            state: Arc::new(Mutex::new(QueryState {
+                profile_dir: chromium_profile_dir(),
+                ..QueryState::default()
+            })),
         }
     }
 
@@ -2090,6 +2189,8 @@ impl AppleChromiumFetcher {
             .as_ref()
             .and_then(|key| guard.pickup_cache.get(key))
             .cloned();
+        // 命中缓存并没有真正发出请求，不计入重建判定窗口。
+        let from_cache = cached_body.is_some();
         let (mut payload, mut used_nearby_response) = if let Some(body) = cached_body {
             // 缓存只保存取货接口原文。命中后仍要继续执行下方的配送合并，不能
             // 提前返回，否则同城第二家门店会把预计送货显示成“未返回”。
@@ -2100,22 +2201,7 @@ impl AppleChromiumFetcher {
             (BrowserPayload { status: 200, body }, true)
         } else {
             if guard.session.is_none() {
-                let network_args = chromium_network_args(&guard.network);
-                match ChromiumSession::start_with_args(self.profile_dir.clone(), &network_args)
-                    .await
-                {
-                    Ok(session) => guard.session = Some(session),
-                    Err(error) => {
-                        let detail = match &error {
-                            ApiError::Transport(detail) | ApiError::BrowserUnavailable(detail) => {
-                                detail.clone()
-                            }
-                            _ => error.to_string(),
-                        };
-                        guard.session_start_failure = Some(detail);
-                        return Err(error);
-                    }
-                }
+                guard.start_session().await?;
             }
             let scope = if can_reuse_nearby && !nearby_unavailable {
                 PickupScope::Nearby(pickup_location.expect("附近查询必须有地点"))
@@ -2150,8 +2236,14 @@ impl AppleChromiumFetcher {
                             CyclePickupRejection::RateLimited(detail.clone()),
                         );
                     }
-                    if matches!(error, ApiError::Transport(_)) {
-                        guard.session = None;
+                    match &error {
+                        // 「被拒后重建会话」开启且最近查询被拒过半时，连同被拒的
+                        // 会话一起换新；否则保留会话交给下一轮复用。
+                        ApiError::Blocked(_) | ApiError::RateLimited(_) => {
+                            guard.discard_session_on_rejection();
+                        }
+                        ApiError::Transport(_) => guard.session = None,
+                        _ => {}
                     }
                     return Err(error);
                 }
@@ -2190,8 +2282,12 @@ impl AppleChromiumFetcher {
                             CyclePickupRejection::RateLimited(detail.clone()),
                         );
                     }
-                    if matches!(error, ApiError::Transport(_)) {
-                        guard.session = None;
+                    match &error {
+                        ApiError::Blocked(_) | ApiError::RateLimited(_) => {
+                            guard.discard_session_on_rejection();
+                        }
+                        ApiError::Transport(_) => guard.session = None,
+                        _ => {}
                     }
                     return Err(error);
                 }
@@ -2211,6 +2307,7 @@ impl AppleChromiumFetcher {
                         region,
                         CyclePickupRejection::Blocked("HTTP 200 但响应不是 JSON".into()),
                     );
+                    guard.discard_session_on_rejection();
                     return Err(ApiError::Blocked("HTTP 200 但响应不是 JSON".into()));
                 }
                 let mut availability = match parse_pickup_message(bytes, store_number) {
@@ -2227,10 +2324,15 @@ impl AppleChromiumFetcher {
                             ),
                             _ => unreachable!(),
                         }
+                        guard.discard_session_on_rejection();
                         return Err(error);
                     }
                     Err(error) => return Err(error),
                 };
+                if !from_cache {
+                    // 真正发出并解析成功的一次库存查询，记一次成功样本。
+                    guard.note_request_outcome(false);
+                }
                 if let Some(session) = guard.session.as_mut() {
                     session.mark_established().await;
                 }
@@ -2281,6 +2383,7 @@ impl AppleChromiumFetcher {
                                 if matches!(error, ApiError::Blocked(_) | ApiError::RateLimited(_))
                                 {
                                     guard.reject_delivery_for_cycle(region);
+                                    guard.discard_session_on_rejection();
                                 }
                             }
                         }
@@ -2320,6 +2423,7 @@ impl AppleChromiumFetcher {
                                 if matches!(error, ApiError::Blocked(_) | ApiError::RateLimited(_))
                                 {
                                     guard.reject_delivery_for_cycle(region);
+                                    guard.discard_session_on_rejection();
                                 }
                             }
                         }
@@ -2336,11 +2440,13 @@ impl AppleChromiumFetcher {
                 Ok(availability)
             }
             403 | 541 => {
-                // 保留专属 Profile、Cookie 和当前会话，显示 Apple 页面便于完成必要的
-                // 浏览器校验。只短路本轮同地区；下一轮按用户设置的间隔复用它。
+                // 默认保留专属 Profile、Cookie 和当前会话，下一轮按用户设置的间隔
+                // 复用同一会话探测；开启「被拒绝后重建浏览器会话」且最近查询被拒
+                // 过半时改为丢弃会话，下次查询新建一个。两种方式都只短路本轮同地区。
                 let detail = format!("HTTP {}", payload.status);
                 guard
                     .reject_pickup_for_cycle(region, CyclePickupRejection::Blocked(detail.clone()));
+                guard.discard_session_on_rejection();
                 Err(ApiError::Blocked(detail))
             }
             429 => {
@@ -2349,6 +2455,7 @@ impl AppleChromiumFetcher {
                     region,
                     CyclePickupRejection::RateLimited(detail.clone()),
                 );
+                guard.discard_session_on_rejection();
                 Err(ApiError::RateLimited(detail))
             }
             status if status >= 500 => Err(ApiError::Transport(format!(
@@ -2512,9 +2619,9 @@ pub(crate) mod tests {
             AppleChromiumFetcher {
                 state: Arc::new(Mutex::new(QueryState {
                     session: Some(session),
+                    profile_dir: std::env::temp_dir(),
                     ..QueryState::default()
                 })),
-                profile_dir: std::env::temp_dir(),
             },
             peer,
             requests,
@@ -3892,6 +3999,126 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
+    async fn 被拒重建会话开启后过半被拒才丢弃当前会话() {
+        let blocked = http_response(541);
+        let (fetcher, peer) = cdp_responses(vec![blocked; 4]).await;
+        {
+            let mut state = fetcher.state.lock().await;
+            state.network.rebuild_session_on_rejection = true;
+        }
+        let region = region_by_locale("zh_CN").unwrap();
+        // 前三次被拒：样本不足四次，必须继续复用原会话。
+        for round in 1..=3 {
+            fetcher.begin_cycle().await;
+            fetcher.state.lock().await.gate.last_sent = None;
+            let result = fetcher
+                .pickup_message(region, "R390", &[test_target("MG6X4CH/A")], None)
+                .await;
+            assert!(
+                matches!(result, Err(ApiError::Blocked(_))),
+                "第 {round} 次被拒应照常报错"
+            );
+            assert!(
+                fetcher.state.lock().await.session.is_some(),
+                "第 {round} 次被拒不满足重建条件，必须保留会话"
+            );
+        }
+        // 第四次被拒：最近四次查询全部被拒，超过半数 → 丢弃会话，等下次查询新建。
+        fetcher.begin_cycle().await;
+        fetcher.state.lock().await.gate.last_sent = None;
+        let result = fetcher
+            .pickup_message(region, "R390", &[test_target("MG6X4CH/A")], None)
+            .await;
+        assert!(matches!(result, Err(ApiError::Blocked(_))));
+        assert!(
+            fetcher.state.lock().await.session.is_none(),
+            "被拒超过半数后应丢弃会话，供下次查询新建"
+        );
+        assert!(peer.await.unwrap(), "过半被拒后旧会话的浏览器连接应被释放");
+    }
+
+    #[tokio::test]
+    async fn 被拒未过半时保留会话且恰好半数不重建() {
+        let ok = || pickup_response(&["R390"], "MG6X4CH/A", "unavailable");
+        let (fetcher, peer) = cdp_responses(vec![
+            ok(),
+            ok(),
+            ok(),
+            http_response(429),
+            http_response(403),
+            http_response(541),
+            http_response(541),
+        ])
+        .await;
+        {
+            let mut state = fetcher.state.lock().await;
+            state.network.rebuild_session_on_rejection = true;
+        }
+        let region = region_by_locale("zh_CN").unwrap();
+        macro_rules! ask {
+            () => {{
+                fetcher.begin_cycle().await;
+                fetcher.state.lock().await.gate.last_sent = None;
+                fetcher
+                    .pickup_message(region, "R390", &[test_target("MG6X4CH/A")], None)
+                    .await
+            }};
+        }
+        for round in 1..=3 {
+            let result = ask!();
+            assert!(result.is_ok(), "第 {round} 次正常响应应当解析成功");
+            assert!(fetcher.state.lock().await.session.is_some());
+        }
+        // 1/4 与 2/5 被拒：都不过半，继续复用原会话。
+        let result = ask!();
+        assert!(matches!(result, Err(ApiError::RateLimited(_))));
+        assert!(
+            fetcher.state.lock().await.session.is_some(),
+            "被拒未过半必须保留会话"
+        );
+        let result = ask!();
+        assert!(matches!(result, Err(ApiError::Blocked(_))));
+        assert!(fetcher.state.lock().await.session.is_some());
+        // 3/6：恰好半数，也要继续复用，不能重建。
+        let result = ask!();
+        assert!(matches!(result, Err(ApiError::Blocked(_))));
+        assert!(
+            fetcher.state.lock().await.session.is_some(),
+            "恰好半数被拒不能重建，必须严格超过半数"
+        );
+        // 4/7：超过半数 → 丢弃会话。
+        let result = ask!();
+        assert!(matches!(result, Err(ApiError::Blocked(_))));
+        assert!(
+            fetcher.state.lock().await.session.is_none(),
+            "被拒超过半数后应丢弃会话"
+        );
+        assert!(peer.await.unwrap(), "被拒超过半数后旧会话的连接应被释放");
+    }
+
+    #[tokio::test]
+    async fn 被拒重建会话默认关闭时保留会话() {
+        let (fetcher, peer) = cdp_fixture(json!({
+            "result": {"result": {"value": {"status": 541, "body": "{}"}}}
+        }))
+        .await;
+        let result = fetcher
+            .pickup_message(
+                region_by_locale("zh_CN").unwrap(),
+                "R390",
+                &[test_target("MG6X4CH/A")],
+                None,
+            )
+            .await;
+        assert!(matches!(result, Err(ApiError::Blocked(_))));
+        assert!(
+            fetcher.state.lock().await.session.is_some(),
+            "默认关闭时必须保留会话，维持旧行为"
+        );
+        assert!(!peer.await.unwrap(), "默认关闭时不得断开原 Chromium 会话");
+    }
+
+    #[tokio::test]
     async fn 页面请求瞬时失败不会销毁浏览器会话或影响下一门店() {
         let (fetcher, peer) = cdp_responses(vec![
             page_fetch_failure_response("TypeError: Failed to fetch"),
@@ -4732,6 +4959,7 @@ pub(crate) mod tests {
         state.network = NetworkSettings {
             mode: NetworkMode::Clash,
             clash,
+            ..NetworkSettings::default()
         };
     }
 
@@ -5016,6 +5244,7 @@ pub(crate) mod tests {
             state.network = NetworkSettings {
                 mode: NetworkMode::Pinned,
                 clash,
+                ..NetworkSettings::default()
             };
         }
         let region = region_by_locale("zh_CN").unwrap();

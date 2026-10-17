@@ -140,6 +140,27 @@ export interface ClashSettings {
 export interface NetworkSettings {
   mode: NetworkMode;
   clash: ClashSettings;
+  /** 被 Apple 拒绝后是否重建查询浏览器会话；开启后最近查询被拒过半（至少 4 次样本）才重建，未过半或关闭时保留原会话继续复用。 */
+  rebuildSessionOnRejection: boolean;
+}
+
+/** Bark 推送的中断级别，与 Rust 侧 `BarkLevel` 一一对应。 */
+export type BarkLevel = "default" | "active" | "time_sensitive" | "passive" | "critical";
+
+/** Bark 推送的增强参数与重复提醒，与 Rust 侧 `BarkOptions` 一一对应。 */
+export interface BarkOptions {
+  /** 通知等级；default 表示不指定，与旧版行为一致。 */
+  level: BarkLevel;
+  /** 铃声名；空表示用 Bark 默认铃声。 */
+  sound: string;
+  /** 重要警告（critical）的通知音量 0-10；null 表示不指定。 */
+  volume: number | null;
+  /** 持续响铃：重复播放铃声约 30 秒。 */
+  call: boolean;
+  /** 重复提醒总时长（秒）；0 表示关闭。 */
+  repeatSeconds: number;
+  /** 重复提醒间隔（秒）。 */
+  repeatIntervalSeconds: number;
 }
 
 /** 自动结账使用的付款方式，与 Rust 侧 `CheckoutPayment` 一一对应。 */
@@ -218,6 +239,7 @@ export interface Settings {
   /** 按商品零件号覆盖默认 Bark；同一型号在不同门店共用。 */
   productBarkUrls: Record<string, string>;
   barkUrl: string;
+  barkOptions: BarkOptions;
   soundEnabled: boolean;
   openOnHit: OpenOnHit;
   /** 监控到有货后是否暂停监控；关闭时持续有货会每轮重复提醒。 */
