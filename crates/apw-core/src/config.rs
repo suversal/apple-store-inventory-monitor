@@ -285,6 +285,8 @@ pub fn checkout_product_key(target: &Target) -> String {
 #[serde(rename_all = "camelCase", default)]
 pub struct CheckoutSettings {
     pub enabled: bool,
+    /// 独立于自动结账开关的下单浏览器定时刷新。
+    pub browser_refresh: BrowserRefreshSettings,
     /// 取货人证件号码后四位。Apple 每次结账都要求重新填写，不会预填。
     pub national_id_suffix: String,
     pub payment: CheckoutPayment,
@@ -313,6 +315,7 @@ impl Default for CheckoutSettings {
     fn default() -> Self {
         Self {
             enabled: false,
+            browser_refresh: BrowserRefreshSettings::default(),
             national_id_suffix: String::new(),
             payment: CheckoutPayment::Alipay,
             installment_bank: "招商银行".into(),
@@ -331,6 +334,7 @@ impl Default for CheckoutSettings {
 
 impl CheckoutSettings {
     fn normalize(&mut self) {
+        self.browser_refresh.normalize();
         // 身份证末位可能是 X；港澳台通行证与护照号也只含字母数字。
         self.national_id_suffix = self
             .national_id_suffix
@@ -366,6 +370,65 @@ impl CheckoutSettings {
     pub fn has_national_id_suffix(&self) -> bool {
         self.national_id_suffix.chars().count() == 4
     }
+}
+
+/// 下单浏览器只定时刷新购物袋，不导航或刷新登录、结账与付款页面。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BrowserRefreshSettings {
+    pub enabled: bool,
+    pub interval_seconds: u64,
+    /// 留空刷新当前购物袋；非空时每轮导航到固定的 Apple 购物袋网址。
+    pub url: String,
+}
+
+impl Default for BrowserRefreshSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_seconds: 300,
+            url: String::new(),
+        }
+    }
+}
+
+impl BrowserRefreshSettings {
+    fn normalize(&mut self) {
+        self.interval_seconds = self.interval_seconds.clamp(60, 86_400);
+        self.url = self.url.trim().to_string();
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.url.is_empty() || is_apple_bag_url(&self.url) {
+            Ok(())
+        } else {
+            Err("定时刷新网址必须是 HTTPS Apple 购物袋地址（例如 https://www.apple.com.cn/shop/bag），不能包含参数或账号信息".into())
+        }
+    }
+}
+
+/// 仅接受 Apple 正式购物袋页面，防止定时任务中断结账或重放带参数的操作。
+pub fn is_apple_bag_url(value: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(value) else {
+        return false;
+    };
+    let path = url.path().trim_end_matches('/');
+    let valid_path = path == "/shop/bag"
+        || path.strip_suffix("/shop/bag").is_some_and(|prefix| {
+            let region = prefix.strip_prefix('/').unwrap_or_default();
+            !region.is_empty()
+                && region
+                    .bytes()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
+        });
+    url.scheme() == "https"
+        && matches!(url.host_str(), Some("www.apple.com" | "www.apple.com.cn"))
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.port().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none()
+        && valid_path
 }
 
 /// 持久化的用户设置。

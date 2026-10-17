@@ -20,6 +20,7 @@ import type {
   CategoryOption,
   ClashRouteCheck,
   ClashSettings,
+  CheckoutSettings,
   DeliveryLocalities,
   Product,
   Region,
@@ -104,6 +105,7 @@ const DEFAULT_SETTINGS: Settings = {
   },
   checkout: {
     enabled: false,
+    browserRefresh: { enabled: false, intervalSeconds: 300, url: "" },
     nationalIdSuffix: "",
     payment: "alipay",
     installmentBank: "招商银行",
@@ -362,18 +364,26 @@ function enqueueSettingsWrite<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 export function saveSettings(patch: Partial<Settings>): Promise<boolean> {
-  return enqueueSettingsWrite(async () => {
-    try {
-      const saved = await invoke<Settings>("save_settings", {
-        settings: { ...state.settings, ...patch },
-      });
-      update({ settings: saved });
-      return true;
-    } catch (err) {
-      pushLog(`保存设置失败：${String(err)}`);
-      return false;
-    }
-  });
+  return enqueueSettingsWrite(() => persistSettings({ ...state.settings, ...patch }));
+}
+
+/** Merge nested checkout edits when the queued write runs, not from a stale render. */
+export function saveCheckoutSettings(patch: Partial<CheckoutSettings>): Promise<boolean> {
+  return enqueueSettingsWrite(() => persistSettings({
+    ...state.settings,
+    checkout: { ...state.settings.checkout, ...patch },
+  }));
+}
+
+async function persistSettings(settings: Settings): Promise<boolean> {
+  try {
+    const saved = await invoke<Settings>("save_settings", { settings });
+    update({ settings: saved });
+    return true;
+  } catch (err) {
+    pushLog(`保存设置失败：${String(err)}`);
+    return false;
+  }
 }
 
 export function setCategory(category: Category): void {

@@ -33,6 +33,7 @@ const defaults = {
   },
   checkout: {
     enabled: false, nationalIdSuffix: "", payment: "alipay",
+    browserRefresh: { enabled: false, intervalSeconds: 300, url: "" },
     installmentBank: "招商银行", installmentPeriods: 24, placeOrder: false, acceptNearestStore: false, product: "",
     fillContact: false, contactLastName: "", contactFirstName: "", contactEmail: "", contactPhone: "",
   },
@@ -66,6 +67,19 @@ async function setup() {
   };
 }
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+test("browser refresh and concurrent checkout edits preserve one another", async () => {
+  const ctx = await setup();
+  ctx.block();
+  const first = ctx.store.saveCheckoutSettings({ browserRefresh: { enabled: true, intervalSeconds: 600, url: "https://www.apple.com.cn/shop/bag" } });
+  await tick();
+  const second = ctx.store.saveCheckoutSettings({ payment: "wechat" });
+  ctx.release();
+  await Promise.all([first, second]);
+  assert.deepEqual(ctx.persisted().checkout.browserRefresh, { enabled: true, intervalSeconds: 600, url: "https://www.apple.com.cn/shop/bag" });
+  assert.equal(ctx.persisted().checkout.payment, "wechat");
+  assert.equal(ctx.persisted().checkout.enabled, false);
+});
 
 test("送货地区固定读取中国大陆官网且不跟随当前监控地区", async () => {
   let received;

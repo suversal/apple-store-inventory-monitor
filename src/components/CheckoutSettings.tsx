@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { AppWindow, LoaderCircle, PlayCircle, ShoppingCart } from "lucide-react";
 import { CollapsiblePanel } from "@/components/CollapsiblePanel";
+import { BrowserRefreshSettings } from "@/components/BrowserRefreshSettings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { openCheckoutBrowser, saveSettings, testCheckout } from "@/lib/store";
+import { openCheckoutBrowser, saveCheckoutSettings, testCheckout } from "@/lib/store";
 import { INSTALLMENT_PERIODS, type CheckoutPayment, type CheckoutSettings as Checkout, type Target } from "@/lib/types";
 
 const PAYMENT_LABELS: Record<CheckoutPayment, string> = {
@@ -87,7 +88,7 @@ export function CheckoutSettings({ checkout, targets }: { checkout: Checkout; ta
     ? INSTALLMENT_BANKS
     : [...INSTALLMENT_BANKS, checkout.installmentBank];
 
-  const save = (patch: Partial<Checkout>) => void saveSettings({ checkout: { ...checkout, ...patch } });
+  const save = (patch: Partial<Checkout>) => void saveCheckoutSettings(patch);
   const contact = (key: ContactKey) => (value: string) => save({ [key]: value });
   const suffixReady = checkout.nationalIdSuffix.length === 4;
   const run = async (kind: "open" | "test", action: () => Promise<void>) => {
@@ -302,6 +303,7 @@ export function CheckoutSettings({ checkout, targets }: { checkout: Checkout; ta
         <p className="text-[11px] leading-4 break-words text-muted-foreground">
           首次使用先打开下单浏览器，登录 Apple 账户、加入商品并手动走一次结账。试跑用「要下单的商品」和它第一条监控项的门店，不会提交订单。
         </p>
+        <BrowserRefreshSettings settings={checkout.browserRefresh} />
       </div>
     </CollapsiblePanel>
   );

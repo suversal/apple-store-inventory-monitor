@@ -22,6 +22,7 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_updater::UpdaterExt;
 
+mod browser_refresh;
 mod browser_support;
 mod checkout;
 mod chromium_fetcher;
@@ -262,6 +263,7 @@ struct AppState {
     watcher: Watcher,
     fetcher: AppleChromiumFetcher,
     checkout: CheckoutRunner,
+    browser_refresh: tokio::sync::watch::Sender<apw_core::config::BrowserRefreshSettings>,
     catalog: Catalog,
     http: reqwest::Client,
     /// 设置的内存副本。有可用的持久化存储时，只在新设置成功落盘后更新。
@@ -286,6 +288,10 @@ impl AppState {
         }
 
         let mut guard = self.settings.write().unwrap_or_else(|e| e.into_inner());
+        if guard.checkout.browser_refresh != next.checkout.browser_refresh {
+            self.browser_refresh
+                .send_replace(next.checkout.browser_refresh.clone());
+        }
         *guard = next;
         Ok(())
     }
@@ -653,6 +659,7 @@ async fn save_settings(
 ) -> Result<Settings, String> {
     let mut next = settings;
     next.normalize();
+    next.checkout.browser_refresh.validate()?;
     state.catalog.hydrate_watch_targets(&mut next.targets);
     state.catalog.hydrate_store_targets(&mut next.targets);
     state.catalog.attach_pickup_locations(&mut next.targets);
@@ -1484,10 +1491,19 @@ pub fn run() {
                 });
             }
 
+            let checkout = CheckoutRunner::new();
+            let (browser_refresh, refresh_settings) =
+                tokio::sync::watch::channel(settings.checkout.browser_refresh.clone());
+            tauri::async_runtime::spawn(browser_refresh::run(
+                refresh_settings,
+                checkout.clone(),
+                app.handle().clone(),
+            ));
             app.manage(AppState {
                 watcher,
                 fetcher,
-                checkout: CheckoutRunner::new(),
+                checkout,
+                browser_refresh,
                 catalog,
                 http: reqwest::Client::new(),
                 settings: RwLock::new(settings),
@@ -1571,6 +1587,7 @@ async fn release_browsers(app: &AppHandle) {
         return;
     };
     state.watcher.stop().await;
+    state.browser_refresh.send_replace(Default::default());
     state.fetcher.shutdown().await;
     state.checkout.shutdown().await;
 }

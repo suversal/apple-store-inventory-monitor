@@ -12,10 +12,11 @@
 
 use std::fmt;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use apw_core::catalog::Catalog;
-use apw_core::config::{CheckoutPayment, Settings, checkout_product_key};
+use apw_core::config::{BrowserRefreshSettings, CheckoutPayment, Settings, checkout_product_key};
 use apw_core::model::Target;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -1214,6 +1215,15 @@ impl Flow<'_> {
 #[derive(Clone, Default)]
 pub struct CheckoutRunner {
     session: Arc<Mutex<Option<ChromiumSession>>>,
+    active_checkout: Arc<AtomicBool>,
+}
+
+struct CheckoutActivity<'a>(&'a AtomicBool);
+
+impl Drop for CheckoutActivity<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
 }
 
 impl CheckoutRunner {
@@ -1264,12 +1274,20 @@ impl CheckoutRunner {
         plan: &CheckoutPlan,
         progress: &(dyn Fn(String) + Send + Sync),
     ) -> Result<CheckoutOutcome, CheckoutError> {
-        let Ok(mut slot) = self.session.try_lock() else {
+        if self
+            .active_checkout
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
             return Err(CheckoutError::new(
                 Stage::Browser,
                 "已有一次结账正在进行，本次到货没有重复触发",
             ));
-        };
+        }
+        let _activity = CheckoutActivity(&self.active_checkout);
+        // A short refresh must never make a stock hit look like a duplicate
+        // checkout. Reserve the checkout first, then wait for its session lock.
+        let mut slot = self.session.lock().await;
         let session = Self::ensure(&mut slot).await?;
         // 把窗口带到前台：流程停下时用户需要立刻看到页面。
         let _ = session.command("Page.bringToFront", json!({})).await;
@@ -1286,7 +1304,37 @@ impl CheckoutRunner {
 
     /// 是否有一次结账正在进行。
     pub fn is_busy(&self) -> bool {
-        self.session.try_lock().is_err()
+        self.active_checkout.load(Ordering::Acquire)
+    }
+
+    /// Only use the existing managed tab; never launch/reconnect a closed browser
+    /// or borrow a user's ordinary Chrome profile for a background refresh.
+    pub async fn refresh_browser(
+        &self,
+        settings: &BrowserRefreshSettings,
+    ) -> Result<String, String> {
+        settings.validate()?;
+        if self.is_busy() {
+            return Ok("已跳过：自动结账正在进行".into());
+        }
+        let Ok(mut slot) = self.session.try_lock() else {
+            return Ok("已跳过：下单浏览器正在使用".into());
+        };
+        let Some(session) = slot.as_mut() else {
+            return Ok("已跳过：请先手动打开下单浏览器".into());
+        };
+        let script = format!(
+            "({})({})",
+            include_str!("checkout_browser_refresh.js"),
+            js_string(&settings.url)
+        );
+        let result = session.evaluate(&script, false).await.map_err(|_| {
+            "浏览器连接已断开或页面正在跳转，请检查下单浏览器；不会自动重新打开窗口".to_string()
+        })?;
+        result
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| "浏览器未返回定时刷新结果".into())
     }
 
     pub async fn shutdown(&self) {
@@ -1297,6 +1345,44 @@ impl CheckoutRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn browser_refresh_never_starts_a_browser_or_blocks_a_checkout_hit() {
+        let runner = CheckoutRunner::new();
+        let settings = BrowserRefreshSettings::default();
+        assert!(
+            runner
+                .refresh_browser(&settings)
+                .await
+                .unwrap()
+                .contains("请先手动打开")
+        );
+        assert!(runner.session.lock().await.is_none());
+        let slot = runner.session.lock().await;
+        assert!(
+            !runner.is_busy(),
+            "a refresh/session lock must not suppress checkout hits"
+        );
+        assert!(
+            runner
+                .refresh_browser(&settings)
+                .await
+                .unwrap()
+                .contains("正在使用")
+        );
+        drop(slot);
+        runner.active_checkout.store(true, Ordering::Release);
+        assert!(
+            runner
+                .refresh_browser(&settings)
+                .await
+                .unwrap()
+                .contains("自动结账正在进行")
+        );
+        let activity = CheckoutActivity(&runner.active_checkout);
+        drop(activity);
+        assert!(!runner.is_busy());
+    }
 
     #[test]
     fn 结账地区按目标门店编号从目录读取() {

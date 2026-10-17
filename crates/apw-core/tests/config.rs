@@ -113,6 +113,7 @@ fn 样例设置() -> Settings {
         },
         checkout: CheckoutSettings {
             enabled: true,
+            browser_refresh: Default::default(),
             national_id_suffix: "123X".into(),
             payment: CheckoutPayment::Installment,
             installment_bank: "招商银行".into(),

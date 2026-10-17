@@ -148,9 +148,17 @@ export type CheckoutPayment = "alipay" | "wechat" | "installment";
 /** Apple 结账页提供的分期期数。 */
 export const INSTALLMENT_PERIODS = [1, 3, 6, 12, 24] as const;
 
+export interface BrowserRefreshSettings {
+  enabled: boolean;
+  intervalSeconds: number;
+  /** 留空刷新当前购物袋；固定网址仅接受 Apple HTTPS 购物袋页面。 */
+  url: string;
+}
+
 /** 到货后自动结账的设置。目前只支持中国大陆的直营店取货。 */
 export interface CheckoutSettings {
   enabled: boolean;
+  browserRefresh: BrowserRefreshSettings;
   /** 取货人证件号码后四位；Apple 每次结账都要求重新填写。 */
   nationalIdSuffix: string;
   payment: CheckoutPayment;
