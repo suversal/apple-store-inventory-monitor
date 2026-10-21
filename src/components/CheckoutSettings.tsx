@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AppWindow, LoaderCircle, PlayCircle, ShoppingCart } from "lucide-react";
+import { HkCheckoutPayment } from "@/components/HkCheckoutPayment";
 import { CollapsiblePanel } from "@/components/CollapsiblePanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,11 +61,11 @@ function productKey(target: Target): string {
   return [target.partNumber, target.companionPart ?? "", target.kitPart ?? ""].join("|");
 }
 
-/** 监控列表里可以自动结账的不同商品（目前只支持中国大陆）。 */
-function monitoredProducts(targets: Target[]): { key: string; name: string }[] {
+/** 监控列表里可以自动结账的不同商品（按所选结账地区筛选）。 */
+function monitoredProducts(targets: Target[], locale: string): { key: string; name: string }[] {
   const products = new Map<string, string>();
   for (const target of targets) {
-    if (target.locale !== "zh_CN") continue;
+    if (target.locale !== locale) continue;
     const key = productKey(target);
     if (!products.has(key)) {
       products.set(key, target.companionName ? `${target.productName} · ${target.companionName}` : target.productName);
@@ -114,7 +115,9 @@ function CheckoutLogin() {
 }
 
 export function CheckoutSettings({ checkout, targets }: { checkout: Checkout; targets: Target[] }) {
-  const products = monitoredProducts(targets);
+  const hk = checkout.locale === "zh_HK";
+  const [hkPaymentReady, setHkPaymentReady] = useState(false);
+  const products = monitoredProducts(targets, checkout.locale);
   // 只监控一件时就是它；监控多件时以设置里选的为准，选的那件已不在列表里则视为没选。
   const chosen = products.length === 1
     ? products[0]!.key
@@ -131,7 +134,8 @@ export function CheckoutSettings({ checkout, targets }: { checkout: Checkout; ta
 
   const save = (patch: Partial<Checkout>) => void saveSettings({ checkout: { ...checkout, ...patch } });
   const contact = (key: ContactKey) => (value: string) => save({ [key]: value });
-  const suffixReady = checkout.nationalIdSuffix.length === 4;
+  const suffixReady = hk || checkout.nationalIdSuffix.length === 4;
+  const paymentReady = !hk || hkPaymentReady;
   const run = async (kind: "open" | "test", action: () => Promise<void>) => {
     setBusy(kind);
     await action();
@@ -143,17 +147,36 @@ export function CheckoutSettings({ checkout, targets }: { checkout: Checkout; ta
       id="checkout"
       icon={<ShoppingCart className="size-4" />}
       title="自动结账"
-      subtitle="到货后自动走完结账页面，仅支持中国大陆直营店取货"
+      subtitle="到货后自动走完结账页面，支持中国大陆和中国香港直营店取货"
       summary={summarize(checkout)}
     >
       <div className="grid min-w-0 gap-3">
-        <CheckoutLogin />
+        <div className="field-group">
+          <Label htmlFor="checkout-locale" className="control-label">结账地区</Label>
+          <Select value={checkout.locale} onValueChange={(locale) => save({ locale, enabled: false, placeOrder: false, product: "", contactPhone: "" })}>
+            <SelectTrigger id="checkout-locale" className="control-surface w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="zh_CN">中国大陆</SelectItem>
+              <SelectItem value="zh_HK">中国香港</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] leading-4 text-muted-foreground">仅为所选地区结账。切换地区后需重新开启自动结账和自动提交，并确认联系人及付款资料。</p>
+        </div>
+        {hk ? <>
+          <p className="text-[11px] leading-4 text-muted-foreground">香港默认手动登录：点击「打开下单浏览器」完成登录和验证，会话保存在香港专属浏览器资料目录。登录失效时保留页面，完成登录并停在取货方式页后，后续到货自动继续。</p>
+          <div className="setting-row">
+            <Label htmlFor="checkout-hk-sign-in" className="text-sm font-normal">结账时自动重新登录（可选）</Label>
+            <Switch id="checkout-hk-sign-in" checked={checkout.hkAutoSignIn} onCheckedChange={(hkAutoSignIn) => save({ hkAutoSignIn })} />
+          </div>
+          {checkout.hkAutoSignIn ? <CheckoutLogin /> : null}
+          <HkCheckoutPayment onReady={setHkPaymentReady} />
+        </> : <CheckoutLogin />}
         <div className="setting-row">
           <Label htmlFor="checkout-enabled" className="text-sm font-normal">到货后自动结账</Label>
           <Switch
             id="checkout-enabled"
             checked={checkout.enabled}
-            disabled={(!suffixReady || !targetReady) && !checkout.enabled}
+            disabled={(!suffixReady || !targetReady || !paymentReady) && !checkout.enabled}
             onCheckedChange={(enabled) => save({ enabled })}
           />
         </div>
@@ -184,7 +207,7 @@ export function CheckoutSettings({ checkout, targets }: { checkout: Checkout; ta
         </div>
         <p className="text-[11px] leading-4 break-words text-muted-foreground">
           {checkout.autoAddToBag
-            ? "监控列表中的中国大陆型号都可触发，同一时间只处理一件。已有本次型号 1 件时沿用；其他商品或数量不符会结束本轮并清空专属购物袋，下次有货重新加购。请勿在此购物袋保存其他商品，暂不支持需另选表带等组合配置。"
+            ? "监控列表中所选地区的型号都可触发，同一时间只处理一件。已有本次型号 1 件时沿用；其他商品或数量不符会结束本轮并清空专属购物袋，下次有货重新加购。请勿在此购物袋保存其他商品，暂不支持需另选表带等组合配置。"
             : "关闭时使用事先准备的购物袋，只对下面选定的商品结账。"}
         </p>
         {!checkout.autoAddToBag ? <div className="field-group">
@@ -202,7 +225,7 @@ export function CheckoutSettings({ checkout, targets }: { checkout: Checkout; ta
             </Select>
           ) : (
             <p id="checkout-product" className="text-sm break-words">
-              {products[0]?.name ?? "监控列表里还没有中国大陆的商品"}
+              {products[0]?.name ?? "监控列表里还没有所选地区的商品"}
             </p>
           )}
           {products.length > 1 && !chosen ? (
@@ -216,7 +239,7 @@ export function CheckoutSettings({ checkout, targets }: { checkout: Checkout; ta
           )}
         </div> : null}
 
-        <div className="field-group">
+        {!hk ? <div className="field-group">
           <Label htmlFor="checkout-id-suffix" className="control-label">取货人证件号码后四位</Label>
           <Input
             id="checkout-id-suffix"
@@ -233,7 +256,7 @@ export function CheckoutSettings({ checkout, targets }: { checkout: Checkout; ta
           <p className="text-[11px] leading-4 break-words text-muted-foreground">
             Apple 每次结账都要求填写，且必须与取货时出示的证件一致。只保存在本机的设置文件里。
           </p>
-        </div>
+        </div> : null}
 
         <div className="setting-row">
           <Label htmlFor="checkout-fill-contact" className="text-sm font-normal">按下面的信息填写取货联系人</Label>
@@ -256,12 +279,12 @@ export function CheckoutSettings({ checkout, targets }: { checkout: Checkout; ta
               <ContactField id="checkout-email" label="电子邮件地址" type="email" saved={checkout.contactEmail} onSave={contact("contactEmail")} />
             </div>
             <div className="col-span-2">
-              <ContactField id="checkout-phone" label="手机号码（不带 +86）" inputMode="numeric" saved={checkout.contactPhone} onSave={contact("contactPhone")} />
+              <ContactField id="checkout-phone" label={hk ? "香港手机号码（不带 +852）" : "手机号码（不带 +86）"} inputMode="numeric" saved={checkout.contactPhone} onSave={contact("contactPhone")} />
             </div>
           </div>
         ) : null}
 
-        <div className="field-group">
+        {!hk ? <div className="field-group">
           <Label htmlFor="checkout-payment" className="control-label">付款方式</Label>
           <Select value={checkout.payment} onValueChange={(payment) => save({ payment: payment as CheckoutPayment })}>
             <SelectTrigger id="checkout-payment" className="control-surface w-full" aria-label="付款方式">
@@ -273,9 +296,9 @@ export function CheckoutSettings({ checkout, targets }: { checkout: Checkout; ta
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </div> : null}
 
-        {checkout.payment === "installment" ? (
+        {!hk && checkout.payment === "installment" ? (
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] gap-2">
             <div className="field-group">
               <Label htmlFor="checkout-bank" className="control-label">分期方案</Label>
@@ -342,9 +365,13 @@ export function CheckoutSettings({ checkout, targets }: { checkout: Checkout; ta
           />
         </div>
         <p className="text-[11px] leading-4 break-words text-muted-foreground">
-          {checkout.placeOrder
-            ? "会生成真实订单，下单后取货信息无法更改。付款仍需你在 30 分钟内自己完成。"
-            : "关闭时停在「查看订单」页，由你自己点「立即下单」并付款。"}
+          {hk
+            ? checkout.placeOrder
+              ? "会提交真实香港订单，并可能触发信用卡授权或扣款；银行验证码及验证页面需手动处理。提交结果不明时关闭自动结账，不会重试提交。"
+              : "停在「查看订单」页，由你核对并手动提交。提交香港信用卡订单可能触发授权或扣款。"
+            : checkout.placeOrder
+              ? "会生成真实订单，下单后取货信息无法更改。付款仍需你在 30 分钟内自己完成。"
+              : "关闭时停在「查看订单」页，由你自己点「立即下单」并付款。"}
         </p>
 
         <div className="grid min-w-0 grid-cols-2 gap-2">
@@ -362,7 +389,7 @@ export function CheckoutSettings({ checkout, targets }: { checkout: Checkout; ta
             type="button"
             variant="outline"
             className="h-10 rounded-xl border-border/70 bg-background/30"
-            disabled={busy !== null || !suffixReady || !targetReady}
+            disabled={busy !== null || !suffixReady || !targetReady || !paymentReady}
             onClick={() => void run("test", testCheckout)}
           >
             {busy === "test" ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <PlayCircle aria-hidden="true" />}
@@ -371,7 +398,7 @@ export function CheckoutSettings({ checkout, targets }: { checkout: Checkout; ta
         </div>
         <p className="text-[11px] leading-4 break-words text-muted-foreground">
           {checkout.autoAddToBag
-            ? "先在下单浏览器中登录并留空购物袋。试跑会加购监控列表中的第一件中国大陆商品，停在查看订单页，不会提交订单；试跑失败保留页面供检查。"
+            ? "先在下单浏览器中登录并留空购物袋。试跑会加购监控列表中所选地区的第一件商品，停在查看订单页，不会提交订单；试跑失败保留页面供检查。"
             : "首次使用先打开下单浏览器，登录 Apple 账户、加入商品并手动走一次结账。试跑用「要下单的商品」和它第一条监控项的门店，不会提交订单。"}
         </p>
       </div>

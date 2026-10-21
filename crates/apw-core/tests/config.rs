@@ -120,6 +120,8 @@ fn 样例设置() -> Settings {
             },
         },
         checkout: CheckoutSettings {
+            locale: "zh_CN".into(),
+            hk_auto_sign_in: false,
             enabled: true,
             disable_after_success: false,
             auto_add_to_bag: false,
@@ -925,5 +927,35 @@ fn 其他地区的监控项不会触发自动结账() {
     settings.checkout.enabled = true;
     settings.normalize();
     assert_eq!(settings.checkout_product(), None);
+    assert!(!settings.checkout.enabled);
+}
+
+#[test]
+fn 香港自动结账须明确选择地区且默认手动登录() {
+    let mut hk = 目标("R409", "MG724ZA/A");
+    hk.locale = "zh_HK".into();
+    let mut settings = Settings {
+        targets: vec![目标("R683", "MG724CH/A"), hk],
+        ..Default::default()
+    };
+    assert_eq!(settings.checkout.locale, "zh_CN");
+    assert!(!settings.checkout.hk_auto_sign_in);
+    settings.checkout.locale = "zh_HK".into();
+    settings.checkout.enabled = true;
+    settings.checkout.auto_add_to_bag = true;
+    settings.checkout.contact_phone = "+852 9123-4567".into();
+    settings.normalize();
+    assert!(settings.checkout.enabled);
+    assert!(!settings.is_checkout_target(&settings.targets[0]));
+    assert!(settings.is_checkout_target(&settings.targets[1]));
+    assert!(
+        settings.checkout.contact_ready(),
+        "香港不要求大陆证件后四位"
+    );
+    assert_eq!(settings.checkout.contact_phone, "91234567");
+    settings.checkout.auto_add_to_bag = false;
+    assert_eq!(settings.checkout_product().as_deref(), Some("MG724ZA/A||"));
+    settings.checkout.locale = "ja_JP".into();
+    settings.normalize();
     assert!(!settings.checkout.enabled);
 }

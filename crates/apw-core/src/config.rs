@@ -263,7 +263,7 @@ pub enum CheckoutPayment {
 /// Apple 结账页提供的分期期数。
 pub const INSTALLMENT_PERIODS: [u8; 5] = [1, 3, 6, 12, 24];
 
-/// 自动结账目前只支持中国大陆的结账页，其他地区的页面结构没有验证过。
+/// 旧配置默认使用中国大陆结账页。
 pub const CHECKOUT_LOCALE: &str = "zh_CN";
 
 /// 自动结账用来区分「是不是同一件商品」的标识。
@@ -279,16 +279,20 @@ pub fn checkout_product_key(target: &Target) -> String {
     )
 }
 
-/// 到货后自动结账的设置。目前只支持中国大陆的直营店取货。
+/// 到货后自动结账的设置，支持中国大陆和中国香港直营店取货。
 ///
 /// 默认整体关闭；即使开启，也默认停在「查看订单」页由用户自己点「立即下单」。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct CheckoutSettings {
+    /// 一次只为一个地区结账，避免混用联系人和付款资料。
+    pub locale: String,
+    /// 香港默认手动登录，明确开启后才使用本机保存的账号密码重新登录。
+    pub hk_auto_sign_in: bool,
     pub enabled: bool,
     /// 成功后是否关闭自动结账。旧配置保持原来的单次行为。
     pub disable_after_success: bool,
-    /// 按本次到货的型号自动加购；开启后，所有中国大陆监控型号均可触发。
+    /// 按本次到货的型号自动加购；开启后，所选地区的监控型号均可触发。
     /// 旧配置保持关闭，继续使用预先准备的购物袋和指定商品。
     pub auto_add_to_bag: bool,
     /// 取货人证件号码后四位。Apple 每次结账都要求重新填写，不会预填。
@@ -311,13 +315,15 @@ pub struct CheckoutSettings {
     pub contact_last_name: String,
     pub contact_first_name: String,
     pub contact_email: String,
-    /// 中国大陆手机号，不带 +86。
+    /// 所选地区的手机号码，不带 +86 或 +852。
     pub contact_phone: String,
 }
 
 impl Default for CheckoutSettings {
     fn default() -> Self {
         Self {
+            locale: CHECKOUT_LOCALE.into(),
+            hk_auto_sign_in: false,
             enabled: false,
             disable_after_success: true,
             auto_add_to_bag: false,
@@ -351,14 +357,19 @@ impl CheckoutSettings {
         self.contact_last_name = self.contact_last_name.trim().to_string();
         self.contact_first_name = self.contact_first_name.trim().to_string();
         self.contact_email = self.contact_email.trim().to_string();
-        // 结账页的区号是固定的 +86，输入框里只要号码本身。
+        // 两个地区的结账页已经显示区号，输入框只要号码本身。
         let digits: String = self
             .contact_phone
             .chars()
             .filter(char::is_ascii_digit)
             .collect();
-        self.contact_phone = match digits.strip_prefix("86") {
-            Some(rest) if rest.len() == 11 => rest.to_string(),
+        let (prefix, length) = if self.locale == "zh_HK" {
+            ("852", 8)
+        } else {
+            ("86", 11)
+        };
+        self.contact_phone = match digits.strip_prefix(prefix) {
+            Some(rest) if rest.len() == length => rest.to_string(),
             _ => digits,
         };
         if !INSTALLMENT_PERIODS.contains(&self.installment_periods) {
@@ -373,6 +384,14 @@ impl CheckoutSettings {
     /// 证件后四位是否已填完整。没填完时自动结账必然卡在取货信息页。
     pub fn has_national_id_suffix(&self) -> bool {
         self.national_id_suffix.chars().count() == 4
+    }
+
+    pub fn supports_locale(&self, locale: &str) -> bool {
+        matches!(locale, "zh_CN" | "zh_HK") && self.locale == locale
+    }
+
+    pub fn contact_ready(&self) -> bool {
+        self.locale == "zh_HK" || self.has_national_id_suffix()
     }
 }
 
@@ -554,7 +573,7 @@ impl Settings {
     fn checkout_candidates(&self) -> Vec<String> {
         let mut keys: Vec<String> = Vec::new();
         for target in &self.targets {
-            if target.locale != CHECKOUT_LOCALE {
+            if !self.checkout.supports_locale(&target.locale) {
                 continue;
             }
             let key = checkout_product_key(target);
@@ -579,7 +598,7 @@ impl Settings {
 
     /// 这条监控项到货时是否应当触发自动结账。
     pub fn is_checkout_target(&self, target: &Target) -> bool {
-        target.locale == CHECKOUT_LOCALE
+        self.checkout.supports_locale(&target.locale)
             && (self.checkout.auto_add_to_bag
                 || self.checkout_product().as_deref()
                     == Some(checkout_product_key(target).as_str()))

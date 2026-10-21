@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 const source = fs.readFileSync(new URL('../src-tauri/src/checkout_sign_in.js', import.meta.url), 'utf8');
-function fixture({ origin = 'https://idmsa.apple.com.cn', accountValue = 'test@example.test', passwordVisible = true, verification = false, error = false } = {}) {
+function fixture({ origin = 'https://idmsa.apple.com.cn', accountValue = 'test@example.test', passwordVisible = true, verification = false, error = false, locale = 'zh_CN' } = {}) {
   let clicks = 0;
   class Input { set value(v) { this.saved = v; } get value() { return this.saved ?? ''; } dispatchEvent() {} getClientRects() { return [1]; } }
   const account = new Input(); account.value = accountValue;
@@ -16,7 +16,7 @@ function fixture({ origin = 'https://idmsa.apple.com.cn', accountValue = 'test@e
   };
   const run = action => vm.runInNewContext(`(${source})(expected, action)`, {
     document, location: { origin }, HTMLInputElement: Input, Event: class {},
-    expected: { account: 'test@example.test', password: 'synthetic-test-secret' }, action,
+    expected: { account: 'test@example.test', password: 'synthetic-test-secret', locale }, action,
   });
   return { run, account, password, clicks: () => clicks };
 }
@@ -46,6 +46,21 @@ test('其他域名、账号不一致、验证和密码错误都不能填写或�
   ]) {
     const f = fixture(options);
     assert.equal(f.run('password'), expected);
+    assert.equal(f.password.value, '');
+    assert.equal(f.clicks(), 0);
+  }
+});
+
+
+test('香港重新登录只向明确所选地区的官方 iframe 填写密码', () => {
+  assert.equal(fixture({ origin: 'https://idmsa.apple.com', locale: 'zh_HK' }).run('password'), 'passwordSubmitted');
+  for (const [origin, locale] of [
+    ['https://idmsa.apple.com.cn', 'zh_HK'],
+    ['https://idmsa.apple.com', 'zh_CN'],
+    ['https://idmsa.apple.com.example.test', 'zh_HK'],
+  ]) {
+    const f = fixture({ origin, locale });
+    assert.equal(f.run('password'), 'untrusted');
     assert.equal(f.password.value, '');
     assert.equal(f.clicks(), 0);
   }

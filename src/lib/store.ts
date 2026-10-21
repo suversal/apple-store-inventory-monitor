@@ -109,6 +109,8 @@ const DEFAULT_SETTINGS: Settings = {
     },
   },
   checkout: {
+    locale: "zh_CN",
+    hkAutoSignIn: false,
     enabled: false,
     disableAfterSuccess: true,
     autoAddToBag: false,
@@ -590,6 +592,7 @@ export async function selectClashNode(node: string): Promise<boolean> {
 /** 打开下单浏览器，供用户登录、加购并手动走一次结账。 */
 export async function openCheckoutBrowser(): Promise<void> {
   try {
+    await settingsWrite;
     await invoke("open_checkout_browser");
     pushLog("已打开下单浏览器。请在里面登录 Apple 账户，把要买的商品加入购物袋，并手动走一次结账。");
   } catch (err) {

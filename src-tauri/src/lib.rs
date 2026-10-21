@@ -25,6 +25,7 @@ use tauri_plugin_updater::UpdaterExt;
 
 mod browser_support;
 mod checkout;
+mod checkout_hk;
 mod checkout_login;
 mod chromium_fetcher;
 mod clash;
@@ -698,6 +699,14 @@ async fn save_settings(
     settings: Settings,
 ) -> Result<Settings, String> {
     let mut next = settings;
+    if next.checkout.locale != state.settings_snapshot().checkout.locale {
+        if state.checkout.is_busy() {
+            return Err("结账正在进行，请结束后再切换结账地区".into());
+        }
+        next.checkout.enabled = false;
+        next.checkout.place_order = false;
+        next.checkout.product.clear();
+    }
     next.normalize();
     state.catalog.hydrate_watch_targets(&mut next.targets);
     state.catalog.hydrate_store_targets(&mut next.targets);
@@ -1108,7 +1117,25 @@ fn in_stock_notification_body(target: &Target) -> String {
 /// 打开下单浏览器，供用户登录 Apple 账户、加购并手动走一次结账。
 #[tauri::command]
 async fn open_checkout_browser(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    state.checkout.open().await.map_err(|e| e.to_string())
+    state
+        .checkout
+        .open(&state.settings_snapshot().checkout.locale)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 香港付款资料只留在当前进程内存，状态查询不返回卡号或安全码。
+#[tauri::command]
+async fn checkout_hk_payment_status(state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    Ok(state.checkout.has_hk_payment().await)
+}
+
+#[tauri::command]
+async fn set_checkout_hk_payment(
+    state: tauri::State<'_, AppState>,
+    payment: Option<checkout_hk::HkPayment>,
+) -> Result<(), String> {
+    state.checkout.set_hk_payment(payment).await
 }
 
 /// 试跑自动结账，走到「查看订单」页为止，无论设置如何都不提交订单。
@@ -1118,14 +1145,14 @@ async fn test_checkout(
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
     let settings = state.settings_snapshot();
-    if !settings.checkout.has_national_id_suffix() {
+    if !settings.checkout.contact_ready() {
         return Err("请先填写取货人证件号码后四位".into());
     }
     let target = settings
         .targets
         .iter()
         .find(|target| settings.is_checkout_target(target))
-        .ok_or("试跑需要先确定要下单的商品：监控列表里要有它的中国大陆监控项，有多件商品时请在自动结账里选一件")?;
+        .ok_or("试跑需要先确定要下单的商品：监控列表里要有它的所选地区监控项，有多件商品时请在自动结账里选一件")?;
     let plan = CheckoutPlan::new(target, &settings, &state.catalog, false);
     let progress = move |message: String| {
         let _ = app.emit(NOTICE_CHANNEL, message);
@@ -1154,7 +1181,7 @@ async fn run_checkout_on_hit(app: AppHandle, target: Target) {
     if !settings.checkout.enabled || !settings.is_checkout_target(&target) {
         return;
     }
-    if !settings.checkout.has_national_id_suffix() {
+    if !settings.checkout.contact_ready() {
         let _ = app.emit(
             NOTICE_CHANNEL,
             "自动结账未执行：还没有填写取货人证件号码后四位。",
@@ -1234,10 +1261,19 @@ async fn run_checkout_on_hit(app: AppHandle, target: Target) {
                     order_number: Some(order),
                     total,
                 } => (
-                    "已提交订单，请尽快付款",
+                    if target.locale == "zh_HK" {
+                        "已提交订单，请确认付款结果"
+                    } else {
+                        "已提交订单，请尽快付款"
+                    },
                     format!(
-                        "{store} {}，总计 {total}，订单 {order}。请在下单浏览器里完成付款。",
-                        target.product_name
+                        "{store} {}，总计 {total}，订单 {order}。{}",
+                        target.product_name,
+                        if target.locale == "zh_HK" {
+                            "信用卡可能已获授权，请检查订单及银行验证结果。"
+                        } else {
+                            "请在下单浏览器里完成付款。"
+                        }
                     ),
                 ),
                 CheckoutOutcome::OrderSubmitted {
@@ -1762,6 +1798,8 @@ pub fn run() {
             test_notify,
             open_checkout_browser,
             test_checkout,
+            checkout_hk_payment_status,
+            set_checkout_hk_payment,
             checkout_login::checkout_login_status,
             checkout_login::save_checkout_login,
             checkout_login::clear_checkout_login,
