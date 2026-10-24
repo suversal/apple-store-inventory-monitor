@@ -1,4 +1,4 @@
-//! 到货后自动结账（中国大陆直营店取货）。
+//! 到货后自动结账（中国大陆和中国香港直营店取货）。
 //!
 //! 使用一个带窗口的专属 Chromium 会话。用户先登录，商品可预先放入购物袋，或
 //! 开启按到货型号自动加购；自动加购在提交前失败时先移除本次商品并确认空袋。
@@ -7,7 +7,7 @@
 //! 这个会话与库存查询的无头会话完全分开：资料目录不同，也不走线路轮换。登录
 //! 账户的会话频繁更换出口 IP 容易触发 Apple 的账户风控。
 //!
-//! 付款始终由用户完成。默认停在「查看订单」页；只有用户明确开启时才点
+//! 大陆付款由用户完成，香港信用卡提交可能触发支付授权。默认停在「查看订单」页；只有用户明确开启时才点
 //! 「立即下单」，并且只点一次，无论结果如何都不重试。
 
 use std::fmt;
@@ -23,6 +23,7 @@ use serde::de::DeserializeOwned;
 use serde_json::json;
 use tokio::sync::Mutex;
 
+use crate::checkout_hk::HkPayment;
 use crate::chromium_fetcher::{ChromiumSession, app_profile_dir};
 
 const PROFILE_DIR: &str = "checkout-profile-v1";
@@ -99,6 +100,8 @@ impl fmt::Display for CheckoutError {
 /// 一次自动结账要完成的内容。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckoutPlan {
+    pub locale: String,
+    pub auto_sign_in: bool,
     pub auto_add_to_bag: bool,
     pub part_number: String,
     pub product_url: Option<String>,
@@ -157,7 +160,14 @@ impl CheckoutPlan {
                 ("lastName", &settings.contact_last_name),
                 ("firstName", &settings.contact_first_name),
                 ("emailAddress", &settings.contact_email),
-                ("fullDaytimePhone", &settings.contact_phone),
+                (
+                    if target.locale == "zh_HK" {
+                        "mobilePhone"
+                    } else {
+                        "fullDaytimePhone"
+                    },
+                    &settings.contact_phone,
+                ),
             ]
             .into_iter()
             .filter(|(_, value)| !value.is_empty())
@@ -167,6 +177,8 @@ impl CheckoutPlan {
             Vec::new()
         };
         Self {
+            locale: target.locale.clone(),
+            auto_sign_in: target.locale == "zh_CN" || settings.hk_auto_sign_in,
             auto_add_to_bag: settings.auto_add_to_bag,
             part_number: target.part_number.clone(),
             product_url: if target.companion_part.is_none() && target.kit_part.is_none() {
@@ -190,11 +202,20 @@ impl CheckoutPlan {
     }
 }
 
+fn bag_url(locale: &str) -> &'static str {
+    if locale == "zh_HK" {
+        "https://www.apple.com/hk-zh/shop/bag"
+    } else {
+        BAG_URL
+    }
+}
+
 fn pickup_region_js(plan: &CheckoutPlan) -> String {
     format!(
         "JSON.stringify(({})({}))",
         include_str!("checkout_pickup_region.js"),
         json!({
+            "locale": plan.locale,
             "store": plan.store_number,
             "region": plan.pickup_region,
             "acceptNearest": plan.accept_nearest_store,
@@ -272,7 +293,16 @@ fn verify_items(items: &[LineItem], product_name: &str) -> Result<(), String> {
 /// 结账页的门店标签形如「2 Apple 静安 明天 可取货 店内取货」或「… 目前不可取货 …」。
 fn store_label_unavailable(label: &str) -> bool {
     let compact: String = label.chars().filter(|c| !c.is_whitespace()).collect();
-    compact.contains("不可取货") || compact.contains("无法取货") || compact.contains("暂无供应")
+    [
+        "不可取货",
+        "无法取货",
+        "暂无供应",
+        "不可取貨",
+        "無法使用",
+        "暫無供應",
+    ]
+    .iter()
+    .any(|text| compact.contains(text))
 }
 
 fn js_string(value: &str) -> String {
@@ -341,7 +371,7 @@ fn bag_action_js(plan: &CheckoutPlan, source: &str, action: &str, remove_id: &st
     format!(
         "JSON.stringify(({})({},{}))",
         source,
-        json!({"partNumber": plan.part_number, "productName": plan.product_name, "removeId": remove_id}),
+        json!({"locale": plan.locale, "partNumber": plan.part_number, "productName": plan.product_name, "removeId": remove_id}),
         js_string(action),
     )
 }
@@ -398,7 +428,7 @@ fn store_state_js(store_number: &str) -> String {
   const text = (e) => e && e.labels[0] ? e.labels[0].innerText.replace(/\s+/g, ' ').trim() : '';
   const title = (e) => {{ const t = e && e.labels[0] && e.labels[0].querySelector('.form-selector-title'); return t ? t.innerText.trim() : ''; }};
   const select = document.querySelector('select[data-autom="pickup-availablewindow-dropdown"]');
-  const next = document.querySelector('button[data-autom="fulfillment-continue-button"]');
+  const next = document.querySelector('button[data-autom="fulfillment-continue-button"]') || (location.pathname.startsWith('/hk-zh/') ? document.getElementById('rs-checkout-continue-button-bottom') : null);
   return JSON.stringify({{
     count: radios.length,
     found: !!radio,
@@ -429,7 +459,7 @@ struct ContactState {
 }
 
 const CONTACT_STATE_JS: &str = r#"(() => {
-  const field = (name) => document.querySelector('input[data-autom="form-field-' + name + '"]');
+  const field = (name) => document.querySelector('input[data-autom="form-field-' + name + '"]') || document.getElementById('checkout.pickupContact.selfPickupContact.selfContact.address.' + name);
   const labels = { lastName: '姓氏', firstName: '名字', emailAddress: '电子邮件地址', fullDaytimePhone: '手机号码' };
   const missing = Object.keys(labels).filter((name) => { const e = field(name); return !e || !e.value.trim(); }).map((name) => labels[name]);
   return JSON.stringify({ ready: !!field('lastName'), missing, needsId: !!field('nationalIdSelf') });
@@ -543,21 +573,28 @@ fn click_js(selector: &str) -> String {
     )
 }
 
-fn trusted_checkout_login_url(value: &str) -> bool {
+fn trusted_checkout_login_url(value: &str, locale: &str) -> bool {
     let Ok(url) = reqwest::Url::parse(value) else {
         return false;
     };
     let Some(host) = url.host_str() else {
         return false;
     };
+    let (suffix, path) = match locale {
+        "zh_CN" => (".www.apple.com.cn", "/shop/"),
+        "zh_HK" => (".store.apple.com", "/hk-zh/shop/"),
+        _ => return false,
+    };
     let secure_number = host
         .strip_prefix("secure")
-        .and_then(|s| s.strip_suffix(".www.apple.com.cn"));
+        .and_then(|s| s.strip_suffix(suffix));
     url.scheme() == "https"
         && url.port().is_none()
-        && secure_number.is_some_and(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
-        && (url.path() == "/shop/signIn"
-            || (url.path() == "/shop/checkout"
+        && secure_number.is_some_and(|s| {
+            (locale == "zh_HK" || !s.is_empty()) && s.bytes().all(|b| b.is_ascii_digit())
+        })
+        && (url.path() == format!("{path}signIn")
+            || (url.path() == format!("{path}checkout")
                 && url
                     .query_pairs()
                     .any(|(k, v)| k == "_s" && v.starts_with("SignIn"))))
@@ -572,6 +609,7 @@ struct Flow<'a> {
     store_title: String,
     /// 只在初始空袋准备加购，或袋中已恰好为本次型号时接管清理。
     owns_bag: bool,
+    hk_payment: Option<HkPayment>,
 }
 
 impl Flow<'_> {
@@ -636,9 +674,38 @@ impl Flow<'_> {
         selector: &str,
         name: &str,
     ) -> Result<(), CheckoutError> {
+        let selector = if self.plan.locale == "zh_HK"
+            && selector == r#"button[data-autom="checkout"]"# {
+            format!(
+                r#"{selector}, button[id="shoppingCart.actions.checkoutOtherPayments"], button[id="shoppingCart.actions.navCheckout"]"#
+            )
+        } else if self.plan.locale == "zh_HK"
+            && [
+                r#"button[data-autom="fulfillment-continue-button"]"#,
+                r#"button[data-autom="continue-button-label"]"#,
+                r#"button[data-autom="continue-button-review"]"#,
+                r#"button[data-autom="continue-button-placeOrder"]"#,
+            ]
+            .contains(&selector)
+        {
+            format!("{selector}, button#rs-checkout-continue-button-bottom")
+        } else {
+            selector.to_owned()
+        };
+        let script = if self.plan.locale == "zh_HK"
+            && selector == r#"button[data-autom="show-more-stores-button"]"# {
+            r#"(() => {
+  const e = document.querySelector('button[data-autom="show-more-stores-button"]') || [...document.querySelectorAll('button')].find(e => ['顯示所有取貨地點', '顯示更多取貨地點'].includes((e.innerText || '').replace(/\s+/g, '')));
+  if (!e || e.disabled) return false;
+  e.click();
+  return true;
+})()"#.to_owned()
+        } else {
+            click_js(&selector)
+        };
         let clicked = self
             .session
-            .evaluate(&click_js(selector), false)
+            .evaluate(&script, false)
             .await
             .map_err(|e| CheckoutError::new(stage, e.to_string()))?;
         if clicked.as_bool() == Some(true) {
@@ -710,6 +777,12 @@ impl Flow<'_> {
     }
 
     async fn sign_in(&mut self) -> Result<(), CheckoutError> {
+        if self.plan.locale == "zh_HK" {
+            return Err(CheckoutError::new(
+                Stage::SignIn,
+                "香港结账仅使用手动登录。请在当前下单浏览器完成 Apple 登录和验证，并停在取货方式页；后续到货将自动继续",
+            ));
+        }
         let fail = |message| CheckoutError::new(Stage::SignIn, message);
         let login = crate::checkout_login::load()
             .map_err(fail)?
@@ -797,7 +870,7 @@ impl Flow<'_> {
             .pointer("/frame/url")
             .and_then(|v| v.as_str())
             .unwrap_or("");
-        if !trusted_checkout_login_url(top) {
+        if !trusted_checkout_login_url(top, &self.plan.locale) {
             return Ok(None);
         }
         let frame = tree
@@ -809,7 +882,11 @@ impl Flow<'_> {
                 child
                     .pointer("/frame/securityOrigin")
                     .and_then(|v| v.as_str())
-                    == Some("https://idmsa.apple.com.cn")
+                    == Some(if self.plan.locale == "zh_HK" {
+                        "https://idmsa.apple.com"
+                    } else {
+                        "https://idmsa.apple.com.cn"
+                    })
             });
         let Some(frame_id) = frame
             .and_then(|f| f.pointer("/frame/id"))
@@ -838,7 +915,7 @@ impl Flow<'_> {
         let result = self.session.command("Runtime.callFunctionOn", json!({
             "executionContextId":context,
             "functionDeclaration":format!("function(expected, action) {{ return ({})(expected, action); }}", include_str!("checkout_sign_in.js")),
-            "arguments":[{"value":{"account":account,"password":password}},{"value":action}],
+            "arguments":[{"value":{"account":account,"password":password,"locale":self.plan.locale}},{"value":action}],
             "returnByValue":true,
         })).await.map_err(|_| CheckoutError::new(Stage::SignInLoading, "登录页面发生变化，将重新确认页面状态"))?;
         if result.get("exceptionDetails").is_some() {
@@ -906,7 +983,7 @@ impl Flow<'_> {
     }
 
     async fn read_bag(&mut self, stage: Stage) -> Result<Lines, CheckoutError> {
-        self.navigate(BAG_URL, stage).await?;
+        self.navigate(bag_url(&self.plan.locale), stage).await?;
         self.wait(
             stage,
             LINE_ITEMS_JS,
@@ -952,7 +1029,7 @@ impl Flow<'_> {
             .plan
             .product_url
             .as_deref()
-            .unwrap_or(BAG_URL)
+            .unwrap_or(bag_url(&self.plan.locale))
             .to_owned();
         self.navigate(&url, Stage::Bag).await?;
         let prepare = bag_action_js(
@@ -1008,7 +1085,7 @@ impl Flow<'_> {
             tokio::time::sleep(POLL_INTERVAL).await;
         }
         // Apple 会先跳转配件推荐页；等加购完成后直接进购物袋，跳过全部推荐配件。
-        let added: String = self.wait(Stage::Bag, r#"JSON.stringify(location.pathname === '/shop/bag' || new URLSearchParams(location.search).get('step') === 'attach' ? 'complete' : /Page Not Found/i.test(document.title) ? 'failed' : 'waiting')"#,
+        let added: String = self.wait(Stage::Bag, r#"JSON.stringify(['/shop/bag', '/hk-zh/shop/bag'].includes(location.pathname) || new URLSearchParams(location.search).get('step') === 'attach' ? 'complete' : /Page Not Found/i.test(document.title) ? 'failed' : 'waiting')"#,
             NAVIGATION_TIMEOUT, "加购完成", |state: &String| state != "waiting").await?;
         if added == "failed" {
             return Err(CheckoutError::new(Stage::Bag, "Apple 加购页面返回 404"));
@@ -1042,7 +1119,7 @@ impl Flow<'_> {
                     format!(
                         "JSON.stringify(({})({},{}))",
                         include_str!("checkout_remove_from_bag.js"),
-                        json!({"partNumber": item.part_number, "productName": item.name,
+                        json!({"locale": self.plan.locale, "partNumber": item.part_number, "productName": item.name,
                         "quantity": item.quantity, "removeId": item.remove_id}),
                         js_string(action),
                     )
@@ -1101,7 +1178,8 @@ impl Flow<'_> {
             self.prepare_bag().await?;
         }
         self.report("自动结账：打开购物袋");
-        self.navigate(BAG_URL, Stage::Bag).await?;
+        self.navigate(bag_url(&self.plan.locale), Stage::Bag)
+            .await?;
         let lines: Lines = self
             .wait(
                 Stage::Bag,
@@ -1134,7 +1212,7 @@ impl Flow<'_> {
 
         // 结账默认停在「为我送货」，取货门店列表要切到「我要取货」后才加载。
         const PICKUP_TAB_JS: &str = r#"(() => {
-  const tab = [...document.querySelectorAll('button')].find((e) => (e.innerText || '').trim() === '我要取货');
+  const tab = [...document.querySelectorAll('button')].find((e) => ['我要取货', '我會前來取貨'].includes((e.innerText || '').trim()));
   if (!tab) return JSON.stringify('missing');
   // 这是一组 role="radio" 的按钮，选中状态写在 aria-checked 上。
   if (tab.getAttribute('aria-checked') === 'true' || tab.getAttribute('aria-pressed') === 'true') return JSON.stringify('selected');
@@ -1481,11 +1559,16 @@ impl Flow<'_> {
 
     async fn pickup_contact(&mut self) -> Result<(), CheckoutError> {
         let stage = Stage::PickupContact;
+        let contact_script = if self.plan.locale == "zh_HK" {
+            CONTACT_STATE_JS.replace("fullDaytimePhone", "mobilePhone")
+        } else {
+            CONTACT_STATE_JS.to_owned()
+        };
         self.report("自动结账：填写取货信息");
         let state: ContactState = self
             .wait(
                 stage,
-                CONTACT_STATE_JS,
+                &contact_script,
                 ELEMENT_TIMEOUT,
                 "取货信息表单",
                 |s: &ContactState| s.ready,
@@ -1506,7 +1589,7 @@ impl Flow<'_> {
   const values = {values};
   const failed = [];
   for (const [name, value] of Object.entries(values)) {{
-    const input = document.querySelector('input[data-autom="form-field-' + name + '"]');
+    const input = document.querySelector('input[data-autom="form-field-' + name + '"]') || document.getElementById('checkout.pickupContact.selfPickupContact.selfContact.address.' + name);
     if (!input) {{ failed.push(name); continue; }}
     input.focus();
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value);
@@ -1529,7 +1612,7 @@ impl Flow<'_> {
                     format!("联系信息没有填进去：{}", failed.join("、")),
                 ));
             }
-            self.read(CONTACT_STATE_JS)
+            self.read(&contact_script)
                 .await
                 .map_err(|e| CheckoutError::new(stage, e))?
         };
@@ -1544,6 +1627,12 @@ impl Flow<'_> {
             ));
         }
         if state.needs_id {
+            if self.plan.locale != "zh_CN" {
+                return Err(CheckoutError::new(
+                    stage,
+                    "香港取货页出现额外证件要求，请在下单浏览器里手动确认",
+                ));
+            }
             let fill = format!(
                 r#"(() => {{
   const input = document.querySelector('input[data-autom="form-field-nationalIdSelf"]');
@@ -1577,6 +1666,31 @@ impl Flow<'_> {
     async fn billing(&mut self) -> Result<(), CheckoutError> {
         let stage = Stage::Billing;
         self.report("自动结账：选择付款方式");
+        if self.plan.locale == "zh_HK" {
+            let payment = self.hk_payment.as_ref().ok_or_else(|| {
+                CheckoutError::new(stage, "请先在设置里填写本次运行的香港信用卡资料")
+            })?;
+            let script = payment.script();
+            let state: PickupRegionState = self
+                .wait(
+                    stage,
+                    &script,
+                    ELEMENT_TIMEOUT,
+                    "香港信用卡和账单地址填写完成",
+                    |s: &PickupRegionState| s.ready || s.error.is_some(),
+                )
+                .await?;
+            if let Some(error) = state.error {
+                return Err(CheckoutError::new(stage, error));
+            }
+            self.click(
+                stage,
+                r#"button[data-autom="continue-button-review"]"#,
+                "检查订单",
+            )
+            .await?;
+            return self.wait_for_step(stage, "Review").await;
+        }
         let script = billing_choice_js(self.plan);
         let choice: BillingChoice = self
             .wait(
@@ -1647,6 +1761,13 @@ impl Flow<'_> {
             )
             .await?;
         lines.verify(stage, &self.plan.product_name)?;
+        if self.plan.locale == "zh_HK" && lines.items.iter().any(|item| item.quantity.trim() != "1")
+        {
+            return Err(CheckoutError::new(
+                stage,
+                "无法确认香港订单的商品数量为 1，未提交订单",
+            ));
+        }
         if self.plan.auto_add_to_bag
             && lines.items.iter().any(|item| {
                 !item.part_number.is_empty()
@@ -1711,6 +1832,8 @@ pub struct CheckoutRunner {
     cleanup_pending: Arc<AtomicBool>,
     /// 账户验证失败后只观察保留页面，不跨轮次重复提交密码。
     login_blocked: Arc<AtomicBool>,
+    active_locale: Arc<Mutex<String>>,
+    hk_payment: Arc<Mutex<Option<HkPayment>>>,
 }
 
 /// 从到货事件分派直到结果写回设置都占住名额，避免多型号同时到货时排队下两单。
@@ -1727,6 +1850,19 @@ impl CheckoutRunner {
         Self::default()
     }
 
+    pub async fn has_hk_payment(&self) -> bool {
+        self.hk_payment.lock().await.is_some()
+    }
+
+    pub async fn set_hk_payment(&self, payment: Option<HkPayment>) -> Result<(), String> {
+        if self.is_busy() {
+            return Err("结账正在进行，请结束后再更新付款资料".into());
+        }
+        let payment = payment.map(HkPayment::validate).transpose()?;
+        *self.hk_payment.lock().await = payment;
+        Ok(())
+    }
+
     pub fn try_reserve(&self) -> Option<CheckoutReservation> {
         if self.is_busy() {
             return None;
@@ -1739,9 +1875,33 @@ impl CheckoutRunner {
     }
 
     /// 确保下单浏览器开着并且连接可用；用户关掉窗口后会重新启动。
-    async fn ensure(
-        slot: &mut Option<ChromiumSession>,
-    ) -> Result<&mut ChromiumSession, CheckoutError> {
+    async fn ensure<'a>(
+        &self,
+        slot: &'a mut Option<ChromiumSession>,
+        locale: &str,
+    ) -> Result<&'a mut ChromiumSession, CheckoutError> {
+        if !matches!(locale, "zh_CN" | "zh_HK") {
+            return Err(CheckoutError::new(Stage::Browser, "此地区暂不支持自动结账"));
+        }
+        let mut active_locale = self.active_locale.lock().await;
+        if !active_locale.is_empty() && *active_locale != locale {
+            if self.cleanup_pending.load(Ordering::Acquire)
+                || self.login_blocked.load(Ordering::Acquire)
+            {
+                return Err(CheckoutError::new(
+                    if self.login_blocked.load(Ordering::Acquire) {
+                        Stage::SignIn
+                    } else {
+                        Stage::BagCleanup
+                    },
+                    "请先切回原地区完成登录验证或购物袋清理，再切换结账地区",
+                ));
+            }
+            if let Some(mut session) = slot.take() {
+                session.close().await;
+            }
+        }
+        *active_locale = locale.to_owned();
         let alive = match slot.as_mut() {
             Some(session) => session.evaluate("1", false).await.is_ok(),
             None => false,
@@ -1749,9 +1909,13 @@ impl CheckoutRunner {
         if !alive {
             // 先释放旧会话，否则新进程会因为资料目录被占用而启动失败。
             *slot = None;
-            let session = ChromiumSession::start_visible(app_profile_dir(PROFILE_DIR))
-                .await
-                .map_err(|e| CheckoutError::new(Stage::Browser, e.to_string()))?;
+            let session = ChromiumSession::start_visible(app_profile_dir(if locale == "zh_HK" {
+                "checkout-profile-hk-v1"
+            } else {
+                PROFILE_DIR
+            }))
+            .await
+            .map_err(|e| CheckoutError::new(Stage::Browser, e.to_string()))?;
             *slot = Some(session);
         }
         slot.as_mut()
@@ -1759,15 +1923,15 @@ impl CheckoutRunner {
     }
 
     /// 打开下单浏览器并显示购物袋，供用户登录、加购和预热结账。
-    pub async fn open(&self) -> Result<(), CheckoutError> {
+    pub async fn open(&self, locale: &str) -> Result<(), CheckoutError> {
         let mut slot = self.session.lock().await;
-        let session = Self::ensure(&mut slot).await?;
+        let session = self.ensure(&mut slot, locale).await?;
         let browser_error =
             |e: apw_core::apple::ApiError| CheckoutError::new(Stage::Browser, e.to_string());
         // 等待验证码时保留当前页面，打开按钮只把它带到前台。
         if !self.login_blocked.load(Ordering::Acquire) {
             session
-                .command("Page.navigate", json!({ "url": BAG_URL }))
+                .command("Page.navigate", json!({ "url": bag_url(locale) }))
                 .await
                 .map_err(browser_error)?;
         }
@@ -1816,8 +1980,18 @@ impl CheckoutRunner {
             ));
         };
         let result = async {
-            let session = Self::ensure(&mut slot).await?;
+            let session = self.ensure(&mut slot, &plan.locale).await?;
             let _ = session.command("Page.bringToFront", json!({})).await;
+            let hk_payment = if plan.locale == "zh_HK" {
+                Some(self.hk_payment.lock().await.clone().ok_or_else(|| {
+                    CheckoutError::new(
+                        Stage::Billing,
+                        "请先填写本次运行的香港信用卡资料；应用重启后需重新填写",
+                    )
+                })?)
+            } else {
+                None
+            };
             let mut flow = Flow {
                 session,
                 plan,
@@ -1825,6 +1999,7 @@ impl CheckoutRunner {
                 store_number: plan.store_number.clone(),
                 store_title: plan.store_title.clone(),
                 owns_bag: false,
+                hk_payment,
             };
             if self.login_blocked.load(Ordering::Acquire) {
                 let resumed = flow
@@ -1898,10 +2073,12 @@ mod tests {
     #[test]
     fn 登录只允许官方安全结账入口() {
         assert!(trusted_checkout_login_url(
-            "https://secure6.www.apple.com.cn/shop/signIn?ssi=test"
+            "https://secure6.www.apple.com.cn/shop/signIn?ssi=test",
+            "zh_CN"
         ));
         assert!(trusted_checkout_login_url(
-            "https://secure12.www.apple.com.cn/shop/checkout?_s=SignIn"
+            "https://secure12.www.apple.com.cn/shop/checkout?_s=SignIn",
+            "zh_CN"
         ));
         for url in [
             "http://secure6.www.apple.com.cn/shop/signIn",
@@ -1910,12 +2087,14 @@ mod tests {
             "https://secure6.www.apple.com.cn/shop/checkout?_s=Review",
             "https://example.test/shop/signIn",
         ] {
-            assert!(!trusted_checkout_login_url(url));
+            assert!(!trusted_checkout_login_url(url, "zh_CN"));
         }
     }
 
     fn test_plan(place_order: bool) -> CheckoutPlan {
         CheckoutPlan {
+            locale: "zh_CN".into(),
+            auto_sign_in: true,
             auto_add_to_bag: false,
             part_number: "MK2Q4CH/A".into(),
             product_url: Some("https://www.apple.com.cn/shop/product/MK2Q4CH/A".into()),
@@ -1955,6 +2134,7 @@ mod tests {
             store_number: plan.store_number.clone(),
             store_title: plan.store_title.clone(),
             owns_bag: false,
+            hk_payment: None,
         }
         .review()
         .await;
@@ -2033,6 +2213,7 @@ mod tests {
             store_number: plan.store_number.clone(),
             store_title: plan.store_title.clone(),
             owns_bag: false,
+            hk_payment: None,
         }
         .wait_for_step(Stage::Bag, "Fulfillment")
         .await
@@ -2086,6 +2267,8 @@ mod tests {
                 ..Default::default()
             };
             let plan = CheckoutPlan {
+                locale: "zh_CN".into(),
+                auto_sign_in: true,
                 auto_add_to_bag: false,
                 part_number: "MK2Q4CH/A".into(),
                 product_url: Some("https://www.apple.com.cn/shop/product/MK2Q4CH/A".into()),
@@ -2472,6 +2655,7 @@ mod tests {
             store_number: plan.store_number.clone(),
             store_title: plan.store_title.clone(),
             owns_bag: false,
+            hk_payment: None,
         }
         .login_context()
         .await
@@ -2494,7 +2678,7 @@ mod tests {
             ..Default::default()
         };
         runner.login_blocked.store(true, Ordering::Release);
-        runner.open().await.unwrap();
+        runner.open("zh_CN").await.unwrap();
         assert!(!peer.await.unwrap());
         let requests = requests.lock().await;
         assert_eq!(requests.len(), 2);
@@ -2531,6 +2715,7 @@ mod tests {
             store_number: plan.store_number.clone(),
             store_title: plan.store_title.clone(),
             owns_bag: true,
+            hk_payment: None,
         }
         .cleanup_bag()
         .await
@@ -2562,6 +2747,7 @@ mod tests {
             store_number: plan.store_number.clone(),
             store_title: plan.store_title.clone(),
             owns_bag: false,
+            hk_payment: None,
         };
         for round in 1..=2 {
             let start = Instant::now();
@@ -2612,6 +2798,7 @@ mod tests {
                 store_number: plan.store_number.clone(),
                 store_title: plan.store_title.clone(),
                 owns_bag: false,
+                hk_payment: None,
             };
             let added = flow.prepare_bag().await;
             if added.is_err() {
@@ -2710,6 +2897,8 @@ mod tests {
         let script = store_state_js("R1\"); alert(1); (\"");
         assert!(script.contains(r#"e.value === "R1\"); alert(1); (\"""#));
         let script = billing_choice_js(&CheckoutPlan {
+            locale: "zh_CN".into(),
+            auto_sign_in: true,
             auto_add_to_bag: false,
             part_number: "MK2Q4CH/A".into(),
             product_url: Some("https://www.apple.com.cn/shop/product/MK2Q4CH/A".into()),
@@ -2740,6 +2929,8 @@ mod tests {
         let env =
             |name: &str, default: &str| std::env::var(name).unwrap_or_else(|_| default.into());
         let plan = CheckoutPlan {
+            locale: "zh_CN".into(),
+            auto_sign_in: true,
             auto_add_to_bag: false,
             part_number: "MK2Q4CH/A".into(),
             product_url: Some("https://www.apple.com.cn/shop/product/MK2Q4CH/A".into()),
@@ -2782,6 +2973,7 @@ mod tests {
             store_number: plan.store_number.clone(),
             store_title: plan.store_title.clone(),
             owns_bag: false,
+            hk_payment: None,
         }
         .run()
         .await;
@@ -2811,6 +3003,8 @@ mod tests {
             .expect("购物袋页面导航失败");
         let progress = |_: String| {};
         let plan = CheckoutPlan {
+            locale: "zh_CN".into(),
+            auto_sign_in: true,
             auto_add_to_bag: false,
             part_number: "MK2Q4CH/A".into(),
             product_url: Some("https://www.apple.com.cn/shop/product/MK2Q4CH/A".into()),
@@ -2834,6 +3028,7 @@ mod tests {
             store_number: plan.store_number.clone(),
             store_title: plan.store_title.clone(),
             owns_bag: false,
+            hk_payment: None,
         };
         let state: PageState = flow
             .wait(
@@ -2863,5 +3058,259 @@ mod tests {
     fn 错误信息带上停下的页面() {
         let error = CheckoutError::new(Stage::Fulfillment, "门店没有选中");
         assert_eq!(error.to_string(), "在「选择取货门店」停下：门店没有选中");
+    }
+
+    fn hk_plan(place_order: bool) -> CheckoutPlan {
+        let mut plan = test_plan(place_order);
+        plan.locale = "zh_HK".into();
+        plan.auto_sign_in = false;
+        plan.part_number = "MG724ZA/A".into();
+        plan.product_url = Some("https://www.apple.com/hk-zh/shop/product/MG724ZA/A".into());
+        plan.store_number = "R428".into();
+        plan.store_title = "Apple ifc mall".into();
+        plan
+    }
+
+    fn hk_payment() -> HkPayment {
+        serde_json::from_value::<HkPayment>(json!({
+            "cardNumber": "4111111111111111", "expiration": "12/30", "securityCode": "123",
+            "billingName": "Test Buyer", "street": "Test Street",
+        }))
+        .unwrap()
+        .validate()
+        .unwrap()
+    }
+
+    #[test]
+    fn 香港登录仅接受所选地区官方结账地址() {
+        for url in [
+            "https://secure9.store.apple.com/hk-zh/shop/signIn",
+            "https://secure.store.apple.com/hk-zh/shop/checkout?_s=SignIn-init",
+        ] {
+            assert!(trusted_checkout_login_url(url, "zh_HK"));
+            assert!(!trusted_checkout_login_url(url, "zh_CN"));
+        }
+        for url in [
+            "https://secure9.store.apple.com.example.test/hk-zh/shop/signIn",
+            "https://secure9.store.apple.com/jp/shop/signIn",
+            "https://secure9.www.apple.com.cn/shop/signIn",
+            "https://secure9.store.apple.com/hk-zh/shop/checkout?_s=Review",
+        ] {
+            assert!(!trusted_checkout_login_url(url, "zh_HK"));
+        }
+    }
+
+    #[tokio::test]
+    async fn 香港默认手动登录不读取账户也不向页面提交密码() {
+        let (mut session, peer, requests) =
+            crate::chromium_fetcher::tests::checkout_session(vec![]).await;
+        let plan = hk_plan(false);
+        let error = Flow {
+            session: &mut session,
+            plan: &plan,
+            progress: &|_| {},
+            store_number: plan.store_number.clone(),
+            store_title: plan.store_title.clone(),
+            owns_bag: false,
+            hk_payment: None,
+        }
+        .sign_in()
+        .await
+        .unwrap_err();
+        assert_eq!(error.stage, Stage::SignIn);
+        assert!(!error.can_retry());
+        assert!(error.message.contains("手动登录"));
+        drop(session);
+        let _ = peer.await;
+        assert!(requests.lock().await.is_empty());
+    }
+
+    #[test]
+    fn 香港结账计划使用香港地址手机号且自动重新登录须单独开启() {
+        let mut target = apw_core::model::Target {
+            locale: "zh_HK".into(),
+            store_number: "R428".into(),
+            store_title: "Apple ifc mall".into(),
+            part_number: "MG724ZA/A".into(),
+            product_name: "iPhone 17".into(),
+            companion_part: None,
+            companion_name: None,
+            kit_part: None,
+            pickup_location: None,
+        };
+        let mut settings = Settings::default();
+        settings.checkout.locale = "zh_HK".into();
+        settings.checkout.fill_contact = true;
+        settings.checkout.contact_phone = "91234567".into();
+        let plan = CheckoutPlan::new(&target, &settings, &Catalog::new(), false);
+        assert!(!plan.auto_sign_in);
+        assert_eq!(plan.contact, vec![("mobilePhone", "91234567".into())]);
+        assert_eq!(
+            bag_url(&plan.locale),
+            "https://www.apple.com/hk-zh/shop/bag"
+        );
+        assert!(
+            plan.product_url
+                .unwrap()
+                .starts_with("https://www.apple.com/hk-zh/")
+        );
+        settings.checkout.hk_auto_sign_in = true;
+        assert!(CheckoutPlan::new(&target, &settings, &Catalog::new(), false).auto_sign_in);
+        target.locale = "zh_CN".into();
+        settings.checkout.hk_auto_sign_in = false;
+        assert!(CheckoutPlan::new(&target, &settings, &Catalog::new(), false).auto_sign_in);
+    }
+
+    #[tokio::test]
+    async fn 香港付款资料只保留在当前运行并可清除且结账期间不可更换() {
+        let runner = CheckoutRunner::new();
+        assert!(!runner.has_hk_payment().await);
+        runner.set_hk_payment(Some(hk_payment())).await.unwrap();
+        assert!(runner.has_hk_payment().await);
+        assert!(!CheckoutRunner::new().has_hk_payment().await);
+        let reserved = runner.try_reserve().unwrap();
+        assert!(runner.set_hk_payment(None).await.is_err());
+        drop(reserved);
+        runner.set_hk_payment(None).await.unwrap();
+        assert!(!runner.has_hk_payment().await);
+    }
+
+    #[tokio::test]
+    async fn 香港付款核对后默认停在查看订单明确开启才提交一次() {
+        for place_order in [false, true] {
+            let mut responses = vec![
+                cdp_page(json!({"ready": true, "error": null})),
+                json!({"result": {"result": {"value": true}}}),
+                cdp_page(json!({"step": "Review", "signIn": false})),
+                cdp_page(json!([])),
+                cdp_page(
+                    json!({"items": [{"name": "要买的商品", "quantity": "1", "partNumber": "MG724ZA/A"}],
+                    "total": "HK$100", "canCheckout": false, "canPlaceOrder": true}),
+                ),
+            ];
+            if place_order {
+                responses.extend([
+                    json!({"result": {"result": {"value": true}}}),
+                    cdp_page(json!({"step": "ThankYou", "order": "W123456789"})),
+                ]);
+            }
+            let (mut session, peer, requests) =
+                crate::chromium_fetcher::tests::checkout_session(responses).await;
+            let plan = hk_plan(place_order);
+            let mut flow = Flow {
+                session: &mut session,
+                plan: &plan,
+                progress: &|_| {},
+                store_number: plan.store_number.clone(),
+                store_title: plan.store_title.clone(),
+                owns_bag: false,
+                hk_payment: Some(hk_payment()),
+            };
+            flow.billing().await.unwrap();
+            let result = flow.review().await.unwrap();
+            assert_eq!(
+                matches!(result, CheckoutOutcome::OrderSubmitted { .. }),
+                place_order
+            );
+            drop(session);
+            let _ = peer.await;
+            let requests = requests.lock().await;
+            let submits = requests
+                .iter()
+                .filter(|r| {
+                    r["params"]["expression"].as_str().is_some_and(|e| {
+                        e.contains("const e = document.querySelector")
+                            && e.contains("continue-button-placeOrder")
+                    })
+                })
+                .count();
+            assert_eq!(submits, usize::from(place_order));
+        }
+    }
+
+    #[tokio::test]
+    async fn 原地区等待登录时切换地区不会冲掉验证页面() {
+        let runner = CheckoutRunner::new();
+        *runner.active_locale.lock().await = "zh_CN".into();
+        runner.login_blocked.store(true, Ordering::Release);
+        let (session, peer, requests) =
+            crate::chromium_fetcher::tests::checkout_session(vec![]).await;
+        *runner.session.lock().await = Some(session);
+        let result = runner.run_on_hit(&hk_plan(false), &|_| {}).await;
+        assert_eq!(result.unwrap_err().stage, Stage::SignIn);
+        assert!(runner.session.lock().await.is_some());
+        runner.shutdown().await;
+        let _ = peer.await;
+        assert!(requests.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn 香港订单数量不明确时不点击提交() {
+        let plan = hk_plan(true);
+        let (mut session, peer, requests) =
+            crate::chromium_fetcher::tests::checkout_session(vec![cdp_page(
+                json!({"items": [{"name": plan.product_name, "quantity": ""}],
+                "total": "HK$100", "canCheckout": false, "canPlaceOrder": true}),
+            )])
+            .await;
+        let error = Flow {
+            session: &mut session,
+            plan: &plan,
+            progress: &|_| {},
+            store_number: plan.store_number.clone(),
+            store_title: plan.store_title.clone(),
+            owns_bag: false,
+            hk_payment: None,
+        }
+        .review()
+        .await
+        .unwrap_err();
+        assert_eq!(error.stage, Stage::Review);
+        drop(session);
+        let _ = peer.await;
+        assert_eq!(requests.lock().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn 香港清袋始终使用香港地址并传入地区() {
+        let mut plan = hk_plan(false);
+        plan.auto_add_to_bag = true;
+        let (mut session, peer, requests) =
+            crate::chromium_fetcher::tests::checkout_session(with_navigation_checks(vec![
+                bag_navigation(),
+                bag_snapshot(vec![bag_target(&plan)]),
+                cdp_page(json!(true)),
+                cdp_page(json!(true)),
+                bag_snapshot(vec![]),
+                bag_navigation(),
+                bag_snapshot(vec![]),
+            ]))
+            .await;
+        Flow {
+            session: &mut session,
+            plan: &plan,
+            progress: &|_| {},
+            store_number: plan.store_number.clone(),
+            store_title: plan.store_title.clone(),
+            owns_bag: true,
+            hk_payment: None,
+        }
+        .cleanup_bag()
+        .await
+        .unwrap();
+        drop(session);
+        let _ = peer.await;
+        let requests = requests.lock().await;
+        assert!(
+            requests
+                .iter()
+                .filter(|r| r["method"] == "Page.navigate")
+                .all(|r| r["params"]["url"] == "https://www.apple.com/hk-zh/shop/bag")
+        );
+        assert!(requests.iter().any(|r| {
+            r["params"]["expression"]
+                .as_str()
+                .is_some_and(|e| e.contains(r#""locale":"zh_HK""#) && e.contains("removeId"))
+        }));
     }
 }

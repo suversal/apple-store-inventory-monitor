@@ -10,6 +10,41 @@
         && (target.acceptNearest || target.monitoredStores.includes(store.value)))) {
     return result(true);
   }
+  if (target.locale === 'zh_HK') {
+    const progress = window.__apwHkPickup ||= { activated: false, searched: false, expanded: false };
+    if (stores.length) {
+      const more = document.querySelector('button[data-autom="show-more-stores-button"]') || [...document.querySelectorAll('button')].find(e => ['顯示所有取貨地點', '顯示更多取貨地點'].includes(text(e)));
+      if (more && !more.disabled && !progress.expanded) {
+        progress.expanded = true;
+        more.click();
+        return result();
+      }
+      return result(true);
+    }
+    const input = document.querySelector('input[id$="fulfillment.pickupTab.pickup.storeLocator.searchInput"]');
+    if (!visible(input) || input.disabled) return result();
+    if (!progress.activated) {
+      progress.activated = true;
+      input.click();
+      input.focus();
+      return result();
+    }
+    if (progress.searched || input.readOnly) return result();
+    if (input.value !== '中環') {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '中環');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return result();
+    }
+    const search = document.querySelector('button[id$="storeLocator.search"]');
+    if (search && !search.disabled) {
+      progress.searched = true;
+      performance.clearResourceTimings();
+      window.__apwPickupClicked = true;
+      search.click();
+    }
+    return result();
+  }
   const region = target.region;
   if (!region) return result(false, '目标门店缺少省市信息，请更新门店目录后重试，或先手动设置取货地区');
   const picker = [...document.querySelectorAll('button[data-autom="fulfillment-pickup-store-search-button"]')].find(visible);

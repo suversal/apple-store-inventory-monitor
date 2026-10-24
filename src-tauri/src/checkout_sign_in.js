@@ -1,6 +1,6 @@
 (expected, action = 'inspect') => {
   // 脚本只能在已校验的 Apple 官方登录 iframe 内使用。
-  if (location.origin !== 'https://idmsa.apple.com.cn') return 'untrusted';
+  if (location.origin !== (expected.locale === 'zh_HK' ? 'https://idmsa.apple.com' : 'https://idmsa.apple.com.cn')) return 'untrusted';
   const visible = e => !!e && !!e.getClientRects().length;
   const account = document.getElementById('account_name_text_field');
   const password = document.getElementById('password_text_field');

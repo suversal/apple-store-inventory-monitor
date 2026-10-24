@@ -163,8 +163,10 @@ export type CheckoutPayment = "alipay" | "wechat" | "installment";
 /** Apple 结账页提供的分期期数。 */
 export const INSTALLMENT_PERIODS = [1, 3, 6, 12, 24] as const;
 
-/** 到货后自动结账的设置。目前只支持中国大陆的直营店取货。 */
+/** 到货后自动结账的设置，支持中国大陆和中国香港直营店取货。 */
 export interface CheckoutSettings {
+  locale: string;
+  hkAutoSignIn: boolean;
   enabled: boolean;
   /** 成功后关闭自动结账；关闭此项允许后续到货继续触发。 */
   disableAfterSuccess: boolean;
@@ -187,7 +189,7 @@ export interface CheckoutSettings {
   contactLastName: string;
   contactFirstName: string;
   contactEmail: string;
-  /** 中国大陆手机号，不带 +86。 */
+  /** 所选地区的手机号码，不带 +86 或 +852。 */
   contactPhone: string;
 }
 
