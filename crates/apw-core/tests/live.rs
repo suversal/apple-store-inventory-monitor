@@ -192,7 +192,10 @@ async fn 四个品类的零件号接口都认() {
     let catalog = Catalog::new();
     let products = catalog.products("zh_CN").expect("内嵌目录应当可用");
 
-    for category in Category::ALL {
+    for category in Category::ALL
+        .iter()
+        .filter(|c| region.families_in(**c).next().is_some())
+    {
         let product = products
             .iter()
             .find(|p| p.category == *category)

@@ -1006,7 +1006,11 @@ impl Flow<'_> {
                 if std::env::var_os("APW_DIAG_AUTO_BAG").is_some() {
                     eprintln!("加购按钮诊断：{:?}", self.session.evaluate(r#"JSON.stringify((()=>{const b=document.querySelector('button[data-autom="add-to-cart"]');const f=b?.form;return {url:location.href, ready:document.readyState, button:b?.outerHTML, form:f?{action:f.getAttribute('action'),method:f.method,products:[...f.querySelectorAll('input[name="product"]')].map(e=>e.value)}:null};})())"#, false).await);
                 }
-                self.mouse_click(Stage::Bag, &point).await?;
+                self.session.start_checkout_trace().await;
+                if let Err(error) = self.mouse_click(Stage::Bag, &point).await {
+                    self.report_add_trace().await;
+                    return Err(error);
+                }
                 break;
             }
             if !added.error.is_empty() || Instant::now() >= deadline {
@@ -1022,13 +1026,7 @@ impl Flow<'_> {
             // 仅脚本明确返回未点击时才重新等准备状态。React 的异步重绘会短暂禁用按钮。
             tokio::time::sleep(POLL_INTERVAL).await;
         }
-        // Apple 会先跳转配件推荐页；等加购完成后直接进购物袋，跳过全部推荐配件。
-        let added: String = self.wait(Stage::Bag, r#"JSON.stringify(location.pathname === '/shop/bag' || new URLSearchParams(location.search).get('step') === 'attach' ? 'complete' : /Page Not Found/i.test(document.title) ? 'failed' : 'waiting')"#,
-            NAVIGATION_TIMEOUT, "加购完成", |state: &String| state != "waiting").await?;
-        if added == "failed" {
-            return Err(CheckoutError::new(Stage::Bag, "Apple 加购页面返回 404"));
-        }
-        let mut lines = self.read_bag(Stage::Bag).await?;
+        let mut lines = self.wait_for_added_bag(NAVIGATION_TIMEOUT).await?;
         if self.plan.add_apple_care && matches!(lines.items.as_slice(), [item] if !item.apple_care)
         {
             lines = self.add_bag_apple_care().await?;
@@ -1044,6 +1042,59 @@ impl Flow<'_> {
             }
         ));
         Ok(())
+    }
+
+    async fn report_add_trace(&mut self) {
+        if let Some(trace) = self.session.finish_checkout_trace().await {
+            self.report(format!("加购请求诊断：{trace}"));
+        }
+    }
+
+    async fn wait_for_added_bag(&mut self, timeout: Duration) -> Result<Lines, CheckoutError> {
+        // Apple 通常先跳到配件页，加购结果以购物袋实际内容为准。
+        const ADD_RESULT: &str = r#"JSON.stringify((() => {
+            if (location.origin !== 'https://www.apple.com.cn') return 'waiting';
+            if (/Page Not Found/i.test(document.title)) return 'failed';
+            if (location.pathname === '/shop/bag' ||
+                new URLSearchParams(location.search).get('step') === 'attach') return 'complete';
+            return 'waiting';
+        })())"#;
+        let added: Result<String, _> = self
+            .wait(
+                Stage::Bag,
+                ADD_RESULT,
+                timeout,
+                "加购完成",
+                |state: &String| state != "waiting",
+            )
+            .await;
+        if matches!(added.as_deref(), Ok("complete")) {
+            let trace = self.session.finish_checkout_trace().await;
+            let bag = self.read_bag(Stage::Bag).await;
+            if bag.is_err()
+                && let Some(trace) = trace
+            {
+                self.report(format!("加购请求诊断：{trace}"));
+            }
+            return bag;
+        }
+        self.report_add_trace().await;
+        let Err(timeout_error) = added else {
+            return Err(CheckoutError::new(
+                Stage::Bag,
+                "Apple 加购后显示「找不到页面」",
+            ));
+        };
+        // 跳转可能失败，但第一次点击已经生效。核对一次购物袋，绝不再次加购。
+        if let Ok(lines) = self.read_bag(Stage::Bag).await
+            && lines.errors.is_empty()
+            && lines.can_checkout
+            && self.verify_auto_bag(&lines).is_ok()
+        {
+            self.report("加购后未识别到预期跳转，已从购物袋确认商品");
+            return Ok(lines);
+        }
+        Err(timeout_error)
     }
 
     async fn mouse_click(&mut self, stage: Stage, point: &ClickPoint) -> Result<(), CheckoutError> {
@@ -2213,9 +2264,12 @@ mod tests {
                 navigate.clone(),
                 cdp_page(json!({"ready": true, "clicked": false, "error": ""})),
                 cdp_page(json!({"ready": true, "point": {"x": 10, "y": 20}, "error": ""})),
+                json!({"result": {"frameTree": {"frame": {"id": "page"}}}}),
+                json!({"result": {}}), // Network.enable
                 json!({"result": {}}),
                 json!({"result": {}}),       // 真实鼠标按下、释放各一次
                 cdp_page(json!("complete")), // attach 已完成
+                json!({"result": {}}),       // Network.disable
                 navigate.clone(),
                 full.clone(), // 加购后的 SKU/数量核对
                 navigate.clone(),
@@ -2330,6 +2384,51 @@ mod tests {
         json!({"result": {"frameId": "page"}})
     }
 
+    #[tokio::test]
+    async fn 加购跳转超时只认可已可结账的正确购物袋() {
+        let mut plan = test_plan(false);
+        plan.auto_add_to_bag = true;
+        let expected = bag_target(&plan);
+        let mut wrong = expected.clone();
+        wrong["partNumber"] = json!("WRONGCH/A");
+        for (items, accepted) in [
+            (vec![expected.clone()], true),
+            (vec![wrong], false),
+            (vec![], false),
+        ] {
+            let (mut session, peer, requests) =
+                crate::chromium_fetcher::tests::checkout_session(with_navigation_checks(vec![
+                    cdp_page(json!("waiting")),
+                    bag_navigation(),
+                    bag_snapshot(items),
+                ]))
+                .await;
+            let mut flow = Flow {
+                session: &mut session,
+                plan: &plan,
+                progress: &|_| {},
+                store_number: plan.store_number.clone(),
+                store_title: plan.store_title.clone(),
+                owns_bag: true,
+            };
+            let result = flow.wait_for_added_bag(Duration::ZERO).await;
+            if accepted {
+                assert_eq!(result.unwrap().items[0].part_number, plan.part_number);
+            } else {
+                assert_eq!(result.unwrap_err().message, "等待加购完成超时");
+            }
+            drop(session);
+            assert!(peer.await.unwrap());
+            assert!(
+                !requests
+                    .lock()
+                    .await
+                    .iter()
+                    .any(|request| { request["method"] == "Input.dispatchMouseEvent" })
+            );
+        }
+    }
+
     fn with_navigation_checks(responses: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
         responses
             .into_iter()
@@ -2407,9 +2506,12 @@ mod tests {
                 bag_navigation(),
                 cdp_page(json!({"ready": true, "error": ""})),
                 cdp_page(json!({"ready": true, "point": {"x": 10, "y": 20}, "error": ""})),
+                json!({"result": {"frameTree": {"frame": {"id": "page"}}}}),
+                json!({"result": {}}),
                 json!({"result": {}}),
                 json!({"result": {}}),
                 cdp_page(json!("complete")),
+                json!({"result": {}}),
                 bag_navigation(),
                 full.clone(),
                 bag_navigation(),

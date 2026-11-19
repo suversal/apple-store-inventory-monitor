@@ -104,6 +104,13 @@ pub async fn discover_families(
     region: &Region,
     category: Category,
 ) -> Result<Vec<String>, CatalogError> {
+    // Apple TV 4K 使用固定购买页，没有像 Mac 一样的机型索引。
+    if category == Category::AppleTv {
+        return Ok(region
+            .families_in(category)
+            .map(|family| family.slug.to_string())
+            .collect());
+    }
     let url = format!("{}/shop/{}", region.base_url, category.buy_path());
     let page =
         crate::apple::with_retry(MAX_RETRIES, || fetch_page_once(http, &url, region)).await?;
@@ -142,6 +149,7 @@ pub fn parse_family_links(
             Category::Iphone => slug.starts_with("iphone"),
             Category::Ipad => slug.starts_with("ipad"),
             Category::Watch => slug.starts_with("apple-watch"),
+            Category::AppleTv => slug == "apple-tv-4k",
             Category::Mac => {
                 slug.starts_with("mac") || slug == "imac" || slug.starts_with("studio-display")
             }
@@ -878,6 +886,14 @@ impl ProductSelection {
                     labels.push(label);
                 }
             }
+            // 第四代只有 128GB，Apple 单配置购买页会省略容量维度。
+            if category == Category::AppleTv
+                && family_type == "appletv4k2026"
+                && capacity.is_empty()
+            {
+                capacity = "128GB".into();
+                labels.push(capacity.clone());
+            }
 
             let mut parts = Vec::with_capacity(labels.len() + 1);
             parts.push(display_family);
@@ -1553,6 +1569,9 @@ const SLUG_WORDS: &[(&str, &str)] = &[
     ("ultra", "Ultra"),
     ("studio", "Studio"),
     ("xdr", "XDR"),
+    ("proled", "PROLED"),
+    ("tv", "TV"),
+    ("4k", "4K"),
     ("hermes", "Hermès"),
 ];
 
@@ -1562,6 +1581,9 @@ const SLUG_WORDS: &[(&str, &str)] = &[
 /// 是排版文案，不在 `productSelectionData` 里。slug 是这两个品类唯一稳定的
 /// 机型来源。
 pub fn slug_display_name(slug: &str) -> String {
+    if slug == crate::model::TOUCHSCREEN_MAC_FAMILY {
+        return "MacBook Pro (PROLED XDR 触控屏)".into();
+    }
     slug.split('-')
         .filter(|word| !word.is_empty())
         .map(|word| {

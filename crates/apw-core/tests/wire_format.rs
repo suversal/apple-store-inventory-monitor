@@ -181,6 +181,7 @@ fn 品类的线上格式是小写标识符() {
         (Category::Ipad, "ipad"),
         (Category::Mac, "mac"),
         (Category::Watch, "watch"),
+        (Category::AppleTv, "apple_tv"),
     ] {
         assert_eq!(to_value(&category), json!(want));
         let back: Category = serde_json::from_value(json!(want)).expect("前端传回来的品类必须认得");

@@ -61,7 +61,7 @@ export interface Region {
 }
 
 /** 与 Rust 侧 `model::Category` 一一对应。 */
-export type Category = "iphone" | "ipad" | "mac" | "watch";
+export type Category = "iphone" | "ipad" | "mac" | "watch" | "apple_tv";
 
 /**
  * 品类选项。
@@ -72,6 +72,7 @@ export type Category = "iphone" | "ipad" | "mac" | "watch";
 export interface CategoryOption {
   value: Category;
   title: string;
+  locales: string[];
 }
 
 export interface Product {

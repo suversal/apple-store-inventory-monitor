@@ -100,24 +100,45 @@ fn expected_prefix(category: Category) -> &'static str {
         Category::Ipad => "iPad",
         Category::Mac => "",
         Category::Watch => "Apple Watch",
+        Category::AppleTv => "Apple TV 4K",
     }
 }
 
 #[test]
-fn 四个品类在每个地区都有商品() {
+fn 每个地区支持的品类均有离线商品() {
     // 少了哪个品类，运行时的表现只是那个品类的下拉框空空如也 —— 用户会以为
     // 这个程序压根不支持 Mac，而不是「数据没抓下来」。
     let catalog = Catalog::new();
     for region in REGIONS {
         let products = catalog.products(region.locale).expect("内嵌数据应当可用");
         for category in Category::ALL {
-            assert!(
+            assert_eq!(
                 products.iter().any(|p| p.category == *category),
-                "{} 的内嵌数据里没有 {} 商品",
+                region.families_in(*category).next().is_some(),
+                "{} 的 {} 内嵌目录与地区支持范围不一致",
                 region.locale,
                 category.title()
             );
         }
+    }
+}
+
+#[test]
+fn 触屏版与普通版_macbook_pro_在目录中可区分() {
+    let catalog = Catalog::new();
+    for region in REGIONS {
+        let products = catalog.products(region.locale).unwrap();
+        assert!(products.iter().any(|p| p.family == "macbook-pro"));
+        let touchscreen: Vec<_> = products
+            .iter()
+            .filter(|p| p.family == "macbook-pro-proled-xdr")
+            .collect();
+        assert_eq!(touchscreen.len(), 11, "{}", region.locale);
+        assert!(
+            touchscreen
+                .iter()
+                .all(|p| p.title.contains("PROLED XDR 触控屏"))
+        );
     }
 }
 
