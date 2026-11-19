@@ -936,7 +936,9 @@ export default function App() {
                     </Label>
                     <Combobox
                       className="control-surface w-full"
-                      options={ui.categories.map((category) => ({ value: category.value, label: category.title }))}
+                      options={ui.categories
+                        .filter((category) => category.locales.includes(ui.settings.locale))
+                        .map((category) => ({ value: category.value, label: category.title }))}
                       value={ui.category}
                       onChange={(value) => {
                         setPartNumbers([]);

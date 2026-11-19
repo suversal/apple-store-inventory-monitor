@@ -3850,5 +3850,215 @@
         }
       }
     }
+  },
+  {
+    "category": "mac",
+    "family": "macbook-pro-proled-xdr",
+    "data": {
+      "products": [
+        {
+          "btrOrFdPartNumber": "MJ2X4TA/A",
+          "aosContainerPartNumber": "RO_MBP_OLED_M5_16INCH_SILVER_BET_ULT_SUP_2026",
+          "dimensions": {
+            "chassis-dimensionColor": "silver",
+            "processor-dimensionChip": "m5max",
+            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5max-18-32",
+            "display-dimensionFinish": "standard",
+            "chassis-dimensionScreensize": "16inch"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MJ2K4TA/A",
+          "aosContainerPartNumber": "RO_MBP_OLED_M5_14INCH_SPACEBLACK_BET_ULT_2026",
+          "dimensions": {
+            "chassis-dimensionColor": "spaceblack",
+            "processor-dimensionChip": "m5pro",
+            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5pro-15-16",
+            "display-dimensionFinish": "standard",
+            "chassis-dimensionScreensize": "14inch"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MJ2Y4TA/A",
+          "aosContainerPartNumber": "RO_MBP_OLED_M5_16INCH_SILVER_BET_ULT_SUP_2026",
+          "dimensions": {
+            "chassis-dimensionColor": "silver",
+            "processor-dimensionChip": "m5max",
+            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5max-18-40",
+            "display-dimensionFinish": "standard",
+            "chassis-dimensionScreensize": "16inch"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MJ2G4TA/A",
+          "aosContainerPartNumber": "RO_MBP_OLED_M5_14INCH_SILVER_BET_ULT_2026",
+          "dimensions": {
+            "chassis-dimensionColor": "silver",
+            "processor-dimensionChip": "m5pro",
+            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5pro-15-16",
+            "display-dimensionFinish": "standard",
+            "chassis-dimensionScreensize": "14inch"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MJ9X4TA/A",
+          "aosContainerPartNumber": "RO_MBP_OLED_M5_14INCH_SPACEBLACK_BET_ULT_2026",
+          "dimensions": {
+            "chassis-dimensionColor": "spaceblack",
+            "processor-dimensionChip": "m5pro",
+            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5pro-15-16",
+            "display-dimensionFinish": "nano_texture",
+            "chassis-dimensionScreensize": "14inch"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MJ2M4TA/A",
+          "aosContainerPartNumber": "RO_MBP_OLED_M5_14INCH_SPACEBLACK_BET_ULT_2026",
+          "dimensions": {
+            "chassis-dimensionColor": "spaceblack",
+            "processor-dimensionChip": "m5max",
+            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5max-18-32",
+            "display-dimensionFinish": "standard",
+            "chassis-dimensionScreensize": "14inch"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MJ2W4TA/A",
+          "aosContainerPartNumber": "RO_MBP_OLED_M5_16INCH_SILVER_BET_ULT_SUP_2026",
+          "dimensions": {
+            "chassis-dimensionColor": "silver",
+            "processor-dimensionChip": "m5pro",
+            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5pro-18-20",
+            "display-dimensionFinish": "standard",
+            "chassis-dimensionScreensize": "16inch"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MJ334TA/A",
+          "aosContainerPartNumber": "RO_MBP_OLED_M5_16INCH_SPACEBLACK_BET_ULT_SUP_2026",
+          "dimensions": {
+            "chassis-dimensionColor": "spaceblack",
+            "processor-dimensionChip": "m5max",
+            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5max-18-40",
+            "display-dimensionFinish": "standard",
+            "chassis-dimensionScreensize": "16inch"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MJ314TA/A",
+          "aosContainerPartNumber": "RO_MBP_OLED_M5_16INCH_SPACEBLACK_BET_ULT_SUP_2026",
+          "dimensions": {
+            "chassis-dimensionColor": "spaceblack",
+            "processor-dimensionChip": "m5max",
+            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5max-18-32",
+            "display-dimensionFinish": "standard",
+            "chassis-dimensionScreensize": "16inch"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MJ2J4TA/A",
+          "aosContainerPartNumber": "RO_MBP_OLED_M5_14INCH_SILVER_BET_ULT_2026",
+          "dimensions": {
+            "chassis-dimensionColor": "silver",
+            "processor-dimensionChip": "m5max",
+            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5max-18-32",
+            "display-dimensionFinish": "standard",
+            "chassis-dimensionScreensize": "14inch"
+          }
+        },
+        {
+          "btrOrFdPartNumber": "MJ304TA/A",
+          "aosContainerPartNumber": "RO_MBP_OLED_M5_16INCH_SPACEBLACK_BET_ULT_SUP_2026",
+          "dimensions": {
+            "chassis-dimensionColor": "spaceblack",
+            "processor-dimensionChip": "m5pro",
+            "processor-dimensionChip-cpuCoreCount-gpuCoreCount": "m5pro-18-20",
+            "display-dimensionFinish": "standard",
+            "chassis-dimensionScreensize": "16inch"
+          }
+        }
+      ],
+      "mainDisplayValues": {
+        "chassis-dimensionColor": {
+          "spaceblack": {
+            "image": {
+              "sources": [
+                {
+                  "srcSet": "https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/mbp14-proled-spaceblack-cto-hero-202610_SW_COLOR?wid=64&hei=64&fmt=jpeg&qlt=90&.v=YVJLRGhvZm5jUVRsdXlRNVZURWhLV1kxRjdqOFRPaEZRbHFSd3lja3FFL2xZSUxLK0pMdDAvaTFaMzNib2c3RWhqSDhoNW8wc3l1V25TSU5vYVNENHI2TGhYaGhMVkJpQ2RGWWVURTZNbXh2ZkplcmpabHJhbzE3UitTbkJ2L0s",
+                  "type": "image/jpeg"
+                }
+              ],
+              "width": "32",
+              "height": "32",
+              "attrs": "",
+              "imageName": "mbp14-proled-spaceblack-cto-hero-202610_SW_COLOR",
+              "originalImageName": "mbp14-proled-spaceblack-cto-hero-202610_SW_COLOR",
+              "alt": "",
+              "noImage": false,
+              "deferSrc": false,
+              "singleElementSources": true,
+              "scaleFactor": "2x"
+            },
+            "isBlocked": false,
+            "header": "太空黑色"
+          },
+          "variantOrder": [
+            "spaceblack",
+            "silver"
+          ],
+          "silver": {
+            "image": {
+              "sources": [
+                {
+                  "srcSet": "https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/mbp14-proled-silver-cto-hero-202610_SW_COLOR?wid=64&hei=64&fmt=jpeg&qlt=90&.v=TE5OaVRsVG04L0hwU2pDOTMzR2F0cXpxcWdRTUEvT1FiSU8rNkhvSVVPN0FDd29XbUJVbU9hVlRNU3h4dExEb0ZtUTlHSjRnUk0vdFNrRldLbk01bTRKWlgzZzdyUXEzcGE2bUxYbWVvdHJQSUFlM2swU0pQNGxFUnFIRmdVYXk",
+                  "type": "image/jpeg"
+                }
+              ],
+              "width": "32",
+              "height": "32",
+              "attrs": "",
+              "imageName": "mbp14-proled-silver-cto-hero-202610_SW_COLOR",
+              "originalImageName": "mbp14-proled-silver-cto-hero-202610_SW_COLOR",
+              "alt": "",
+              "noImage": false,
+              "deferSrc": false,
+              "singleElementSources": true,
+              "scaleFactor": "2x"
+            },
+            "isBlocked": false,
+            "header": "銀色"
+          }
+        }
+      },
+      "macProductLinks": [
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro-proled-xdr/14-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-max-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-32-%E6%A0%B8%E5%BF%83-gpu-36gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro-proled-xdr/14-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-15-%E6%A0%B8%E5%BF%83-cpu-16-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro-proled-xdr/14-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-20-%E6%A0%B8%E5%BF%83-gpu-48gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro-proled-xdr/14-%E5%90%8B-space-black-%E5%A5%88%E7%B1%B3%E7%B4%8B%E7%90%86%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-15-%E6%A0%B8%E5%BF%83-cpu-16-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro-proled-xdr/14-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-max-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-32-%E6%A0%B8%E5%BF%83-gpu-36gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro-proled-xdr/14-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-15-%E6%A0%B8%E5%BF%83-cpu-16-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro-proled-xdr/14-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-20-%E6%A0%B8%E5%BF%83-gpu-48gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro-proled-xdr/16-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-max-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-32-%E6%A0%B8%E5%BF%83-gpu-36gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro-proled-xdr/16-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-max-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-40-%E6%A0%B8%E5%BF%83-gpu-48gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro-proled-xdr/16-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-20-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro-proled-xdr/16-%E5%90%8B-silver-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-20-%E6%A0%B8%E5%BF%83-gpu-48gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro-proled-xdr/16-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-max-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-32-%E6%A0%B8%E5%BF%83-gpu-36gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro-proled-xdr/16-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-max-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-40-%E6%A0%B8%E5%BF%83-gpu-48gb-%E8%A8%98%E6%86%B6%E9%AB%94-2tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro-proled-xdr/16-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-20-%E6%A0%B8%E5%BF%83-gpu-24gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE",
+        "https://www.apple.com/tw/shop/buy-mac/macbook-pro-proled-xdr/16-%E5%90%8B-space-black-%E6%A8%99%E6%BA%96%E9%A1%AF%E7%A4%BA%E5%99%A8-apple-m5-pro-%E6%99%B6%E7%89%87-18-%E6%A0%B8%E5%BF%83-cpu-20-%E6%A0%B8%E5%BF%83-gpu-48gb-%E8%A8%98%E6%86%B6%E9%AB%94-1tb-%E5%84%B2%E5%AD%98%E8%A3%9D%E7%BD%AE"
+      ]
+    }
+  },
+  {
+    "category": "apple_tv",
+    "family": "apple-tv-4k",
+    "data": {
+      "products": [
+        {
+          "partNumber": "MLFF4TA/A",
+          "familyType": "appletv4k2026"
+        }
+      ]
+    }
   }
 ]

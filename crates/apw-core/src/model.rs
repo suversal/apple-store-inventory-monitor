@@ -213,6 +213,7 @@ pub enum Category {
     Ipad,
     Mac,
     Watch,
+    AppleTv,
 }
 
 impl Category {
@@ -220,7 +221,13 @@ impl Category {
     ///
     /// 写成常量而不是让调用方自己列举：将来新增品类时，凡是遍历这里的地方
     /// 都会自动跟上，不会有谁悄悄漏掉一个。
-    pub const ALL: &'static [Category] = &[Self::Iphone, Self::Ipad, Self::Mac, Self::Watch];
+    pub const ALL: &'static [Category] = &[
+        Self::Iphone,
+        Self::Ipad,
+        Self::Mac,
+        Self::Watch,
+        Self::AppleTv,
+    ];
 
     /// 购买页所在的路径段，如 `buy-iphone`。
     pub fn buy_path(self) -> &'static str {
@@ -229,6 +236,7 @@ impl Category {
             Self::Ipad => "buy-ipad",
             Self::Mac => "buy-mac",
             Self::Watch => "buy-watch",
+            Self::AppleTv => "buy-tv",
         }
     }
 
@@ -239,6 +247,7 @@ impl Category {
             Self::Ipad => "iPad",
             Self::Mac => "Mac",
             Self::Watch => "Apple Watch",
+            Self::AppleTv => "Apple TV",
         }
     }
 }
@@ -332,7 +341,15 @@ impl Region {
         &self,
         category: Category,
     ) -> impl Iterator<Item = &'static Family<'static>> {
-        self.families.iter().filter(move |f| f.category == category)
+        self.catalog_families()
+            .filter(move |f| f.category == category)
+    }
+
+    pub fn catalog_families(&self) -> impl Iterator<Item = &'static Family<'static>> {
+        // 大陆官网没有 Apple TV 4K 硬件购买页，请勿混入其他地区的零件号。
+        self.families
+            .iter()
+            .chain((self.locale != "zh_CN").then_some(&APPLE_TV_FAMILY))
     }
 
     /// 该地区请求应当带的 `Accept-Language`。
@@ -349,6 +366,13 @@ impl Region {
 
 /// 离线兜底购买页。在线刷新先从所选地区的品类入口发现当前机型，
 /// 入口抓取失败时才使用这张表和已有快照；新品无需预先登记在这里。
+const APPLE_TV_FAMILY: Family<'static> = Family {
+    category: Category::AppleTv,
+    slug: "apple-tv-4k",
+};
+
+pub(crate) const TOUCHSCREEN_MAC_FAMILY: &str = "macbook-pro-proled-xdr";
+
 const DEFAULT_FAMILIES: &[Family<'static>] = &[
     Family {
         category: Category::Iphone,
@@ -385,6 +409,10 @@ const DEFAULT_FAMILIES: &[Family<'static>] = &[
     Family {
         category: Category::Mac,
         slug: "macbook-pro",
+    },
+    Family {
+        category: Category::Mac,
+        slug: TOUCHSCREEN_MAC_FAMILY,
     },
     Family {
         category: Category::Mac,

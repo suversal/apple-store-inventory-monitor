@@ -228,7 +228,7 @@ impl Catalog {
         let Ok(cache) = serde_json::from_slice::<CatalogCache>(&text) else {
             return;
         };
-        if cache.version != CATALOG_CACHE_VERSION {
+        if !matches!(cache.version, 1 | CATALOG_CACHE_VERSION) {
             return;
         }
         // 刷新时间只对型号目录有意义；缓存里没有任何型号页时视为从未刷新。
@@ -258,7 +258,17 @@ impl Catalog {
         }
         {
             let mut current = write_lock(&self.current_families);
-            for family in cache.current_families {
+            for mut family in cache.current_families {
+                // v1 的 Mac 目录可能在触屏机型上架前刷新过。让新内嵌页可见，
+                // 同时保留旧缓存的其他机型筛选以及在线商品和门店。
+                if cache.version == 1
+                    && family.category == Category::Mac
+                    && !family.slugs.is_empty()
+                {
+                    family
+                        .slugs
+                        .push(crate::model::TOUCHSCREEN_MAC_FAMILY.into());
+                }
                 if !family.slugs.is_empty() {
                     current.insert(
                         (locale.to_string(), family.category),
@@ -362,7 +372,7 @@ impl Catalog {
         Ok(count)
     }
 
-    /// 某地区的全部商品，四个品类合在一起。
+    /// 某地区的全部商品。
     ///
     /// **逐页**决定用哪份数据：刷新过的页用刷新结果，没刷新过的用内嵌快照。
     pub fn products(&self, locale: &str) -> Result<Vec<Product>, CatalogError> {
@@ -598,7 +608,7 @@ impl Catalog {
     ) -> Result<usize, CatalogError> {
         let families: Vec<&'static Family<'static>> = match category {
             Some(c) => region.families_in(c).collect(),
-            None => region.families.iter().collect(),
+            None => region.catalog_families().collect(),
         };
         if families.is_empty() {
             return Err(CatalogError::NoFamilies {
@@ -908,7 +918,7 @@ pub(crate) fn parse_store_page(page: &[u8]) -> Result<HashMap<String, Vec<Store>
 }
 
 /// 在线刷新结果的缓存格式版本。结构改变时加一，旧缓存会被忽略。
-const CATALOG_CACHE_VERSION: u32 = 1;
+const CATALOG_CACHE_VERSION: u32 = 2;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1521,6 +1531,27 @@ mod tests {
         ));
         let _ = std::fs::remove_dir_all(&dir);
         dir
+    }
+
+    #[test]
+    fn v1目录缓存会显示新版内嵌触屏mac同时保留原有筛选() {
+        let dir = temp_cache_dir("v1-touchscreen");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("zh_CN.json"),
+            r#"{"version":1,"refreshedAt":0,"currentFamilies":[{"category":"mac","slugs":["macbook-pro"]}]}"#,
+        )
+        .unwrap();
+        let catalog = Catalog::with_cache_dir(dir.clone());
+        let products = catalog.products("zh_CN").unwrap();
+        assert!(
+            products
+                .iter()
+                .any(|p| p.family == crate::model::TOUCHSCREEN_MAC_FAMILY)
+        );
+        assert!(products.iter().any(|p| p.family == "macbook-pro"));
+        assert!(!products.iter().any(|p| p.family == "macbook-air"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// 门店列表页的最小样本：结构与官网 `__NEXT_DATA__` 一致。

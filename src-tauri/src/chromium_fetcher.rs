@@ -84,6 +84,82 @@ pub(crate) struct ChromiumSession {
     next_command_id: u64,
     locale: Option<&'static str>,
     established: bool,
+    checkout_trace: Option<CheckoutTrace>,
+}
+
+#[derive(Debug)]
+struct CheckoutTrace {
+    frame: String,
+    requests: HashMap<String, &'static str>,
+    events: Vec<String>,
+}
+
+impl CheckoutTrace {
+    fn record(&mut self, event: &Value) {
+        const LIMIT: usize = 16;
+        if self.events.len() >= LIMIT {
+            return;
+        }
+        let params = &event["params"];
+        let Some(id) = params["requestId"].as_str() else {
+            return;
+        };
+        match event["method"].as_str() {
+            Some("Network.requestWillBeSent")
+                if params["frameId"].as_str() == Some(self.frame.as_str()) =>
+            {
+                // 记录固定页面名称与状态码。URL、查询参数、请求内容都不进入诊断。
+                if let Some(previous) = self.requests.remove(id)
+                    && let Some(status) = params["redirectResponse"]["status"].as_u64()
+                {
+                    self.events.push(format!("{previous} HTTP {status}"));
+                }
+                let Some(route) = checkout_trace_route(params) else {
+                    return;
+                };
+                if self.requests.len() < LIMIT {
+                    self.requests.insert(id.to_string(), route);
+                }
+            }
+            Some("Network.responseReceived") => {
+                if let Some(route) = self.requests.remove(id)
+                    && let Some(status) = params["response"]["status"].as_u64()
+                {
+                    self.events.push(format!("{route} HTTP {status}"));
+                }
+            }
+            Some("Network.loadingFailed") => {
+                if let Some(route) = self.requests.remove(id) {
+                    self.events.push(format!("{route} 请求失败"));
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn checkout_trace_route(params: &Value) -> Option<&'static str> {
+    let url = reqwest::Url::parse(params["request"]["url"].as_str()?).ok()?;
+    if url.scheme() != "https" || url.host_str() != Some("www.apple.com.cn") {
+        return (params["type"] == "Document").then_some("其他页面");
+    }
+    match params["type"].as_str()? {
+        "Document"
+            if url
+                .query_pairs()
+                .any(|(key, value)| key == "step" && value == "attach") =>
+        {
+            Some("Apple 配件页")
+        }
+        "Document" if url.path().starts_with("/shop/buy-") => Some("Apple 商品页"),
+        "Document" if url.path() == "/shop/bag" => Some("Apple 购物袋"),
+        "Document" => Some("Apple 其他页面"),
+        "XHR" | "Fetch" if url.path().starts_with("/shop/") => match url.path() {
+            "/shop/fulfillment-messages" | "/shop/updateSEO" => None,
+            _ => Some("Apple 商店请求"),
+        },
+        _ => None,
+    }
 }
 
 fn terminate_chromium(child: &mut Child, _process_group_id: Option<u32>) {
@@ -660,6 +736,7 @@ impl ChromiumSession {
             next_command_id: 1,
             locale: None,
             established,
+            checkout_trace: None,
         };
         if !headless {
             save_startup_diagnostic(
@@ -708,6 +785,38 @@ impl ChromiumSession {
         }
     }
 
+    pub(crate) async fn start_checkout_trace(&mut self) {
+        let Ok(frame_tree) = self.command("Page.getFrameTree", json!({})).await else {
+            return;
+        };
+        let Some(frame) = frame_tree["frameTree"]["frame"]["id"].as_str() else {
+            return;
+        };
+        if self.command("Network.enable", json!({})).await.is_ok() {
+            self.checkout_trace = Some(CheckoutTrace {
+                frame: frame.to_string(),
+                requests: HashMap::new(),
+                events: Vec::new(),
+            });
+        }
+    }
+
+    pub(crate) async fn finish_checkout_trace(&mut self) -> Option<String> {
+        self.checkout_trace.as_ref()?;
+        let _ = self.command("Network.disable", json!({})).await;
+        let trace = self.checkout_trace.take()?;
+        let mut events = trace.events;
+        let pending = trace.requests.len();
+        if pending != 0 {
+            events.push(format!("{pending} 个请求未收到响应"));
+        }
+        Some(if events.is_empty() {
+            "未捕获到加购相关响应".to_string()
+        } else {
+            events.join(" → ")
+        })
+    }
+
     pub(crate) async fn command(&mut self, method: &str, params: Value) -> Result<Value, ApiError> {
         let id = self.next_command_id;
         self.next_command_id = self.next_command_id.wrapping_add(1).max(1);
@@ -730,6 +839,9 @@ impl ChromiumSession {
                 let response: Value = serde_json::from_str(&text)
                     .map_err(|e| ApiError::Transport(format!("Chromium 响应无法解析：{e}")))?;
                 if response.get("id").and_then(Value::as_u64) != Some(id) {
+                    if let Some(trace) = &mut self.checkout_trace {
+                        trace.record(&response);
+                    }
                     continue;
                 }
                 if let Some(error) = response.get("error") {
@@ -2476,6 +2588,43 @@ pub(crate) mod tests {
         cdp_responses(vec![response]).await
     }
 
+    #[test]
+    fn 加购诊断留存主页面跳转状态且不记录原始链接() {
+        let mut trace = CheckoutTrace {
+            frame: "main".into(),
+            requests: HashMap::new(),
+            events: Vec::new(),
+        };
+        for event in [
+            json!({"method":"Network.requestWillBeSent","params":{
+                "requestId":"navigation","frameId":"main","type":"Document",
+                "request":{"url":"https://www.apple.com.cn/shop/buy-iphone/example?token=private"}
+            }}),
+            json!({"method":"Network.requestWillBeSent","params":{
+                "requestId":"navigation","frameId":"main","type":"Document",
+                "request":{"url":"https://www.apple.com.cn/shop/buy-iphone/example?step=attach&token=private"},
+                "redirectResponse":{"status":303}
+            }}),
+            json!({"method":"Network.requestWillBeSent","params":{
+                "requestId":"child","frameId":"child","type":"Document",
+                "request":{"url":"https://www.apple.com.cn/shop/bag"}
+            }}),
+            json!({"method":"Network.responseReceived","params":{
+                "requestId":"child","response":{"status":200}
+            }}),
+            json!({"method":"Network.responseReceived","params":{
+                "requestId":"navigation","response":{"status":404}
+            }}),
+        ] {
+            trace.record(&event);
+        }
+        assert_eq!(
+            trace.events,
+            ["Apple 商品页 HTTP 303", "Apple 配件页 HTTP 404"]
+        );
+        assert!(trace.requests.is_empty());
+    }
+
     async fn cdp_responses(
         responses: Vec<Value>,
     ) -> (AppleChromiumFetcher, tokio::task::JoinHandle<bool>) {
@@ -2534,6 +2683,7 @@ pub(crate) mod tests {
             next_command_id: 1,
             locale: Some("zh_CN"),
             established: true,
+            checkout_trace: None,
         };
         (
             AppleChromiumFetcher {

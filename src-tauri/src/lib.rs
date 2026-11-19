@@ -302,6 +302,7 @@ fn parse_watch_band_sizes(body: &[u8]) -> Result<Vec<WatchBandSizeDto>, String> 
 struct CategoryDto {
     value: Category,
     title: &'static str,
+    locales: Vec<&'static str>,
 }
 
 struct AppState {
@@ -355,6 +356,11 @@ fn list_categories() -> Vec<CategoryDto> {
         .map(|c| CategoryDto {
             value: *c,
             title: c.title(),
+            locales: REGIONS
+                .iter()
+                .filter(|region| region.families_in(*c).next().is_some())
+                .map(|region| region.locale)
+                .collect(),
         })
         .collect()
 }

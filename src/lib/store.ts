@@ -65,7 +65,7 @@ export interface UiState {
    *
    * 只是个筛选器，所以不进设置、不落盘：它决定型号下拉框里显示哪一批商品，
    * 以及刷新按钮去抓哪几页。已经加进监控列表的目标不受它影响 —— 列表里
-   * 四个品类是混在一起的，不然用户切一下品类就以为自己的监控项没了。
+   * 各品类混在一起，不然用户切一下品类就以为自己的监控项没了。
    */
   category: Category;
   settings: Settings;
@@ -317,10 +317,10 @@ export async function loadCatalog(locale: string): Promise<void> {
       invoke<Store[]>("list_stores", { locale }),
       invoke<Product[]>("list_products", { locale }),
     ]);
-    update({ stores, products });
+    if (state.settings.locale === locale) update({ stores, products });
   } catch (err) {
     // 目录读不出来不该让整个界面挂掉，但必须让用户知道下拉为什么是空的。
-    update({ stores: [], products: [] });
+    if (state.settings.locale === locale) update({ stores: [], products: [] });
     pushLog(`载入 ${locale} 的门店与型号失败：${String(err)}`);
   }
 }
@@ -390,7 +390,11 @@ export function setCategory(category: Category): void {
 }
 
 export async function changeLocale(locale: string): Promise<void> {
-  await saveSettings({ locale });
+  if (!(await saveSettings({ locale }))) return;
+  if (state.settings.locale !== locale) return;
+  if (!state.categories.some((option) => option.value === state.category && option.locales.includes(locale))) {
+    setCategory("iphone");
+  }
   await loadCatalog(locale);
 }
 
